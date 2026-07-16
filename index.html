@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crackers ERP - HTML5 Modular Local Database Edition</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="compact-top-row">
+      <div class="compact-title-wrap">
+        <h1>Crackers Billing ERP</h1>
+        <div class="doc-badge" id="docBadge">INVOICE • SGFI-0001</div>
+      </div>
+
+      <div class="compact-actions">
+<button class="compact-menu-btn" type="button" onclick="toggleCompactMenu()">Modules ▾</button>
+        <button class="compact-menu-btn" type="button" onclick="ERPStorage.saveAll()">Save</button>
+        <button class="compact-menu-btn" type="button" onclick="ERPStorage.exportBackup()">Backup</button>
+      </div>
+    </div>
+
+    <div class="compact-menu" id="compactMenu">
+      <div class="compact-menu-grid">
+
+        <div class="compact-menu-section">
+          <div class="compact-menu-title">Billing</div>
+          <button class="compact-menu-item" onclick="compactSwitch('billingPage','INV')">Invoice</button>
+          <button class="compact-menu-item" onclick="compactSwitch('billingPage','EST')">Estimate</button>
+          <button class="compact-menu-item" onclick="compactSwitch('billingPage','PRO')">Performa</button>
+        </div>
+
+
+        <div class="compact-menu-section">
+          <div class="compact-menu-title">Master</div>
+          <button class="compact-menu-item" onclick="compactSwitch('customerMasterPage','MASTER')">Customer Master</button>
+          <button class="compact-menu-item" onclick="compactSwitch('productMasterPage','MASTER')">Product Master</button>
+          <button class="compact-menu-item" onclick="compactSwitch('godownMasterPage','MASTER')">Godown Master</button>
+          <button class="compact-menu-item" onclick="compactSwitch('vehicleMasterPage','MASTER')">Vehicle Master</button>
+        </div>
+
+        <div class="compact-menu-section">
+          <div class="compact-menu-title">Stock</div>
+          <button class="compact-menu-item" onclick="compactSwitch('purchaseEntryPage','MASTER')">Purchase Entry</button>
+          <button class="compact-menu-item" onclick="compactSwitch('stockTransferPage','MASTER')">Stock Transfer</button>
+          <button class="compact-menu-item" onclick="compactSwitch('godownStockPage','MASTER')">Godown Stock</button>
+        </div>
+
+        <div class="compact-menu-section">
+          <div class="compact-menu-title">Reports</div>
+          <button class="compact-menu-item" onclick="compactSwitch('reportsPage','MASTER'); openReport('customer')">Reports</button>
+        </div>
+      </div>
+
+      <div class="compact-backup-row">
+        <button type="button" onclick="ERPStorage.saveAll()">Save Local Data</button>
+        <button type="button" onclick="ERPStorage.exportBackup()">Export Backup</button>
+        <button type="button" onclick="document.getElementById('backupImportFile').click()">Import Backup</button>
+        <button type="button" onclick="ERPStorage.clearAll()">Clear Local Data</button>
+        <input type="file" id="backupImportFile" accept=".json" style="display:none" onchange="ERPStorage.importBackup(event)">
+      </div>
+    </div>
+  </div>
+
+<section class="arch-card">
+    <div class="arch-item"><span>STRUCTURE</span><strong>HTML5 Single Page</strong></div>
+    <div class="arch-item"><span>LOGIC</span><strong>Modular JavaScript Helpers</strong></div>
+    <div class="arch-item"><span>DATABASE</span><strong>Browser Local Storage</strong></div>
+    <div class="arch-item"><span>BACKUP</span><strong>Export / Import JSON</strong></div>
+  </section>
+<section class="slide-dashboard">
+    <div class="slide-card" onclick="compactSwitch('billingPage','INV')"><span>Billing</span><strong>Invoice</strong><small>Invoice / Estimate / Performa</small></div>
+    <div class="slide-card" onclick="compactSwitch('productMasterPage','MASTER')"><span>Masters</span><strong>Products</strong><small>HSN, GST, rate and unit</small></div>
+    <div class="slide-card" onclick="compactSwitch('stockTransferPage','MASTER')"><span>Stock</span><strong>Transfer</strong><small>Godown-wise movement</small></div>
+    <div class="slide-card" onclick="compactSwitch('reportsPage','MASTER'); openReport('customer')"><span>Reports</span><strong>Analytics</strong><small>Date, month, number filters</small></div>
+  </section>
+  <section class="quick-command">
+    <button onclick="compactSwitch('billingPage','INV')">+ New Invoice</button>
+    <button onclick="compactSwitch('customerMasterPage','MASTER')">+ Customer</button>
+    <button onclick="compactSwitch('purchaseEntryPage','MASTER')">+ Purchase</button>
+    <button onclick="compactSwitch('stockTransferPage','MASTER')">+ Transfer</button>
+    <button onclick="compactSwitch('reportsPage','MASTER'); openReport('stock')">Stock Report</button>
+  </section>
+
+  <div id="billingPage" class="page active">
+    <div class="card">
+      <div class="section-title">Document Details</div>
+      <div class="grid">
+        <div class="col-3"><label>Financial Year</label><select><option>2025-2026</option><option>2026-2027</option></select></div>
+        <div class="col-3"><label>Series *</label><select id="invoiceSeries" onchange="updateInvoiceNumber()"><option value="SGFI">SGFI</option><option value="RET">RET</option><option value="WHOLESALE">WHOLESALE</option><option value="EXPORT">EXPORT</option></select></div>
+        <div class="col-3"><label>Document Number *</label><input id="invoiceNo" readonly></div>
+        <div class="col-3"><label>Date *</label><input type="date" id="invoiceDate"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Party Details</div>
+      <div class="top-layout">
+        <div class="panel">
+          <label>Customer Name *</label>
+          <input id="billCustomerName" list="customerNames" placeholder="Search customer" oninput="loadCustomerToBilling()">
+          <label style="margin-top:10px">Address</label>
+          <textarea id="billAddress"></textarea>
+          <div class="grid" style="margin-top:10px">
+            <div class="col-6"><label>State</label><select id="billState" onchange="calculateTotal()"><option value="">Select State</option>
+<option>Andhra Pradesh</option>
+<option>Arunachal Pradesh</option>
+<option>Assam</option>
+<option>Bihar</option>
+<option>Chhattisgarh</option>
+<option>Goa</option>
+<option>Gujarat</option>
+<option>Haryana</option>
+<option>Himachal Pradesh</option>
+<option>Jharkhand</option>
+<option>Karnataka</option>
+<option>Kerala</option>
+<option>Madhya Pradesh</option>
+<option>Maharashtra</option>
+<option>Manipur</option>
+<option>Meghalaya</option>
+<option>Mizoram</option>
+<option>Nagaland</option>
+<option>Odisha</option>
+<option>Punjab</option>
+<option>Rajasthan</option>
+<option>Sikkim</option>
+<option>Tamil Nadu</option>
+<option>Telangana</option>
+<option>Tripura</option>
+<option>Uttar Pradesh</option>
+<option>Uttarakhand</option>
+<option>West Bengal</option>
+<option>Andaman and Nicobar Islands</option>
+<option>Chandigarh</option>
+<option>Dadra and Nagar Haveli and Daman and Diu</option>
+<option>Delhi</option>
+<option>Jammu and Kashmir</option>
+<option>Ladakh</option>
+<option>Lakshadweep</option>
+<option>Puducherry</option></select></div>
+            <div class="col-6"><label>Pincode</label><input id="billPincode"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <label>Aadhaar / ID</label><input id="billId">
+          <label style="margin-top:10px">GSTIN</label><input id="billGstin">
+          <label style="margin-top:10px">Mobile</label><input id="billMobile">
+          <label style="margin-top:10px">Reference</label><input id="billReference" placeholder="Broker / Agent / Reference">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Product Details</div>
+      <div class="info-strip" id="productListInfo">Using Invoice Product List</div>
+      <div class="info-strip">GST applies only to Invoice. Estimate and Performa are non-tax documents.</div>
+      <div id="rows" class="product-rows-visible">
+<div class="product-row">
+  <div><label>S.No</label><input value="1" readonly></div>
+  <div><label>Product</label><input class="productName" list="activeProducts" placeholder="Type / select product"></div>
+  <div class="hsn-field"><label>HSN</label><input class="hsn" value="3604" maxlength="10" oninput="limitHSN(this)"></div>
+  <div class="tax-field"><label>Tax %</label><select class="taxRate"><option value="0">0%</option><option value="5">5%</option><option value="18" selected>18%</option><option value="40">40%</option><option value="12">12% Legacy</option><option value="28">28% Legacy</option></select></div>
+  <div class="estimate-case-field"><label>No. of Cases</label><input class="cases" type="number" value="1"></div>
+  <div><label>Quantity</label><input class="qty" type="number" value="1"></div>
+  <div><label>Rate</label><input class="rate" type="number" value="0"></div>
+  <div><label>Per</label><select class="per"><option>Case</option><option>Box</option><option>Pcs</option><option>Bundle</option></select></div>
+  <div><label>Amount</label><input class="amount" readonly value="0"></div>
+  <div class="row-actions"><button type="button" class="primary" onclick="addRow()">+</button><button type="button" class="danger" onclick="removeRow(this)">-</button></div>
+</div>
+      </div>
+      <div class="buttons product-add-bar" style="justify-content:flex-start">
+        <button class="primary" type="button" onclick="addRow()">+ Add Product</button>
+      </div>
+      <div class="summary-box">
+        <div class="summary-item"><span>Subtotal</span><strong id="subtotalText">₹0.00</strong></div>
+        <div class="summary-item tax-summary-item"><span id="taxLabel1">IGST 18%</span><strong id="cgstText">₹0.00</strong></div>
+        <div class="summary-item tax-summary-item"><span id="taxLabel2">CGST / SGST</span><strong id="sgstText">₹0.00</strong></div>
+        <div class="summary-item discount-summary-item"><span>Discount</span><strong id="discountText">₹0.00</strong></div>
+        <div class="summary-item charge-summary-item"><span>Additional Charges</span><strong id="additionalChargesText">₹0.00</strong></div>
+        <div class="summary-item total"><span>Grand Total</span><strong id="grandTotalText">₹0.00</strong></div>
+      </div>
+      <div class="buttons"><button class="secondary" type="button" onclick="resetRows()">Clear</button><button class="primary" type="button">Preview</button><button class="success" type="button" onclick="saveBillingDocument()">Save</button></div>
+    
+    <div class="card additional-charges-card" id="additionalChargesCard">
+      <div class="section-title">Additional Charges / Deductions</div>
+
+      <div class="charges-toolbar">
+        <button class="primary" type="button" onclick="addChargeRow()">+ Add Charge</button>
+        <span class="charges-note">Shown only for Estimate / Performa</span>
+      </div>
+
+      <div id="additionalChargeRows" class="charge-rows"></div>
+    </div>
+
+</div>
+
+  <div id="customerMasterPage" class="page">
+    <div class="card">
+      <div class="section-title">Customer Details Master</div>
+      <div class="grid">
+        <div class="col-4"><label>Customer Name *</label><input id="masterName" placeholder="Customer name"></div>
+        <div class="col-4"><label>Mobile</label><input id="masterMobile" maxlength="10" placeholder="10 digit mobile"></div>
+        <div class="col-4"><label>Reference</label><input id="masterReference" placeholder="Broker / agent / direct"></div>
+        <div class="col-12"><label>Address</label><textarea id="masterAddress" placeholder="Full customer address"></textarea></div>
+        <div class="col-3"><label>State</label><select id="masterState"><option value="">Select State</option>
+<option>Andhra Pradesh</option>
+<option>Arunachal Pradesh</option>
+<option>Assam</option>
+<option>Bihar</option>
+<option>Chhattisgarh</option>
+<option>Goa</option>
+<option>Gujarat</option>
+<option>Haryana</option>
+<option>Himachal Pradesh</option>
+<option>Jharkhand</option>
+<option>Karnataka</option>
+<option>Kerala</option>
+<option>Madhya Pradesh</option>
+<option>Maharashtra</option>
+<option>Manipur</option>
+<option>Meghalaya</option>
+<option>Mizoram</option>
+<option>Nagaland</option>
+<option>Odisha</option>
+<option>Punjab</option>
+<option>Rajasthan</option>
+<option>Sikkim</option>
+<option>Tamil Nadu</option>
+<option>Telangana</option>
+<option>Tripura</option>
+<option>Uttar Pradesh</option>
+<option>Uttarakhand</option>
+<option>West Bengal</option>
+<option>Andaman and Nicobar Islands</option>
+<option>Chandigarh</option>
+<option>Dadra and Nagar Haveli and Daman and Diu</option>
+<option>Delhi</option>
+<option>Jammu and Kashmir</option>
+<option>Ladakh</option>
+<option>Lakshadweep</option>
+<option>Puducherry</option></select></div>
+        <div class="col-3"><label>Pincode</label><input id="masterPincode" maxlength="6"></div>
+        <div class="col-3"><label>Aadhaar / ID</label><input id="masterId"></div>
+        <div class="col-3"><label>GSTIN</label><input id="masterGstin" maxlength="15"></div>
+      </div>
+      <div class="buttons"><button class="secondary" onclick="clearCustomerMaster()">Clear</button><button class="success" onclick="saveCustomer()">Save Customer</button></div>
+      <div id="customerMessage" class="message"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">Saved Customers</div>
+      <table><thead><tr><th>Name</th><th>Mobile</th><th>State</th><th>GSTIN</th><th>Reference</th><th>Action</th></tr></thead><tbody id="customerTableBody"></tbody></table>
+    </div>
+  </div>
+
+  <div id="productMasterPage" class="page">
+    <div class="card">
+      <div class="section-title">Product Master</div>
+      <div class="info-strip">HSN max 10 digits • GST tax options: 0%, 5%, 18%, 40% plus legacy 12% / 28%</div>
+      <div class="grid">
+        <div class="col-3"><label>Product List Type *</label><select id="productListType"><option value="INV">Invoice Product List</option><option value="EP">Estimate / Performa Product List</option></select></div>
+        <div class="col-3"><label>Product Code</label><input id="masterProductCode" placeholder="Eg: INV001"></div>
+        <div class="col-6"><label>Product Name *</label><input id="masterProductName" placeholder="Enter product name"></div>
+        <div class="col-3"><label>HSN Code</label><input id="masterProductHsn" value="3604" maxlength="10" oninput="limitHSN(this)" placeholder="Max 10 digits"></div>
+        <div class="col-3"><label>Tax %</label><select id="masterProductTax"><option value="0">0%</option><option value="5">5%</option><option value="18" selected>18%</option><option value="40">40%</option><option value="12">12% Legacy</option><option value="28">28% Legacy</option></select></div>
+        <div class="col-3"><label>Rate</label><input id="masterProductRate" type="number" value="0"></div>
+        <div class="col-3"><label>Unit Quantity</label><input id="masterProductUnitQty" type="number" value="1"></div>
+        <div class="col-3"><label>Unit</label><select id="masterProductUnit"><option>Case</option><option>Box</option><option>Pcs</option><option>Bundle</option></select></div>
+        <div class="col-3"><label>Status</label><select id="masterProductStatus"><option>Active</option><option>Inactive</option></select></div>
+      </div>
+      <div class="buttons"><button class="secondary" onclick="clearProductMaster()">Clear</button><button class="success" onclick="saveProduct()">Save Product</button></div>
+      <div id="productMessage" class="message"></div>
+    </div>
+    <div class="card">
+      <div class="section-title">Invoice Product List</div>
+      <table><thead><tr><th>Code</th><th>Product</th><th>HSN</th><th>Tax</th><th>Rate</th><th>Unit Qty</th><th>Unit</th><th>Action</th></tr></thead><tbody id="invoiceProductTable"></tbody></table>
+    </div>
+    <div class="card">
+      <div class="section-title">Estimate / Performa Product List</div>
+      <table><thead><tr><th>Code</th><th>Product</th><th>HSN</th><th>Tax</th><th>Rate</th><th>Unit Qty</th><th>Unit</th><th>Action</th></tr></thead><tbody id="estimateProductTable"></tbody></table>
+    </div>
+  </div>
+
+  <div id="godownMasterPage" class="page">
+    <div class="card">
+      <div class="section-title">Godown Master</div>
+      <div class="info-strip">Create and maintain godown / storage location details</div>
+
+      <div class="grid">
+        <div class="col-12">
+          <label>Godown Name *</label>
+          <input id="godownName" placeholder="Eg: Main Godown / Fancy Items Godown">
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button class="secondary" onclick="clearGodownMaster()">Clear</button>
+        <button class="success" onclick="saveGodown()">Save Godown</button>
+      </div>
+
+      <div id="godownMessage" class="message"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Saved Godowns</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Godown Name</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="godownTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <div id="purchaseEntryPage" class="page">
+    <div class="card">
+      <div class="section-title">Purchase Entry</div>
+      <div class="info-strip">Use this screen to enter inward purchases and automatically add stock to selected godown.</div>
+
+      <div class="grid">
+        <div class="col-3">
+          <label>Purchase No</label>
+          <input id="purchaseNo" readonly value="PUR-0001">
+        </div>
+
+        <div class="col-3">
+          <label>Purchase Date</label>
+          <input type="date" id="purchaseDate">
+        </div>
+
+        <div class="col-3">
+          <label>Supplier Name</label>
+          <input id="supplierName" placeholder="Supplier / Manufacturer">
+        </div>
+
+        <div class="col-3">
+          <label>Bill No</label>
+          <input id="supplierBillNo" placeholder="Supplier bill no">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Purchase Product Details</div>
+
+      <div id="purchaseRows"></div>
+
+      <div class="buttons" style="justify-content:flex-start">
+        <button class="primary" onclick="addPurchaseRow()">+ Add Purchase Item</button>
+      </div>
+
+      <div class="summary-box">
+        <div class="summary-item"><span>Total Purchase Qty</span><strong id="purchaseQtyTotal">0</strong></div>
+        <div class="summary-item"><span>Purchase Value</span><strong id="purchaseValueTotal">₹0.00</strong></div>
+        <div class="summary-item"><span>Items</span><strong id="purchaseItemCount">0</strong></div>
+        <div class="summary-item total"><span>Status</span><strong>Draft</strong></div>
+      </div>
+
+      <div class="buttons">
+        <button class="secondary" onclick="clearPurchaseEntry()">Clear</button>
+        <button class="success" onclick="savePurchaseEntry()">Save Purchase & Add Stock</button>
+      </div>
+
+      <div id="purchaseMessage" class="message"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Recent Purchases</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Purchase No</th>
+            <th>Date</th>
+            <th>Supplier</th>
+            <th>Bill No</th>
+            <th>Items</th>
+            <th>Total Qty</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody id="purchaseHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="godownStockPage" class="page">
+    <div class="card">
+      <div class="section-title">Godown Stock Maintenance</div>
+      <div class="info-strip">Product-wise stock balance maintained godown by godown from Purchase Entry.</div>
+
+      <div class="grid">
+        <div class="col-4">
+          <label>Filter Godown</label>
+          <select id="stockFilterGodown" onchange="renderStockTable()">
+            <option value="">All Godowns</option>
+          </select>
+        </div>
+
+        <div class="col-4">
+          <label>Search Product</label>
+          <input id="stockSearchProduct" placeholder="Type product name" oninput="renderStockTable()">
+        </div>
+
+        <div class="col-4">
+          <label>Total Stock Value</label>
+          <input id="stockTotalValue" readonly value="₹0.00">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Current Godown Stock</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Godown</th>
+            <th>Product Code</th>
+            <th>Product</th>
+            <th>HSN</th>
+            <th>Tax</th>
+            <th>Stock Qty</th>
+            <th>Unit</th>
+            <th>Avg Rate</th>
+            <th>Stock Value</th>
+          </tr>
+        </thead>
+        <tbody id="stockTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <div id="vehicleMasterPage" class="page">
+    <div class="card">
+      <div class="section-title">Vehicle Master</div>
+      <div class="info-strip">Create vehicles used for stock transfer between godowns.</div>
+
+      <div class="grid">
+        <div class="col-3">
+          <label>Vehicle Number *</label>
+          <input id="vehicleNo" placeholder="TN67AB1234">
+        </div>
+        <div class="col-3">
+          <label>Vehicle Name</label>
+          <input id="vehicleName" placeholder="Mini Truck / Van">
+        </div>
+        <div class="col-3">
+          <label>Owner Name</label>
+          <input id="ownerName" placeholder="Owner name">
+        </div>
+        <div class="col-3">
+          <label>Owner Phone</label>
+          <input id="ownerPhone" maxlength="10" placeholder="Owner phone">
+        </div>
+        <div class="col-4">
+          <label>Driver Name</label>
+          <input id="vehicleDriverName" placeholder="Driver name">
+        </div>
+        <div class="col-4">
+          <label>Driver Phone</label>
+          <input id="vehicleDriverPhone" maxlength="10" placeholder="Driver phone">
+        </div>
+        <div class="col-4">
+          <label>Add Driver</label>
+          <button class="primary" type="button" onclick="addDriverToVehicle()" style="width:100%;margin-top:5px">+ Add Driver</button>
+        </div>
+        <div class="col-12">
+          <label>Drivers Added</label>
+          <div id="vehicleDriversBox" class="info-strip">No drivers added</div>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button class="secondary" onclick="clearVehicleMaster()">Clear</button>
+        <button class="success" onclick="saveVehicle()">Save Vehicle</button>
+      </div>
+
+      <div id="vehicleMessage" class="message"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Saved Vehicles</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Vehicle Number</th>
+            <th>Vehicle Name</th>
+            <th>Owner</th>
+            <th>Owner Phone</th>
+            <th>Drivers</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="vehicleTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="stockTransferPage" class="page">
+    <div class="card">
+      <div class="section-title">Godown Stock Transfer</div>
+      <div class="info-strip">Transfer multiple products in one vehicle. For each product row, select From Godown and To Godown separately. Source stock reduces and destination stock increases.</div>
+
+      <div class="grid">
+        <div class="col-3">
+          <label>Transfer No</label>
+          <input id="transferNo" readonly value="TRF-0001">
+        </div>
+
+        <div class="col-3">
+          <label>Transfer Date</label>
+          <input type="date" id="transferDate">
+        </div>
+
+        <div class="col-3">
+          <label>Vehicle *</label>
+          <select id="transferVehicle"></select>
+        </div>
+
+        <div class="col-3">
+          <label>Trip Type</label>
+          <input value="Product-wise Godown Transfer" readonly>
+        </div>
+
+        <div class="col-3">
+          <label>Driver</label>
+          <select id="transferDriver" onchange="updateTransferDriverPhone()"></select>
+        </div>
+
+        <div class="col-3">
+          <label>Driver Phone</label>
+          <input id="transferDriverPhone" readonly>
+        </div>
+        <div class="col-3">
+          <label>Remarks</label>
+          <input id="transferRemarks" placeholder="Optional remarks">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Transfer Product Details</div>
+
+      <div id="transferRows"></div>
+
+      <div class="buttons" style="justify-content:flex-start">
+        <button class="primary" onclick="addTransferRow()">+ Add Transfer Item</button>
+      </div>
+
+      <div class="summary-box">
+        <div class="summary-item"><span>Total Transfer Qty</span><strong id="transferQtyTotal">0</strong></div>
+        <div class="summary-item"><span>Items</span><strong id="transferItemCount">0</strong></div>
+        <div class="summary-item"><span>Vehicle</span><strong id="transferVehicleText">-</strong></div>
+        <div class="summary-item total"><span>Status</span><strong>Draft</strong></div>
+      </div>
+
+      <div class="buttons">
+        <button class="secondary" onclick="clearTransferEntry()">Clear</button>
+        <button class="success" onclick="saveStockTransfer()">Save Transfer</button>
+      </div>
+
+      <div id="transferMessage" class="message"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Recent Transfers</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Transfer No</th>
+            <th>Date</th>
+            <th>Routes</th>
+            <th>Vehicle</th>
+            <th>Driver</th>
+            <th>Items</th>
+            <th>Total Qty</th>
+          </tr>
+        </thead>
+        <tbody id="transferHistoryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="reportsPage" class="page">
+    <div class="card">
+      <div class="section-title">Reports Center</div>
+      <div class="info-strip">Select an individual report and filter by Date, Month, Unique Number, Name, or Product.</div>
+
+      <div class="tabs" style="margin-top:0">
+        <button class="tab master active report-tab" onclick="openReport('customer',this)">Customer</button>
+        <button class="tab master report-tab" onclick="openReport('supplier',this)">Supplier</button>
+        <button class="tab master report-tab" onclick="openReport('product',this)">Product</button>
+        <button class="tab master report-tab" onclick="openReport('godown',this)">Godown</button>
+        <button class="tab master report-tab" onclick="openReport('vehicle',this)">Vehicle</button>
+        <button class="tab master report-tab" onclick="openReport('purchase',this)">Purchase</button>
+        <button class="tab master report-tab" onclick="openReport('stock',this)">Godown Stock</button>
+        <button class="tab master report-tab" onclick="openReport('transfer',this)">Stock Transfer</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" id="activeReportTitle">Customer Report</div>
+
+      <div class="grid">
+        <div class="col-3 report-filter" id="filterDateBox">
+          <label id="filterDateLabel">Date</label>
+          <input type="date" id="reportDate" onchange="renderActiveReport()">
+        </div>
+
+        <div class="col-3 report-filter" id="filterMonthBox">
+          <label id="filterMonthLabel">Month</label>
+          <input type="month" id="reportMonth" onchange="renderActiveReport()">
+        </div>
+
+        <div class="col-3 report-filter" id="filterNumberBox">
+          <label id="filterNumberLabel">Unique Number</label>
+          <input id="reportNumber" placeholder="Unique number" oninput="renderActiveReport()">
+        </div>
+
+        <div class="col-3 report-filter" id="filterSearchBox">
+          <label id="filterSearchLabel">Search</label>
+          <input id="reportSearch" placeholder="Search" oninput="renderActiveReport()">
+        </div>
+
+        <div class="col-3 report-filter" id="filterTypeBox">
+          <label id="filterTypeLabel">Type</label>
+          <select id="reportTypeFilter" onchange="renderActiveReport()">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="col-3 report-filter" id="filterGodownBox">
+          <label>Godown</label>
+          <select id="reportGodownFilter" onchange="renderActiveReport()">
+            <option value="">All Godowns</option>
+          </select>
+        </div>
+
+        <div class="col-3 report-filter" id="filterProductBox">
+          <label>Product</label>
+          <input id="reportProductFilter" placeholder="Product name/code" oninput="renderActiveReport()">
+        </div>
+
+        <div class="col-3 report-filter" id="filterVehicleBox">
+          <label>Vehicle</label>
+          <select id="reportVehicleFilter" onchange="renderActiveReport()">
+            <option value="">All Vehicles</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button class="secondary" onclick="clearReportFilters()">Clear Filters</button>
+        <button class="primary" onclick="renderActiveReport()">Search</button>
+        <button class="success" onclick="window.print()">Print Report</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Report Summary</div>
+      <div class="summary-box">
+        <div class="summary-item"><span>Total Records</span><strong id="reportTotalRecords">0</strong></div>
+        <div class="summary-item"><span>Total Qty</span><strong id="reportTotalQty">0</strong></div>
+        <div class="summary-item"><span>Total Value</span><strong id="reportTotalValue">₹0.00</strong></div>
+        <div class="summary-item"><span>Report Type</span><strong id="reportTypeText">Customer</strong></div>
+        <div class="summary-item total"><span>Status</span><strong>Ready</strong></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" id="reportTableTitle">Customer Report Result</div>
+      <div style="overflow:auto">
+        <table>
+          <thead id="individualReportHead"></thead>
+          <tbody id="individualReportBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<datalist id="customerNames"></datalist>
+<datalist id="activeProducts"></datalist>
+<datalist id="allProductsList"></datalist>
+<datalist id="godownList"></datalist>
+
+<script src="main.js"></script>
+<div class="toast-note" id="toastNote">Saved</div>
+</body>
+</html>

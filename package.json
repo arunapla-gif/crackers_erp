@@ -1,0 +1,11 @@
+{
+  "name": "crackers-erp",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npx concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\""
+  },
+  "dependencies": {
+    "mdb-reader": "^3.2.0",
+    "pdf-parse": "^2.4.5"
+  }
+}
