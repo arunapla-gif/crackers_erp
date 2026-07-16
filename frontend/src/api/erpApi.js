@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://crackers-erp-api.onrender.com/api';
 
 // Create a configured axios instance
 const api = axios.create({

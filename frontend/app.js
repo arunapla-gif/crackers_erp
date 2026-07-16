@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'https://crackers-erp-api.onrender.com/api';
 
 async function saveCustomer() {
   const name = document.getElementById('custName').value.trim();

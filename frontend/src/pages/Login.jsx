@@ -21,7 +21,8 @@ export default function Login() {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5001/api/login', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://crackers-erp-api.onrender.com/api';
+      const res = await fetch(`${apiUrl}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, pin })
