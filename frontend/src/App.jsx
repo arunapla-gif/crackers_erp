@@ -26,6 +26,7 @@ import { useStore } from './store/useStore';
 import { useAuth } from './store/useAuth';
 import LegacyDashboard from './pages/legacy/LegacyDashboard';
 import EwayBillReport from './pages/EwayBillReport';
+import Dashboard from './pages/Dashboard';
 
 const THEMES = {
   INV: ['#ff6b6b', '#c24141', '#fff1f2'],
@@ -72,7 +73,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/print/invoice/:number" element={<InvoicePrint />} />
         <Route path="/" element={<Layout />}>
-          <Route index element={<Billing />} />
+          <Route index element={<Dashboard />} />
           <Route path="billing" element={<Billing />} />
           <Route path="customers" element={<CustomerMaster />} />
           <Route path="suppliers" element={<SupplierMaster />} />
