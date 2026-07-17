@@ -38,7 +38,7 @@ export default function Login() {
       login(data.user, data.token);
       
       // Navigate to dashboard
-      navigate('/billing');
+      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
