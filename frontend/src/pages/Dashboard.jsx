@@ -6,7 +6,12 @@ import { useAuth } from '../store/useAuth';
 export default function Dashboard() {
   const navigate = useNavigate();
   const setCurrentType = useStore((state) => state.setCurrentType);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   
   // Clear any active specific themes to a neutral/dashboard theme if desired, 
   // or default to INV to keep it consistent with the overall app colors.
@@ -23,8 +28,19 @@ export default function Dashboard() {
   const canView = (mod) => isAdmin || user?.permissions?.[mod]?.view;
 
   return (
-    <div className="space-y-6 max-w-[1000px] mx-auto pt-4 md:pt-10">
+    <div className="space-y-6 max-w-[1000px] mx-auto pt-4 md:pt-10 relative">
       
+      {/* Logout Button */}
+      <div className="absolute top-4 right-4 md:top-10 md:right-0">
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-2 bg-white border border-rose-100 text-rose-500 px-4 py-2 rounded-full text-sm font-bold shadow-sm hover:bg-rose-50 hover:text-rose-600 transition-all"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Logout
+        </button>
+      </div>
+
       {/* Welcome Section */}
       <div className="text-center space-y-2 mb-10">
         <h1 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight">

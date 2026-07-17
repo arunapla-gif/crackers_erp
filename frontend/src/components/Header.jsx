@@ -66,6 +66,11 @@ export default function Header() {
   const showReportsSection = canView('reports');
   const showHrSection = isAdmin || ['employees', 'payroll'].some(canView);
 
+  // Remove top headers on dashboard
+  if (location.pathname === '/') {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 md:top-[12px] z-[60] bg-white border-b border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.04)] text-slate-800 p-[10px_16px] md:p-[12px_24px] rounded-b-[24px] md:rounded-[24px]">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -85,6 +90,15 @@ export default function Header() {
 
         <div className="flex items-center gap-[8px] flex-wrap">
           
+          {/* Home Button */}
+          <button 
+            onClick={() => handleNavigate('/', 'INV')}
+            className="bg-slate-100 text-slate-700 border border-slate-200 px-[12px] py-[8px] rounded-full text-[13px] font-black hover:bg-slate-200 transition-all shadow-sm flex items-center justify-center"
+            title="Return to Dashboard"
+          >
+            🏠
+          </button>
+
           {/* Billing Section */}
           <div className="relative">
             <button 
