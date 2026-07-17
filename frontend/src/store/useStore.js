@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-export const useStore = create((set, get) => ({
+export const useStore = create(persist((set, get) => ({
   // App Global State
   currentType: 'INV', // 'INV', 'EST', 'PRO', 'MASTER'
   
@@ -135,5 +136,15 @@ export const useStore = create((set, get) => ({
         grandTotal: parseFloat((subtotal + tax + totalCharges).toFixed(2))
       }
     };
+  })
+}), {
+  name: 'crackers-erp-billing-cart',
+  partialize: (state) => ({ 
+    rows: state.rows, 
+    chargeRows: state.chargeRows, 
+    totals: state.totals,
+    currentType: state.currentType,
+    originState: state.originState,
+    billState: state.billState
   })
 }));
