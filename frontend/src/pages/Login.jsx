@@ -7,6 +7,7 @@ export default function Login() {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState('Authenticating...');
   const login = useAuth(state => state.login);
   const navigate = useNavigate();
 
@@ -18,7 +19,14 @@ export default function Login() {
     }
     
     setLoading(true);
+    setLoadingMsg('Authenticating...');
     setError('');
+
+    // If Render free tier is asleep, it takes 30-50s to wake up.
+    // Give user feedback after 5 seconds of waiting.
+    const timeoutId = setTimeout(() => {
+      setLoadingMsg('Waking up secure server (takes ~30s)...');
+    }, 5000);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'https://crackers-erp-api.onrender.com/api';
@@ -28,6 +36,7 @@ export default function Login() {
         body: JSON.stringify({ username, pin })
       });
 
+      clearTimeout(timeoutId);
       const data = await res.json();
 
       if (!res.ok) {
@@ -40,9 +49,11 @@ export default function Login() {
       // Navigate to dashboard
       navigate('/');
     } catch (err) {
+      clearTimeout(timeoutId);
       setError(err.message);
     } finally {
       setLoading(false);
+      setLoadingMsg('Authenticating...');
     }
   };
 
@@ -100,7 +111,7 @@ export default function Login() {
               disabled={loading}
               className={`w-full h-12 mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center ${loading ? 'opacity-80 scale-[0.98]' : 'hover:-translate-y-0.5 active:scale-[0.98]'}`}
             >
-              {loading ? 'Authenticating...' : 'Sign In'}
+              {loading ? loadingMsg : 'Sign In'}
             </button>
           </form>
 
