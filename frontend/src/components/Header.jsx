@@ -131,20 +131,43 @@ export default function Header() {
               Masters ▾
             </button>
             {mastersMenuOpen && (
-              <div className="absolute top-[100%] mt-3 left-0 md:left-1/2 md:-translate-x-1/2 w-[calc(100vw-32px)] md:w-[280px] bg-slate-50/90 backdrop-blur-[24px] border border-white/60 rounded-[24px] shadow-[0_32px_80px_rgba(15,23,42,0.12)] p-[8px] z-[90]">
-                <div className="px-[12px] pt-[12px] pb-[8px]">
-                  <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Master Entries</h3>
+              <div className="absolute top-[100%] mt-3 left-0 md:left-1/2 md:-translate-x-1/2 w-[calc(100vw-32px)] md:w-[540px] bg-slate-50/90 backdrop-blur-[24px] border border-white/60 rounded-[24px] shadow-[0_32px_80px_rgba(15,23,42,0.12)] p-[8px] z-[90] grid grid-cols-1 md:grid-cols-2 gap-[8px]">
+                
+                {/* Column 1: Billing & Operations */}
+                <div>
+                  <div className="px-[12px] pt-[12px] pb-[8px]">
+                    <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Billing Masters</h3>
+                  </div>
+                  <div className="flex flex-col gap-[2px]">
+                    {isAdmin && <MenuItem icon="🏢" title="Company Profiles" desc="Multi-GSTIN Branches" onClick={() => handleNavigate('/company-profiles', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                    {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                    {canView('products') && <MenuItem icon="📦" title="Product Master" desc="Items and pricing" onClick={() => handleNavigate('/products', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                    {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-[2px]">
-                  {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {canView('suppliers') && <MenuItem icon="🏢" title="Supplier Master" desc="Manage suppliers" onClick={() => handleNavigate('/suppliers', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {canView('products') && <MenuItem icon="📦" title="Product Master" desc="Items and pricing" onClick={() => handleNavigate('/products', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {canView('godowns') && <MenuItem icon="🏭" title="Godown Master" desc="Locations and warehouses" onClick={() => handleNavigate('/godowns', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {isAdmin && <MenuItem icon="🏢" title="Company Profiles" desc="Multi-GSTIN Branches" onClick={() => handleNavigate('/company-profiles', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
-                  {isAdmin && <div className="h-px bg-slate-200 my-1"></div>}
-                  {isAdmin && <MenuItem icon="🔐" title="User Management" desc="Manage staff access" onClick={() => handleNavigate('/users', 'MASTER')} textHoverClass="group-hover:text-rose-600" />}
+
+                {/* Column 2: Factory & System */}
+                <div>
+                  <div className="px-[12px] pt-[12px] pb-[8px]">
+                    <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Factory Masters</h3>
+                  </div>
+                  <div className="flex flex-col gap-[2px]">
+                    {canView('suppliers') && <MenuItem icon="🏭" title="Supplier Master" desc="Manage suppliers" onClick={() => handleNavigate('/suppliers', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                    {canView('godowns') && <MenuItem icon="🏭" title="Godown Master" desc="Locations and warehouses" onClick={() => handleNavigate('/godowns', 'MASTER')} textHoverClass="group-hover:text-green-600" />}
+                  </div>
+                  
+                  {isAdmin && (
+                    <>
+                      <div className="px-[12px] pt-[12px] pb-[8px] mt-2 border-t border-slate-200/60">
+                        <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">System</h3>
+                      </div>
+                      <div className="flex flex-col gap-[2px]">
+                        <MenuItem icon="🔐" title="User Management" desc="Manage staff access" onClick={() => handleNavigate('/users', 'MASTER')} textHoverClass="group-hover:text-rose-600" />
+                      </div>
+                    </>
+                  )}
                 </div>
+
               </div>
             )}
             </div>
