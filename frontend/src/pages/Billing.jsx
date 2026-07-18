@@ -87,6 +87,7 @@ export default function Billing() {
   });
 
   const [message, setMessage] = useState('');
+  const [isGatewayOpen, setIsGatewayOpen] = useState(false);
 
   // Persist header to localStorage on change
   useEffect(() => {
@@ -111,13 +112,9 @@ export default function Billing() {
     erpApi.getCompanyProfiles().then(data => {
       const activeProfiles = data.filter(p => p.status !== 'Inactive');
       setProfiles(activeProfiles);
+      // Instead of auto-selecting, open the gateway if no company is selected
       if (activeProfiles.length > 0 && !invoiceHeader.companyProfileId) {
-        const p = activeProfiles[0];
-        let initialAddress = `${p.address}, ${p.city}, ${p.district}, ${p.state} - ${p.pincode}`;
-        let defaultSeries = p.billingSeries && p.billingSeries.length > 0 ? p.billingSeries[0].prefix : '';
-        let nextNo = getNextNumber(p.id, defaultSeries, activeProfiles);
-        setInvoiceHeader(prev => ({ ...prev, companyProfileId: p.id, companyProfileName: p.name, dispatchAddress: initialAddress, series: defaultSeries, number: nextNo }));
-        setOriginState(p.state);
+        setIsGatewayOpen(true);
       }
     }).catch(() => {});
   }, [setOriginState]);
@@ -260,8 +257,81 @@ export default function Billing() {
         customer: '', customerAddress: '', vehicleNo: '', distance: '', transporterId: '',
         ewayBillNo: '', companyProfileId: '', companyProfileName: '', dispatchAddress: ''
       });
+      // Show gateway again for the next bill
+      setIsGatewayOpen(true);
     }
   };
+
+  const handleGatewaySelect = (profile) => {
+    let newDispatchAddress = `${profile.address}, ${profile.city}, ${profile.district}, ${profile.state} - ${profile.pincode}`;
+    let defaultSeries = profile.billingSeries && profile.billingSeries.length > 0 ? profile.billingSeries[0].prefix : '';
+    let nextNo = getNextNumber(profile.id, defaultSeries, profiles);
+    setOriginState(profile.state);
+    setInvoiceHeader({ 
+      ...invoiceHeader, 
+      companyProfileName: `${profile.name} - ${profile.gstin}`, 
+      companyProfileId: profile.id, 
+      dispatchAddress: newDispatchAddress, 
+      series: defaultSeries, 
+      number: nextNo 
+    });
+    setIsGatewayOpen(false);
+  };
+
+  if (isGatewayOpen) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4">
+        <div className="bg-white rounded-[32px] p-8 md:p-12 shadow-[0_32px_80px_rgba(15,23,42,0.2)] max-w-[800px] w-full border border-white/50 animate-in fade-in zoom-in duration-300">
+          <div className="text-center mb-10">
+            <div className="w-16 h-16 bg-active/10 text-active rounded-full flex items-center justify-center text-3xl mx-auto mb-4 border border-active/20">
+              🏢
+            </div>
+            <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">Select Billing Company</h1>
+            <p className="text-sm font-bold text-slate-500 mt-2">Which company profile are you generating this {currentType === 'INV' ? 'Invoice' : currentType === 'EST' ? 'Estimate' : 'Performa'} from?</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {profiles.map(profile => (
+              <button
+                key={profile.id}
+                onClick={() => handleGatewaySelect(profile)}
+                className="group relative overflow-hidden bg-white border-2 border-slate-200 rounded-[24px] p-6 text-left hover:border-active hover:shadow-[0_16px_40px_color-mix(in_srgb,var(--active)_15%,transparent)] transition-all duration-300 hover:-translate-y-1"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-active opacity-0 group-hover:opacity-5 rounded-full blur-2xl transition-opacity duration-500 -mr-8 -mt-8"></div>
+                
+                <h3 className="text-lg font-black text-slate-800 group-hover:text-active transition-colors">{profile.name}</h3>
+                <div className="inline-block mt-2 px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-black tracking-wider border border-slate-200">
+                  GSTIN: {profile.gstin}
+                </div>
+                <p className="text-xs font-bold text-slate-400 mt-3 line-clamp-2 leading-relaxed">
+                  {profile.address}, {profile.city}, {profile.state}
+                </p>
+                
+                {/* Default Series Badge */}
+                {profile.billingSeries && profile.billingSeries.length > 0 && (
+                  <div className="mt-4 flex items-center gap-2 text-[10px] font-black text-active uppercase tracking-widest">
+                    <span>Default Series: {profile.billingSeries[0].prefix}</span>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Quick actions row */}
+          <div className="mt-8 flex justify-center">
+            {invoiceHeader.companyProfileId && (
+              <button 
+                onClick={() => setIsGatewayOpen(false)}
+                className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors underline underline-offset-4"
+              >
+                Cancel & return to draft
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-[18px] items-start">
