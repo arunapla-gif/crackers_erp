@@ -8,4 +8,4 @@ services:
     plan: free
     envVars:
       - key: DATABASE_URL
-        value: postgresql://postgres.gqfpfnqepdkletbbhwcx:IevuJqEtZ8V1eKhz@aws-1-ap-south-1.pooler.supabase.com:5432/postgres
+        value: postgresql://postgres.gqfpfnqepdkletbbhwcx:IevuJqEtZ8V1eKhz@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true
