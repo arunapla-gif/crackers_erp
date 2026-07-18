@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import { erpApi } from '../api/erpApi';
 import InvoicePrint from './InvoicePrint';
 
@@ -61,55 +63,71 @@ export default function BillingHistory() {
         {loading ? (
           <div className="py-12 text-center text-slate-400 font-bold">Loading records...</div>
         ) : (
-          <table className="w-full text-left border-spacing-y-2 border-separate min-w-[800px]">
-            <thead>
-              <tr>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2">Date</th>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2">Type</th>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2">Number</th>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2">Customer</th>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2 text-right">Items</th>
-                <th className="text-[11px] font-bold text-slate-500 uppercase px-2 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.map((item) => {
-                const isEst = item.number.startsWith('EST');
-                const isPro = item.number.startsWith('PRO');
-                const typeLabel = isEst ? 'ESTIMATE' : isPro ? 'PERFORMA' : (item.series || 'INVOICE');
-                const typeColor = isEst ? 'text-red-600 bg-red-50' : isPro ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50';
+          <div className="w-full min-w-[800px] flex flex-col h-[600px]">
+            {/* Table Header */}
+            <div className="flex px-2 mb-2 shrink-0">
+              <div className="w-[120px] text-[11px] font-bold text-slate-500 uppercase px-2">Date</div>
+              <div className="w-[100px] text-[11px] font-bold text-slate-500 uppercase px-2">Type</div>
+              <div className="w-[140px] text-[11px] font-bold text-slate-500 uppercase px-2">Number</div>
+              <div className="flex-1 text-[11px] font-bold text-slate-500 uppercase px-2">Customer</div>
+              <div className="w-[80px] text-[11px] font-bold text-slate-500 uppercase px-2 text-right">Items</div>
+              <div className="w-[150px] text-[11px] font-bold text-slate-500 uppercase px-2 text-right">Amount</div>
+            </div>
+            
+            {/* Virtualized Body */}
+            <div className="flex-1">
+              <AutoSizer>
+                {({ height, width }) => (
+                  <List
+                    className="List"
+                    height={height}
+                    itemCount={filteredData.length}
+                    itemSize={60} // Height of each row + padding
+                    width={width}
+                    itemData={filteredData}
+                  >
+                    {({ index, style, data: items }) => {
+                      const item = items[index];
+                      const isEst = item.number.startsWith('EST');
+                      const isPro = item.number.startsWith('PRO');
+                      const typeLabel = isEst ? 'ESTIMATE' : isPro ? 'PERFORMA' : (item.series || 'INVOICE');
+                      const typeColor = isEst ? 'text-red-600 bg-red-50' : isPro ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50';
 
-                return (
-                  <tr key={item.id}>
-                    <td className="px-2 text-[13px] font-bold text-slate-500 bg-slate-50 py-3 rounded-l-[14px] border-y border-l border-slate-200">
-                      {new Date(item.date).toLocaleDateString()}
-                    </td>
-                    <td className="px-2 bg-slate-50 py-3 border-y border-slate-200">
-                      <span className={`px-2 py-1 rounded-[6px] text-[10px] font-black ${typeColor}`}>{typeLabel}</span>
-                    </td>
-                    <td className="px-2 font-black text-slate-800 bg-slate-50 py-3 border-y border-slate-200">{item.number}</td>
-                    <td className="px-2 font-bold text-slate-700 bg-slate-50 py-3 border-y border-slate-200">{item.customer}</td>
-                    <td className="px-2 font-bold text-slate-500 bg-slate-50 py-3 border-y border-slate-200 text-right">{item.items?.length || 0}</td>
-                    <td className="px-2 font-black text-purple-600 bg-slate-50 py-3 rounded-r-[14px] border-y border-r border-slate-200 text-right">
-                      <div className="flex justify-end items-center gap-4">
-                        <span>₹{parseFloat(item.grand_total).toFixed(2)}</span>
-                        <button onClick={() => setPrintConfirmId(item.number)} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-[8px] text-[11px] font-bold hover:bg-purple-200 transition-colors border border-purple-200">
-                          Print
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredData.length === 0 && (
-                <tr>
-                  <td colSpan="6" className="px-2 py-8 text-center text-slate-400 font-bold bg-slate-50 rounded-[14px] border border-slate-200">
-                    No billing documents found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      return (
+                        <div style={{...style, paddingBottom: '8px'}} key={item.id}>
+                          <div className="flex items-center h-full w-full rounded-[14px] border border-slate-200 bg-slate-50 group hover:border-purple-200 hover:shadow-sm transition-all">
+                            <div className="w-[120px] px-4 text-[13px] font-bold text-slate-500 truncate">
+                              {new Date(item.date).toLocaleDateString()}
+                            </div>
+                            <div className="w-[100px] px-2">
+                              <span className={`px-2 py-1 rounded-[6px] text-[10px] font-black ${typeColor}`}>{typeLabel}</span>
+                            </div>
+                            <div className="w-[140px] px-2 font-black text-slate-800 truncate">{item.number}</div>
+                            <div className="flex-1 px-2 font-bold text-slate-700 truncate">{item.customer}</div>
+                            <div className="w-[80px] px-2 font-bold text-slate-500 text-right">{item.items?.length || 0}</div>
+                            <div className="w-[150px] px-4 font-black text-purple-600 text-right">
+                              <div className="flex justify-end items-center gap-4">
+                                <span>₹{parseFloat(item.grand_total).toFixed(2)}</span>
+                                <button onClick={() => setPrintConfirmId(item.number)} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-[8px] text-[11px] font-bold hover:bg-purple-200 transition-colors border border-purple-200">
+                                  Print
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </List>
+                )}
+              </AutoSizer>
+            </div>
+            
+            {filteredData.length === 0 && (
+              <div className="px-2 py-8 text-center text-slate-400 font-bold bg-slate-50 rounded-[14px] border border-slate-200 mt-2">
+                No billing documents found.
+              </div>
+            )}
+          </div>
         )}
       </div>
       </div>
