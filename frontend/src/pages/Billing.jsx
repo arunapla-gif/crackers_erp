@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { useStore } from '../store/useStore';
 import { erpApi } from '../api/erpApi';
+import { useProducts, useCustomers, useTransporters, useCompanyProfiles, useSaveInvoice } from '../api/queries';
 
 const selectStyles = {
   control: (base, state) => ({
@@ -60,10 +61,11 @@ export default function Billing() {
   const calculateTotals = useStore(state => state.calculateTotals);
   const clearCart = useStore(state => state.clearCart);
 
-  const [products, setProducts] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [transporters, setTransporters] = useState([]);
-  const [profiles, setProfiles] = useState([]);
+  const { data: products = [] } = useProducts();
+  const { data: customers = [] } = useCustomers();
+  const { data: transporters = [] } = useTransporters();
+  const { data: profiles = [] } = useCompanyProfiles();
+  const saveInvoiceMutation = useSaveInvoice();
   
   const [invoiceHeader, setInvoiceHeader] = useState(() => {
     const saved = localStorage.getItem('crackers-erp-billing-header');
@@ -104,20 +106,12 @@ export default function Billing() {
     return '';
   };
 
-  // Fetch dropdown data on mount
+  // Open gateway if no company is selected
   useEffect(() => {
-    erpApi.getProducts().then(setProducts).catch(() => {});
-    erpApi.getCustomers().then(data => setCustomers(data.filter(c => c.status !== 'Inactive'))).catch(() => {});
-    erpApi.getTransporters().then(data => setTransporters(data.filter(t => t.status !== 'Inactive'))).catch(() => {});
-    erpApi.getCompanyProfiles().then(data => {
-      const activeProfiles = data.filter(p => p.status !== 'Inactive');
-      setProfiles(activeProfiles);
-      // Instead of auto-selecting, open the gateway if no company is selected
-      if (activeProfiles.length > 0 && !invoiceHeader.companyProfileId) {
-        setIsGatewayOpen(true);
-      }
-    }).catch(() => {});
-  }, [setOriginState]);
+    if (profiles.length > 0 && !invoiceHeader.companyProfileId && !isGatewayOpen) {
+      setIsGatewayOpen(true);
+    }
+  }, [profiles, invoiceHeader.companyProfileId]);
 
   // Recalculate totals if currentType changes
   useEffect(() => {
@@ -202,14 +196,12 @@ export default function Billing() {
     };
 
     try {
-      await erpApi.saveInvoice(payload);
+      await saveInvoiceMutation.mutateAsync(payload);
       setMessage(`Document ${fullNumber} saved successfully!`);
       clearCart();
       localStorage.removeItem('crackers-erp-billing-header');
       
-      const updatedProfiles = await erpApi.getCompanyProfiles();
-      setProfiles(updatedProfiles);
-      const nextNo = getNextNumber(invoiceHeader.companyProfileId, invoiceHeader.series, updatedProfiles);
+      const nextNo = getNextNumber(invoiceHeader.companyProfileId, invoiceHeader.series, profiles);
       
       setInvoiceHeader(prev => ({
         ...prev,

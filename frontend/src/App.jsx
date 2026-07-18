@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './api/queryClient';
 import Header from './components/Header';
 import CustomerMaster from './pages/CustomerMaster';
 import SupplierMaster from './pages/SupplierMaster';
@@ -68,35 +70,37 @@ function Layout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/print/invoice/:number" element={<InvoicePrint />} />
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="billing" element={<Billing />} />
-          <Route path="customers" element={<CustomerMaster />} />
-          <Route path="suppliers" element={<SupplierMaster />} />
-          <Route path="products" element={<ProductMaster />} />
-          <Route path="transporters" element={<TransporterMaster />} />
-          <Route path="godowns" element={<GodownMaster />} />
-          <Route path="users" element={<UserMaster />} />
-          <Route path="purchase" element={<PurchaseEntry />} />
-          <Route path="stock" element={<GodownStock />} />
-          <Route path="vehicles" element={<VehicleMaster />} />
-          <Route path="transfers" element={<StockTransfer />} />
-          <Route path="billing-history" element={<BillingHistory />} />
-          <Route path="inventory-history" element={<InventoryHistory />} />
-          <Route path="production" element={<ProductionEntry />} />
-          <Route path="materials" element={<MaterialMaster />} />
-          <Route path="machines" element={<MachineMaster />} />
-          <Route path="employees" element={<EmployeeMaster />} />
-          <Route path="payroll" element={<PayrollEntry />} />
-          <Route path="company-profiles" element={<CompanyProfileMaster />} />
-          <Route path="legacy" element={<LegacyDashboard />} />
-          <Route path="eway-bills" element={<EwayBillReport />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/print/invoice/:number" element={<InvoicePrint />} />
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="customers" element={<CustomerMaster />} />
+            <Route path="suppliers" element={<SupplierMaster />} />
+            <Route path="products" element={<ProductMaster />} />
+            <Route path="transporters" element={<TransporterMaster />} />
+            <Route path="godowns" element={<GodownMaster />} />
+            <Route path="users" element={<UserMaster />} />
+            <Route path="purchase" element={<PurchaseEntry />} />
+            <Route path="stock" element={<GodownStock />} />
+            <Route path="vehicles" element={<VehicleMaster />} />
+            <Route path="transfers" element={<StockTransfer />} />
+            <Route path="billing-history" element={<BillingHistory />} />
+            <Route path="inventory-history" element={<InventoryHistory />} />
+            <Route path="production" element={<ProductionEntry />} />
+            <Route path="materials" element={<MaterialMaster />} />
+            <Route path="machines" element={<MachineMaster />} />
+            <Route path="employees" element={<EmployeeMaster />} />
+            <Route path="payroll" element={<PayrollEntry />} />
+            <Route path="company-profiles" element={<CompanyProfileMaster />} />
+            <Route path="legacy" element={<LegacyDashboard />} />
+            <Route path="eway-bills" element={<EwayBillReport />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
