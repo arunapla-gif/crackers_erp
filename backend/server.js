@@ -74,6 +74,11 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Health check endpoint for cron jobs (Render keep-alive)
+app.get('/api/ping', (req, res) => {
+  res.status(200).send('pong');
+});
+
 // --- SECURITY MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
