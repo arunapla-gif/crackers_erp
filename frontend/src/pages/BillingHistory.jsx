@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiSearch, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
 import { erpApi } from '../api/erpApi';
 import InvoicePrint from './InvoicePrint';
 
@@ -74,52 +72,38 @@ export default function BillingHistory() {
               <div className="w-[150px] text-[11px] font-bold text-slate-500 uppercase px-2 text-right">Amount</div>
             </div>
             
-            {/* Virtualized Body */}
-            <div className="flex-1">
-              <AutoSizer>
-                {({ height, width }) => (
-                  <List
-                    className="List"
-                    height={height}
-                    itemCount={filteredData.length}
-                    itemSize={60} // Height of each row + padding
-                    width={width}
-                    itemData={filteredData}
-                  >
-                    {({ index, style, data: items }) => {
-                      const item = items[index];
-                      const isEst = item.number.startsWith('EST');
-                      const isPro = item.number.startsWith('PRO');
-                      const typeLabel = isEst ? 'ESTIMATE' : isPro ? 'PERFORMA' : (item.series || 'INVOICE');
-                      const typeColor = isEst ? 'text-red-600 bg-red-50' : isPro ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50';
+            {/* Standard Body */}
+            <div className="flex-1 overflow-y-auto pr-2 pb-2">
+              {filteredData.map((item) => {
+                const isEst = item.number.startsWith('EST');
+                const isPro = item.number.startsWith('PRO');
+                const typeLabel = isEst ? 'ESTIMATE' : isPro ? 'PERFORMA' : (item.series || 'INVOICE');
+                const typeColor = isEst ? 'text-red-600 bg-red-50' : isPro ? 'text-purple-600 bg-purple-50' : 'text-blue-600 bg-blue-50';
 
-                      return (
-                        <div style={{...style, paddingBottom: '8px'}} key={item.id}>
-                          <div className="flex items-center h-full w-full rounded-[14px] border border-slate-200 bg-slate-50 group hover:border-purple-200 hover:shadow-sm transition-all">
-                            <div className="w-[120px] px-4 text-[13px] font-bold text-slate-500 truncate">
-                              {new Date(item.date).toLocaleDateString()}
-                            </div>
-                            <div className="w-[100px] px-2">
-                              <span className={`px-2 py-1 rounded-[6px] text-[10px] font-black ${typeColor}`}>{typeLabel}</span>
-                            </div>
-                            <div className="w-[140px] px-2 font-black text-slate-800 truncate">{item.number}</div>
-                            <div className="flex-1 px-2 font-bold text-slate-700 truncate">{item.customer}</div>
-                            <div className="w-[80px] px-2 font-bold text-slate-500 text-right">{item.items?.length || 0}</div>
-                            <div className="w-[150px] px-4 font-black text-purple-600 text-right">
-                              <div className="flex justify-end items-center gap-4">
-                                <span>₹{parseFloat(item.grand_total).toFixed(2)}</span>
-                                <button onClick={() => setPrintConfirmId(item.number)} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-[8px] text-[11px] font-bold hover:bg-purple-200 transition-colors border border-purple-200">
-                                  Print
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                return (
+                  <div className="pb-2" key={item.id}>
+                    <div className="flex items-center h-[52px] w-full rounded-[14px] border border-slate-200 bg-slate-50 group hover:border-purple-200 hover:shadow-sm transition-all">
+                      <div className="w-[120px] px-4 text-[13px] font-bold text-slate-500 truncate">
+                        {new Date(item.date).toLocaleDateString()}
+                      </div>
+                      <div className="w-[100px] px-2">
+                        <span className={`px-2 py-1 rounded-[6px] text-[10px] font-black ${typeColor}`}>{typeLabel}</span>
+                      </div>
+                      <div className="w-[140px] px-2 font-black text-slate-800 truncate">{item.number}</div>
+                      <div className="flex-1 px-2 font-bold text-slate-700 truncate">{item.customer}</div>
+                      <div className="w-[80px] px-2 font-bold text-slate-500 text-right">{item.items?.length || 0}</div>
+                      <div className="w-[150px] px-4 font-black text-purple-600 text-right">
+                        <div className="flex justify-end items-center gap-4">
+                          <span>₹{parseFloat(item.grand_total).toFixed(2)}</span>
+                          <button onClick={() => setPrintConfirmId(item.number)} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-[8px] text-[11px] font-bold hover:bg-purple-200 transition-colors border border-purple-200">
+                            Print
+                          </button>
                         </div>
-                      );
-                    }}
-                  </List>
-                )}
-              </AutoSizer>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             
             {filteredData.length === 0 && (
