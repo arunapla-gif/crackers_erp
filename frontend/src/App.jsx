@@ -31,13 +31,32 @@ import EwayBillReport from './pages/EwayBillReport';
 import Dashboard from './pages/Dashboard';
 
 const THEMES = {
-  INV: ['#ff6b6b', '#c24141', '#fff1f2'],
-  EST: ['#4f8cff', '#1e40af', '#eff6ff'],
-  PRO: ['#9b6dff', '#5b21b6', '#f5f3ff'],
-  MASTER: ['#22c55e', '#166534', '#f0fdf4'],
-  INVENTORY: ['#f97316', '#c2410c', '#fff7ed'],
-  REPORT: ['#a855f7', '#7e22ce', '#faf5ff'],
-  FACTORY: ['#eab308', '#a16207', '#fefce8']
+  // 1. Sales (Blue/Indigo)
+  INV: ['#3b82f6', '#1d4ed8', '#eff6ff'],
+  EST: ['#3b82f6', '#1d4ed8', '#eff6ff'],
+  PRO: ['#3b82f6', '#1d4ed8', '#eff6ff'],
+  SALES: ['#3b82f6', '#1d4ed8', '#eff6ff'],
+  
+  // 2. Purchases (Orange/Red)
+  PURCHASES: ['#f97316', '#c2410c', '#fff7ed'],
+  
+  // 3. Godown (Emerald/Teal)
+  GODOWN: ['#10b981', '#047857', '#ecfdf5'],
+  
+  // 4. Production (Amber/Yellow)
+  PRODUCTION: ['#f59e0b', '#b45309', '#fffbeb'],
+  
+  // 5. HR & Payroll (Indigo/Purple)
+  HR: ['#8b5cf6', '#6d28d9', '#f5f3ff'],
+  
+  // 6. Admin (Slate)
+  ADMIN: ['#475569', '#334155', '#f8fafc'],
+
+  // Fallbacks for legacy routes
+  MASTER: ['#475569', '#334155', '#f8fafc'],
+  INVENTORY: ['#10b981', '#047857', '#ecfdf5'],
+  REPORT: ['#475569', '#334155', '#f8fafc'],
+  FACTORY: ['#f59e0b', '#b45309', '#fffbeb']
 };
 
 function Layout() {

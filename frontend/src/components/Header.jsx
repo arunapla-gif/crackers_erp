@@ -131,7 +131,7 @@ export default function Header() {
                       <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Reports</h3>
                     </div>
                     <div className="flex flex-col gap-[2px]">
-                      {canView('reports') && <MenuItem icon="📈" title="Billing History" desc="View past invoices" onClick={() => handleNavigate('/billing-history', 'REPORT')} textHoverClass="group-hover:text-active" />}
+                      {canView('reports') && <MenuItem icon="📈" title="Billing History" desc="View past invoices" onClick={() => handleNavigate('/billing-history', 'SALES')} textHoverClass="group-hover:text-active" />}
                     </div>
                   </div>
 
@@ -140,9 +140,9 @@ export default function Header() {
                       <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Masters</h3>
                     </div>
                     <div className="flex flex-col gap-[2px]">
-                      {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'MASTER')} textHoverClass="group-hover:text-active" />}
-                      {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'MASTER')} textHoverClass="group-hover:text-active" />}
-                      {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Manage dispatch fleet" onClick={() => handleNavigate('/vehicles', 'MASTER')} textHoverClass="group-hover:text-active" />}
+                      {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'SALES')} textHoverClass="group-hover:text-active" />}
+                      {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'SALES')} textHoverClass="group-hover:text-active" />}
+                      {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Manage dispatch fleet" onClick={() => handleNavigate('/vehicles', 'SALES')} textHoverClass="group-hover:text-active" />}
                     </div>
                   </div>
 
@@ -166,9 +166,9 @@ export default function Header() {
                     <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Operations & Masters</h3>
                   </div>
                   <div className="flex flex-col gap-[2px]">
-                    {canView('purchase') && <MenuItem icon="🛒" title="Purchase Entry" desc="Record inward stock" onClick={() => handleNavigate('/purchase', 'FACTORY')} textHoverClass="group-hover:text-orange-600" />}
-                    {canView('suppliers') && <MenuItem icon="🏭" title="Supplier Master" desc="Manage suppliers" onClick={() => handleNavigate('/suppliers', 'MASTER')} textHoverClass="group-hover:text-orange-600" />}
-                    {canView('materials') && <MenuItem icon="📦" title="Material Master" desc="Manage raw materials" onClick={() => handleNavigate('/materials', 'FACTORY')} textHoverClass="group-hover:text-orange-600" />}
+                    {canView('purchase') && <MenuItem icon="🛒" title="Purchase Entry" desc="Record inward stock" onClick={() => handleNavigate('/purchase', 'PURCHASES')} textHoverClass="group-hover:text-orange-600" />}
+                    {canView('suppliers') && <MenuItem icon="🏭" title="Supplier Master" desc="Manage suppliers" onClick={() => handleNavigate('/suppliers', 'PURCHASES')} textHoverClass="group-hover:text-orange-600" />}
+                    {canView('materials') && <MenuItem icon="📦" title="Material Master" desc="Manage raw materials" onClick={() => handleNavigate('/materials', 'PURCHASES')} textHoverClass="group-hover:text-orange-600" />}
                   </div>
                 </div>
               )}
@@ -192,8 +192,8 @@ export default function Header() {
                       <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Inventory & Movement</h3>
                     </div>
                     <div className="flex flex-col gap-[2px]">
-                      {canView('stock') && <MenuItem icon="📊" title="Stock Ledger" desc="View inventory" onClick={() => handleNavigate('/stock', 'FACTORY')} textHoverClass="group-hover:text-emerald-600" />}
-                      {canView('transfers') && <MenuItem icon="🔄" title="Stock Transfer" desc="Move items between godowns" onClick={() => handleNavigate('/transfers', 'FACTORY')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('stock') && <MenuItem icon="📊" title="Stock Ledger" desc="View inventory" onClick={() => handleNavigate('/stock', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('transfers') && <MenuItem icon="🔄" title="Stock Transfer" desc="Move items between godowns" onClick={() => handleNavigate('/transfers', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
                     </div>
                   </div>
 
@@ -202,10 +202,10 @@ export default function Header() {
                       <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Masters</h3>
                     </div>
                     <div className="flex flex-col gap-[2px]">
-                      {canView('godowns') && <MenuItem icon="🏭" title="Godown Master" desc="Manage locations" onClick={() => handleNavigate('/godowns', 'MASTER')} textHoverClass="group-hover:text-emerald-600" />}
-                      {canView('products') && <MenuItem icon="🎆" title="Product Master" desc="Finished goods" onClick={() => handleNavigate('/products', 'MASTER')} textHoverClass="group-hover:text-emerald-600" />}
-                      {canView('materials') && <MenuItem icon="📦" title="Material Master" desc="Raw materials" onClick={() => handleNavigate('/materials', 'FACTORY')} textHoverClass="group-hover:text-emerald-600" />}
-                      {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Transport logistics" onClick={() => handleNavigate('/vehicles', 'MASTER')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('godowns') && <MenuItem icon="🏭" title="Godown Master" desc="Manage locations" onClick={() => handleNavigate('/godowns', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('products') && <MenuItem icon="🎆" title="Product Master" desc="Finished goods" onClick={() => handleNavigate('/products', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('materials') && <MenuItem icon="📦" title="Material Master" desc="Raw materials" onClick={() => handleNavigate('/materials', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
+                      {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Transport logistics" onClick={() => handleNavigate('/vehicles', 'GODOWN')} textHoverClass="group-hover:text-emerald-600" />}
                     </div>
                   </div>
 
@@ -229,8 +229,8 @@ export default function Header() {
                   <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Factory Floor</h3>
                 </div>
                 <div className="flex flex-col gap-[2px]">
-                  {canView('production') && <MenuItem icon="🏭" title="Production Entry" desc="Log daily production" onClick={() => handleNavigate('/production', 'FACTORY')} textHoverClass="group-hover:text-yellow-600" />}
-                  {canView('machines') && <MenuItem icon="⚙️" title="Processing Master" desc="Factory processing types" onClick={() => handleNavigate('/machines', 'FACTORY')} textHoverClass="group-hover:text-yellow-600" />}
+                  {canView('production') && <MenuItem icon="🏭" title="Production Entry" desc="Log daily production" onClick={() => handleNavigate('/production', 'PRODUCTION')} textHoverClass="group-hover:text-yellow-600" />}
+                  {canView('machines') && <MenuItem icon="⚙️" title="Processing Master" desc="Factory processing types" onClick={() => handleNavigate('/machines', 'PRODUCTION')} textHoverClass="group-hover:text-yellow-600" />}
                 </div>
               </div>
             )}
@@ -252,8 +252,8 @@ export default function Header() {
                   <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Staff & Salaries</h3>
                 </div>
                 <div className="flex flex-col gap-[2px]">
-                  {canView('payroll') && <MenuItem icon="💸" title="Payroll Entry" desc="Manage salary payouts" onClick={() => handleNavigate('/payroll', 'REPORT')} textHoverClass="group-hover:text-indigo-600" />}
-                  {canView('employees') && <MenuItem icon="👥" title="Employee Master" desc="Manage staff details" onClick={() => handleNavigate('/employees', 'REPORT')} textHoverClass="group-hover:text-indigo-600" />}
+                  {canView('payroll') && <MenuItem icon="💸" title="Payroll Entry" desc="Manage salary payouts" onClick={() => handleNavigate('/payroll', 'HR')} textHoverClass="group-hover:text-indigo-600" />}
+                  {canView('employees') && <MenuItem icon="👥" title="Employee Master" desc="Manage staff details" onClick={() => handleNavigate('/employees', 'HR')} textHoverClass="group-hover:text-indigo-600" />}
                 </div>
               </div>
             )}
@@ -277,8 +277,8 @@ export default function Header() {
                     <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Settings</h3>
                   </div>
                   <div className="flex flex-col gap-[2px]">
-                    {isAdmin && <MenuItem icon="🏢" title="Company Profiles" desc="Multi-GSTIN Branches" onClick={() => handleNavigate('/company-profiles', 'MASTER')} textHoverClass="group-hover:text-purple-600" />}
-                    {isAdmin && <MenuItem icon="🔐" title="User Management" desc="Manage staff access" onClick={() => handleNavigate('/users', 'MASTER')} textHoverClass="group-hover:text-purple-600" />}
+                    {isAdmin && <MenuItem icon="🏢" title="Company Profiles" desc="Multi-GSTIN Branches" onClick={() => handleNavigate('/company-profiles', 'ADMIN')} textHoverClass="group-hover:text-purple-600" />}
+                    {isAdmin && <MenuItem icon="🔐" title="User Management" desc="Manage staff access" onClick={() => handleNavigate('/users', 'ADMIN')} textHoverClass="group-hover:text-purple-600" />}
                   </div>
                 </div>
 
@@ -287,10 +287,10 @@ export default function Header() {
                     <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Tools & Legacy</h3>
                   </div>
                   <div className="flex flex-col gap-[2px]">
-                    {canView('reports') && <MenuItem icon="🌐" title="E-Way Bill Fetcher" desc="Gov portal sync" onClick={() => handleNavigate('/eway-bills', 'REPORT')} textHoverClass="group-hover:text-purple-600" />}
-                    {canView('reports') && <MenuItem icon="📉" title="Inventory History" desc="View stock changes log" onClick={() => handleNavigate('/inventory-history', 'REPORT')} textHoverClass="group-hover:text-purple-600" />}
+                    {canView('reports') && <MenuItem icon="🌐" title="E-Way Bill Fetcher" desc="Gov portal sync" onClick={() => handleNavigate('/eway-bills', 'ADMIN')} textHoverClass="group-hover:text-purple-600" />}
+                    {canView('reports') && <MenuItem icon="📉" title="Inventory History" desc="View stock changes log" onClick={() => handleNavigate('/inventory-history', 'ADMIN')} textHoverClass="group-hover:text-purple-600" />}
                     {canView('reports') && <div className="h-px bg-slate-200 my-1"></div>}
-                    {canView('reports') && <MenuItem icon="🏛️" title="Old ERP Portal" desc="Historical MS Access data" onClick={() => handleNavigate('/legacy', 'REPORT')} textHoverClass="group-hover:text-purple-600" />}
+                    {canView('reports') && <MenuItem icon="🏛️" title="Old ERP Portal" desc="Historical MS Access data" onClick={() => handleNavigate('/legacy', 'ADMIN')} textHoverClass="group-hover:text-purple-600" />}
                   </div>
                 </div>
 

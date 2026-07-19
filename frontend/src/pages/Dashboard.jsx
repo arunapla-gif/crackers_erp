@@ -82,7 +82,7 @@ export default function Dashboard() {
         {/* Purchases */}
         {showPurchases && (
           <button 
-            onClick={() => handleNavigate('/purchase', 'FACTORY')}
+            onClick={() => handleNavigate('/purchase', 'PURCHASES')}
             className="group relative overflow-hidden bg-gradient-to-br from-orange-400 to-red-500 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(239,68,68,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -99,7 +99,7 @@ export default function Dashboard() {
         {/* Godown */}
         {showGodown && (
           <button 
-            onClick={() => handleNavigate('/stock', 'FACTORY')}
+            onClick={() => handleNavigate('/stock', 'GODOWN')}
             className="group relative overflow-hidden bg-gradient-to-br from-emerald-400 to-teal-600 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(16,185,129,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -116,7 +116,7 @@ export default function Dashboard() {
         {/* Production */}
         {showProduction && (
           <button 
-            onClick={() => handleNavigate('/production', 'FACTORY')}
+            onClick={() => handleNavigate('/production', 'PRODUCTION')}
             className="group relative overflow-hidden bg-gradient-to-br from-amber-400 to-yellow-500 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(245,158,11,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -133,7 +133,7 @@ export default function Dashboard() {
         {/* HR & Payroll */}
         {showHr && (
           <button 
-            onClick={() => handleNavigate('/employees', 'REPORT')}
+            onClick={() => handleNavigate('/employees', 'HR')}
             className="group relative overflow-hidden bg-gradient-to-br from-indigo-400 to-purple-600 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(139,92,246,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -150,7 +150,7 @@ export default function Dashboard() {
         {/* Admin & Settings */}
         {showAdmin && (
           <button 
-            onClick={() => handleNavigate('/company-profiles', 'MASTER')}
+            onClick={() => handleNavigate('/company-profiles', 'ADMIN')}
             className="group relative overflow-hidden bg-gradient-to-br from-slate-600 to-slate-800 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(71,85,105,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
