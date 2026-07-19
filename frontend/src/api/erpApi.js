@@ -43,6 +43,16 @@ export const erpApi = {
     }
   },
 
+  getReps: async () => {
+    try {
+      const response = await api.get(`/reps`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching reps", error);
+      throw error;
+    }
+  },
+
   deleteUser: async (id) => {
     try {
       const response = await api.delete(`/users/${id}`);
@@ -172,6 +182,44 @@ export const erpApi = {
       return response.data;
     } catch (error) {
       console.error("Error saving transporter", error);
+      throw error;
+    }
+  },
+
+  // Sales Orders (Representative / Approval Workflow)
+  getPendingSalesOrders: async () => {
+    try {
+      const response = await api.get('/sales-orders/pending');
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching pending sales orders", error);
+      throw error;
+    }
+  },
+  createSalesOrder: async (data) => {
+    try {
+      const response = await api.post('/sales-orders', data);
+      return response.data;
+    } catch (error) {
+      console.error("Error creating sales order", error);
+      throw error;
+    }
+  },
+  approveSalesOrderCustomer: async (id) => {
+    try {
+      const response = await api.post(`/sales-orders/${id}/approve-customer`);
+      return response.data;
+    } catch (error) {
+      console.error("Error approving customer from sales order", error);
+      throw error;
+    }
+  },
+  updateSalesOrderStatus: async (id, status) => {
+    try {
+      const response = await api.post(`/sales-orders/${id}/status`, { status });
+      return response.data;
+    } catch (error) {
+      console.error("Error updating sales order status", error);
       throw error;
     }
   },

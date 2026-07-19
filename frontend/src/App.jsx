@@ -26,6 +26,8 @@ import CompanyProfileMaster from './pages/CompanyProfileMaster';
 import InvoicePrint from './pages/InvoicePrint';
 import { useStore } from './store/useStore';
 import { useAuth } from './store/useAuth';
+import SalesOrderEntry from './pages/SalesOrderEntry';
+import PendingOrders from './pages/PendingOrders';
 import LegacyDashboard from './pages/legacy/LegacyDashboard';
 import EwayBillReport from './pages/EwayBillReport';
 import Dashboard from './pages/Dashboard';
@@ -107,8 +109,10 @@ export default function App() {
             <Route path="stock" element={<GodownStock />} />
             <Route path="vehicles" element={<VehicleMaster />} />
             <Route path="transfers" element={<StockTransfer />} />
+            <Route path="pending-orders" element={<PendingOrders />} />
             <Route path="billing-history" element={<BillingHistory />} />
             <Route path="inventory-history" element={<InventoryHistory />} />
+            <Route path="sales-order" element={<SalesOrderEntry />} />
             <Route path="production" element={<ProductionEntry />} />
             <Route path="materials" element={<MaterialMaster />} />
             <Route path="machines" element={<MachineMaster />} />

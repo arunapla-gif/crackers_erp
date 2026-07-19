@@ -3,9 +3,10 @@ import { erpApi } from '../api/erpApi';
 
 export default function CustomerMaster() {
   const [formData, setFormData] = useState({
-    id: null, name: '', mobile: '', reference: '', address: '', city: '', district: '', state: '', pincode: '', id_number: '', gstin: '', status: 'Active', addresses: []
+    id: null, name: '', mobile: '', reference: '', address: '', city: '', district: '', state: '', pincode: '', id_number: '', gstin: '', status: 'Active', addresses: [], repId: ''
   });
   const [customers, setCustomers] = useState([]);
+  const [reps, setReps] = useState([]);
   const [message, setMessage] = useState('');
   const [isSearchingPincode, setIsSearchingPincode] = useState(false);
   const [isSearchingGSTIN, setIsSearchingGSTIN] = useState(false);
@@ -19,8 +20,18 @@ export default function CustomerMaster() {
     }
   };
 
+  const fetchReps = async () => {
+    try {
+      const data = await erpApi.getReps();
+      setReps(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchCustomers();
+    fetchReps();
   }, []);
 
   const handleChange = async (e) => {
@@ -117,12 +128,15 @@ export default function CustomerMaster() {
   };
 
   const handleClear = () => {
-    setFormData({ id: null, name: '', mobile: '', reference: '', address: '', city: '', district: '', state: '', pincode: '', id_number: '', gstin: '', status: 'Active', addresses: [] });
+    setFormData({ id: null, name: '', mobile: '', reference: '', address: '', city: '', district: '', state: '', pincode: '', id_number: '', gstin: '', status: 'Active', addresses: [], repId: '' });
     setMessage('');
   };
 
   const handleEdit = (customer) => {
-    setFormData(customer);
+    setFormData({
+      ...customer,
+      repId: customer.repId || ''
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -142,8 +156,12 @@ export default function CustomerMaster() {
       alert('Customer Name is required');
       return;
     }
+    const payload = {
+      ...formData,
+      repId: formData.repId || null
+    };
     try {
-      await erpApi.saveCustomer(formData);
+      await erpApi.saveCustomer(payload);
       setMessage('Customer saved successfully!');
       handleClear();
       fetchCustomers();
@@ -201,8 +219,15 @@ export default function CustomerMaster() {
             <input name="mobile" value={formData.mobile} onChange={handleChange} placeholder="10 digit mobile" maxLength={10} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
           </div>
           <div className="col-span-1 md:col-span-4">
-            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Reference</label>
-            <input name="reference" value={formData.reference} onChange={handleChange} placeholder="Broker / agent" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
+            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Sales Rep Assignment</label>
+            <select name="repId" value={formData.repId || ''} onChange={handleChange} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all">
+              <option value="">-- No Rep Assigned --</option>
+              {reps.map(r => <option key={r.id} value={r.id}>{r.username}</option>)}
+            </select>
+          </div>
+          <div className="col-span-1 md:col-span-4">
+            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Reference / Notes</label>
+            <input name="reference" value={formData.reference} onChange={handleChange} placeholder="Other reference" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
           </div>
           <div className="col-span-1 md:col-span-12">
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Address</label>
@@ -307,7 +332,7 @@ export default function CustomerMaster() {
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Mobile</th>
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">City</th>
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">District</th>
-              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">State</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Sales Rep</th>
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">GSTIN</th>
               <th className="text-center font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Status</th>
               <th className="text-right font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Actions</th>
@@ -320,8 +345,8 @@ export default function CustomerMaster() {
                 <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{c.mobile || '-'}</td>
                 <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{c.city || '-'}</td>
                 <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{c.district || '-'}</td>
-                <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{c.state || '-'}</td>
-                <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{c.gstin || '-'}</td>
+                <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold text-active-dark">{c.rep?.username || '-'}</td>
+                <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 uppercase">{c.gstin || '-'}</td>
                 <td className="bg-white border-y border-slate-200 p-[10px] text-center">
                   <span className={`inline-block px-2 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider ${c.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                     {c.status || 'Active'}

@@ -120,6 +120,18 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+app.get('/api/reps', async (req, res) => {
+  try {
+    const reps = await prisma.user.findMany({
+      where: { role: 'REP', status: 'Active' },
+      select: { id: true, username: true }
+    });
+    res.json(reps);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/users', async (req, res) => {
   const { id, username, pin, role, status, permissions } = req.body;
   try {
@@ -164,7 +176,11 @@ app.delete('/api/users/:id', async (req, res) => {
 // Customers Routes
 app.get('/api/customers', async (req, res) => {
   try {
-    const customers = await prisma.customer.findMany();
+    const where = {};
+    if (req.user && req.user.role === 'REP') {
+      where.repId = req.user.id;
+    }
+    const customers = await prisma.customer.findMany({ where });
     res.json(customers);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -172,20 +188,25 @@ app.get('/api/customers', async (req, res) => {
 });
 
 app.post('/api/customers', async (req, res) => {
-  const { id, name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status, addresses } = req.body;
+  const { id, name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status, addresses, repId } = req.body;
   const currentStatus = status || 'Active';
   try {
+    const dataObj = { 
+      name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status: currentStatus, addresses,
+      repId: repId ? parseInt(repId) : null
+    };
+
     if (id) {
       const customer = await prisma.customer.update({
         where: { id: parseInt(id) },
-        data: { name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status: currentStatus, addresses }
+        data: dataObj
       });
       return res.json(customer);
     } else {
       const customer = await prisma.customer.upsert({
         where: { name },
-        update: { mobile, reference, address, city, district, state, pincode, id_number, gstin, status: currentStatus, addresses },
-        create: { name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status: currentStatus, addresses },
+        update: dataObj,
+        create: dataObj,
       });
       return res.json(customer);
     }
@@ -292,14 +313,20 @@ app.get('/api/invoices/:number', async (req, res) => {
 });
 
 app.post('/api/invoices', async (req, res) => {
-  const { series, number, date, customer, customerAddress, state, vehicleNo, distance, transporterId, ewayBillNo, companyProfileId, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total, items, charges } = req.body;
+  const { series, number, date, customer, customerAddress, state, vehicleNo, distance, transporterId, ewayBillNo, companyProfileId, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total, items, charges, repId } = req.body;
   try {
     const invoice = await prisma.$transaction(async (tx) => {
       const isNew = !(await tx.invoice.findUnique({ where: { number } }));
+      
+      const dataObj = { 
+        series, date: new Date(date), customer, customerAddress, state, vehicleNo, distance: distance ? parseInt(distance) : null, transporterId, ewayBillNo, companyProfileId: companyProfileId ? parseInt(companyProfileId) : null, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total,
+        repId: repId ? parseInt(repId) : null
+      };
+
       const inv = await tx.invoice.upsert({
         where: { number },
-        update: { series, date: new Date(date), customer, customerAddress, state, vehicleNo, distance: distance ? parseInt(distance) : null, transporterId, ewayBillNo, companyProfileId: companyProfileId ? parseInt(companyProfileId) : null, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total },
-        create: { series, number, date: new Date(date), customer, customerAddress, state, vehicleNo, distance: distance ? parseInt(distance) : null, transporterId, ewayBillNo, companyProfileId: companyProfileId ? parseInt(companyProfileId) : null, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total },
+        update: dataObj,
+        create: { number, ...dataObj },
       });
 
       if (isNew && series && companyProfileId) {
@@ -730,7 +757,12 @@ app.post('/api/transfers', async (req, res) => {
 // History Routes for Reports
 app.get('/api/history/invoices', async (req, res) => {
   try {
+    const where = {};
+    if (req.user && req.user.role === 'REP') {
+      where.repId = req.user.id;
+    }
     const invoices = await prisma.invoice.findMany({
+      where,
       orderBy: { date: 'desc' },
       include: { items: true, charges: true }
     });
@@ -1411,6 +1443,98 @@ app.get('/api/ewaybill/reports/recent', async (req, res) => {
        errors: errors
     });
 
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sales Orders Routes
+app.get('/api/sales-orders/pending', async (req, res) => {
+  try {
+    const where = { status: 'PENDING' };
+    if (req.user && req.user.role === 'REP') {
+      where.repId = req.user.id;
+    }
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { rep: { select: { username: true } }, customer: true, items: true }
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sales-orders', async (req, res) => {
+  try {
+    const { customerId, newCustomerData, subtotal, items } = req.body;
+    let repId = req.user.id; 
+    
+    const order = await prisma.salesOrder.create({
+      data: {
+        repId,
+        customerId: customerId ? parseInt(customerId) : null,
+        newCustomerData: newCustomerData || null,
+        subtotal,
+        items: {
+          create: items.map(item => ({
+            productId: item.productId,
+            product: item.product,
+            qty: item.qty,
+            rate: item.rate,
+            total: item.total
+          }))
+        }
+      },
+      include: { items: true }
+    });
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sales-orders/:id/approve-customer', requireAdmin, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = await prisma.salesOrder.findUnique({ where: { id: orderId } });
+    if (!order || !order.newCustomerData) return res.status(400).json({ error: 'No new customer data in this order' });
+
+    const customerData = typeof order.newCustomerData === 'string' ? JSON.parse(order.newCustomerData) : order.newCustomerData;
+    
+    const customer = await prisma.customer.create({
+      data: {
+        name: customerData.name,
+        mobile: customerData.mobile || null,
+        city: customerData.city || null,
+        state: customerData.state || null,
+        gstin: customerData.gstin || 'URP',
+        repId: order.repId,
+        status: 'Active'
+      }
+    });
+
+    const updatedOrder = await prisma.salesOrder.update({
+      where: { id: orderId },
+      data: { customerId: customer.id, newCustomerData: null },
+      include: { customer: true, items: true }
+    });
+
+    res.json(updatedOrder);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sales-orders/:id/status', requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await prisma.salesOrder.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status }
+    });
+    res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

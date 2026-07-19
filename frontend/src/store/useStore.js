@@ -67,6 +67,32 @@ export const useStore = create(persist((set, get) => ({
     get().calculateTotals();
   },
 
+  loadSalesOrderIntoBilling: (order, customerName) => {
+    const newRows = order.items.map((item, index) => ({
+      id: Date.now() + index,
+      productId: item.productId,
+      product: item.product,
+      hsn: '',
+      qty: item.qty,
+      rate: parseFloat(item.rate),
+      tax: 18,
+      amount: parseFloat(item.total)
+    }));
+
+    set({
+      currentType: 'PRO',
+      rows: newRows.length ? newRows : [{ id: Date.now(), product: '', hsn: '', qty: 1, rate: 0, tax: 18, amount: 0 }],
+    });
+    get().calculateTotals();
+
+    try {
+      const currentHeaderStr = localStorage.getItem('crackers-erp-billing-header');
+      const currentHeader = currentHeaderStr ? JSON.parse(currentHeaderStr) : { date: new Date().toISOString().split('T')[0] };
+      currentHeader.customer = customerName;
+      localStorage.setItem('crackers-erp-billing-header', JSON.stringify(currentHeader));
+    } catch(e) {}
+  },
+
   // Charge Actions
   addChargeRow: () => {
     set((state) => ({

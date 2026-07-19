@@ -63,15 +63,16 @@ export default function Header() {
   };
 
   const isAdmin = user?.role === 'ADMIN';
+  const isRep = user?.role === 'REP';
   const canView = (mod) => isAdmin || user?.permissions?.[mod]?.view;
 
   // Check if any item in a section is visible
-  const showSalesSection = canView('billing') || canView('customers') || canView('transporters') || canView('reports') || canView('vehicles');
-  const showPurchasesSection = canView('purchase') || canView('suppliers') || canView('materials');
-  const showGodownSection = canView('stock') || canView('transfers') || canView('godowns') || canView('products') || canView('vehicles') || canView('materials');
-  const showProductionSection = canView('production') || canView('machines');
-  const showHrSection = isAdmin || ['employees', 'payroll'].some(canView);
-  const showAdminSection = isAdmin || canView('reports');
+  const showSalesSection = isRep || canView('billing') || canView('customers') || canView('transporters') || canView('reports') || canView('vehicles');
+  const showPurchasesSection = !isRep && (canView('purchase') || canView('suppliers') || canView('materials'));
+  const showGodownSection = !isRep && (canView('stock') || canView('transfers') || canView('godowns') || canView('products') || canView('vehicles') || canView('materials'));
+  const showProductionSection = !isRep && (canView('production') || canView('machines'));
+  const showHrSection = !isRep && (isAdmin || ['employees', 'payroll'].some(canView));
+  const showAdminSection = !isRep && (isAdmin || canView('reports'));
 
   // Remove top headers on dashboard
   if (location.pathname === '/') {
@@ -123,28 +124,36 @@ export default function Header() {
                       <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Operations</h3>
                     </div>
                     <div className="flex flex-col gap-[2px]">
-                      {canView('billing') && <MenuItem icon="🧾" title="Invoice" desc="Create a new invoice" onClick={() => handleNavigate('/billing', 'INV')} textHoverClass="group-hover:text-active" />}
-                      {canView('billing') && <MenuItem icon="📝" title="Estimate" desc="Draft an estimate" onClick={() => handleNavigate('/billing', 'EST')} textHoverClass="group-hover:text-active" />}
-                      {canView('billing') && <MenuItem icon="📋" title="Performa" desc="Generate performa" onClick={() => handleNavigate('/billing', 'PRO')} textHoverClass="group-hover:text-active" />}
+                      {isRep && <MenuItem icon="📝" title="Sales Order" desc="Submit new order" onClick={() => handleNavigate('/sales-order', 'SALES')} textHoverClass="group-hover:text-active" />}
+                      {!isRep && isAdmin && <MenuItem icon="🔔" title="Pending Orders" desc="Review rep orders" onClick={() => handleNavigate('/pending-orders', 'SALES')} textHoverClass="group-hover:text-active" />}
+                      {!isRep && canView('billing') && <MenuItem icon="🧾" title="Invoice" desc="Create a new invoice" onClick={() => handleNavigate('/billing', 'INV')} textHoverClass="group-hover:text-active" />}
+                      {!isRep && canView('billing') && <MenuItem icon="📝" title="Estimate" desc="Draft an estimate" onClick={() => handleNavigate('/billing', 'EST')} textHoverClass="group-hover:text-active" />}
+                      {!isRep && canView('billing') && <MenuItem icon="📋" title="Performa" desc="Generate performa" onClick={() => handleNavigate('/billing', 'PRO')} textHoverClass="group-hover:text-active" />}
                     </div>
-                    <div className="px-[12px] pt-[12px] pb-[8px] mt-2 border-t border-slate-200/60">
-                      <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Reports</h3>
-                    </div>
-                    <div className="flex flex-col gap-[2px]">
-                      {canView('reports') && <MenuItem icon="📈" title="Billing History" desc="View past invoices" onClick={() => handleNavigate('/billing-history', 'SALES')} textHoverClass="group-hover:text-active" />}
-                    </div>
+                    {!isRep && (
+                      <>
+                        <div className="px-[12px] pt-[12px] pb-[8px] mt-2 border-t border-slate-200/60">
+                          <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Reports</h3>
+                        </div>
+                        <div className="flex flex-col gap-[2px]">
+                          {canView('reports') && <MenuItem icon="📈" title="Billing History" desc="View past invoices" onClick={() => handleNavigate('/billing-history', 'SALES')} textHoverClass="group-hover:text-active" />}
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  <div>
-                    <div className="px-[12px] pt-[12px] pb-[8px]">
-                      <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Masters</h3>
+                  {!isRep && (
+                    <div>
+                      <div className="px-[12px] pt-[12px] pb-[8px]">
+                        <h3 className="text-[10px] text-slate-400 font-[1000] uppercase tracking-[1px]">Masters</h3>
+                      </div>
+                      <div className="flex flex-col gap-[2px]">
+                        {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'SALES')} textHoverClass="group-hover:text-active" />}
+                        {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'SALES')} textHoverClass="group-hover:text-active" />}
+                        {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Manage dispatch fleet" onClick={() => handleNavigate('/vehicles', 'SALES')} textHoverClass="group-hover:text-active" />}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-[2px]">
-                      {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'SALES')} textHoverClass="group-hover:text-active" />}
-                      {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'SALES')} textHoverClass="group-hover:text-active" />}
-                      {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Manage dispatch fleet" onClick={() => handleNavigate('/vehicles', 'SALES')} textHoverClass="group-hover:text-active" />}
-                    </div>
-                  </div>
+                  )}
 
                 </div>
               )}

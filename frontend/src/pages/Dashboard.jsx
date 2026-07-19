@@ -25,15 +25,16 @@ export default function Dashboard() {
   };
 
   const isAdmin = user?.role === 'ADMIN';
+  const isRep = user?.role === 'REP';
   const canView = (mod) => isAdmin || user?.permissions?.[mod]?.view;
 
   // Permission checks mapping to the new operational categories
-  const showSales = canView('billing') || canView('customers') || canView('transporters') || canView('reports') || canView('vehicles');
-  const showPurchases = canView('purchase') || canView('suppliers') || canView('materials');
-  const showGodown = canView('stock') || canView('transfers') || canView('godowns') || canView('products') || canView('vehicles') || canView('materials');
-  const showProduction = canView('production') || canView('machines');
-  const showHr = isAdmin || ['employees', 'payroll'].some(canView);
-  const showAdmin = isAdmin || canView('reports');
+  const showSales = isRep || canView('billing') || canView('customers') || canView('transporters') || canView('reports') || canView('vehicles');
+  const showPurchases = !isRep && (canView('purchase') || canView('suppliers') || canView('materials'));
+  const showGodown = !isRep && (canView('stock') || canView('transfers') || canView('godowns') || canView('products') || canView('vehicles') || canView('materials'));
+  const showProduction = !isRep && (canView('production') || canView('machines'));
+  const showHr = !isRep && (isAdmin || ['employees', 'payroll'].some(canView));
+  const showAdmin = !isRep && (isAdmin || canView('reports'));
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto pt-4 md:pt-10 relative px-4">
@@ -50,7 +51,7 @@ export default function Dashboard() {
       </div>
 
       {/* Welcome Section */}
-      <div className="text-center space-y-2 mb-10">
+      <div className="text-center space-y-2 mb-8">
         <h1 className="text-3xl md:text-5xl font-black text-slate-800 tracking-tight">
           Welcome back, {user?.username || 'User'}! 👋
         </h1>
@@ -59,13 +60,24 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {isAdmin && (
+        <div className="flex justify-center mb-8">
+          <button 
+            onClick={() => handleNavigate('/pending-orders', 'SALES')}
+            className="flex items-center gap-2 bg-amber-100 border border-amber-200 text-amber-800 px-6 py-3 rounded-full text-sm font-black shadow-sm hover:bg-amber-200 hover:-translate-y-1 transition-all"
+          >
+            <span className="text-xl">🔔</span> Review Pending Sales Orders
+          </button>
+        </div>
+      )}
+
       {/* Primary Action Modules - 6 Category Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* Sales */}
         {showSales && (
           <button 
-            onClick={() => handleNavigate('/billing', 'INV')}
+            onClick={() => handleNavigate(isRep ? '/sales-order' : '/billing', 'INV')}
             className="group relative overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[32px] p-8 text-left transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_32px_64px_rgba(79,70,229,0.25)] border border-white/20 h-[220px] flex flex-col justify-end"
           >
             <div className="absolute top-0 right-0 -mr-8 -mt-8 w-48 h-48 bg-white opacity-10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
@@ -73,8 +85,8 @@ export default function Dashboard() {
             
             <div className="relative z-10">
               <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-[18px] flex items-center justify-center text-3xl mb-4 border border-white/30 group-hover:scale-110 transition-transform duration-300 shadow-lg">🧾</div>
-              <h2 className="text-2xl md:text-3xl font-black text-white mb-1 tracking-tight">Sales</h2>
-              <p className="text-blue-100 font-semibold text-sm">Invoices, Estimates & Customers</p>
+              <h2 className="text-2xl md:text-3xl font-black text-white mb-1 tracking-tight">{isRep ? 'Sales Order' : 'Sales'}</h2>
+              <p className="text-blue-100 font-semibold text-sm">{isRep ? 'Draft a new customer order' : 'Invoices, Estimates & Customers'}</p>
             </div>
           </button>
         )}

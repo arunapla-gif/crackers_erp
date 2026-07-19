@@ -25,6 +25,9 @@ model Customer {
   addresses Json?    @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  repId     Int?
+  rep       User?    @relation("RepCustomers", fields: [repId], references: [id])
+  salesOrders SalesOrder[] @relation("OrderCustomer")
   @@schema("crackers")
 
 }
@@ -120,6 +123,8 @@ model Invoice {
   charges     InvoiceCharge[]
   companyProfileId Int?
   companyProfile   CompanyProfile? @relation(fields: [companyProfileId], references: [id])
+  repId       Int?
+  rep         User?    @relation("RepInvoices", fields: [repId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   @@schema("crackers")
@@ -279,6 +284,38 @@ model User {
   status      String   @default("Active")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  customers   Customer[] @relation("RepCustomers")
+  invoices    Invoice[]  @relation("RepInvoices")
+  salesOrders SalesOrder[] @relation("RepOrders")
+  @@schema("crackers")
+}
+
+model SalesOrder {
+  id              Int      @id @default(autoincrement())
+  repId           Int
+  rep             User     @relation("RepOrders", fields: [repId], references: [id])
+  customerId      Int?
+  customer        Customer? @relation("OrderCustomer", fields: [customerId], references: [id])
+  newCustomerData Json?
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  subtotal        Decimal  @default(0.00) @db.Decimal(12, 2)
+  items           SalesOrderItem[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@schema("crackers")
+}
+
+model SalesOrderItem {
+  id           Int        @id @default(autoincrement())
+  salesOrderId Int
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId    Int?
+  product      String
+  qty          Int        @default(1)
+  rate         Decimal    @default(0.00) @db.Decimal(10, 2)
+  total        Decimal    @default(0.00) @db.Decimal(12, 2)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
   @@schema("crackers")
 }
 
