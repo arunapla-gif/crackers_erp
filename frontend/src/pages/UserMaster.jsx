@@ -161,6 +161,7 @@ export default function UserMaster() {
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Role</label>
             <select name="role" value={formData.role} onChange={handleChange} disabled={formData.username === 'admin'} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] font-bold focus:outline-none focus:border-rose-500 focus:ring-[4px] focus:ring-rose-500/15">
               <option value="STAFF">STAFF</option>
+              <option value="REP">SALES REP</option>
               <option value="ADMIN">ADMIN (Full Access)</option>
             </select>
           </div>
@@ -247,7 +248,7 @@ export default function UserMaster() {
               <tr key={i} className={`hover:bg-slate-50 transition-all ${u.status === 'Inactive' ? 'opacity-60 grayscale' : ''}`}>
                 <td className="bg-white border-y border-slate-200 border-l rounded-l-[14px] p-[10px] font-[800] text-slate-800">{u.username}</td>
                 <td className="bg-white border-y border-slate-200 p-[10px] font-bold text-slate-600">
-                  <span className={`px-2 py-1 rounded-[6px] text-[10px] uppercase tracking-wider ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span>
+                  <span className={`px-2 py-1 rounded-[6px] text-[10px] uppercase tracking-wider ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : u.role === 'REP' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{u.role}</span>
                 </td>
                 <td className="bg-white border-y border-slate-200 p-[10px] text-center">
                   <span className={`inline-block px-2 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider ${u.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
