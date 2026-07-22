@@ -255,10 +255,14 @@ app.get('/api/products', async (req, res) => {
     
     // Rep Restriction Logic
     if (req.user && req.user.role === 'REP') {
-      const allowedCategories = req.user.permissions?.allowedCategories;
+      const repUser = await prisma.user.findUnique({ where: { id: req.user.id }, select: { permissions: true } });
+      const allowedCategories = repUser?.permissions?.allowedCategories;
       if (Array.isArray(allowedCategories) && allowedCategories.length > 0) {
         const filteredProducts = products.filter(p => allowedCategories.includes(p.category));
         return res.json(filteredProducts);
+      } else if (Array.isArray(allowedCategories) && allowedCategories.length === 0) {
+        // If explicitly restricted to 0 categories, they see nothing
+        return res.json([]);
       }
     }
     
