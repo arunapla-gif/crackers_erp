@@ -37,9 +37,10 @@ model Product {
   id        Int      @id @default(autoincrement())
   code      String   @unique
   name      String
-  type      String   @default("INV") // "INV", "EP", or "RM"
-  category  String?
-  hsn       String   @default("3604")
+  type        String   @default("INV") // "INV", "EP", or "RM"
+  category    String?
+  subCategory String?
+  hsn         String   @default("3604")
   tax       Decimal  @default(18.00) @db.Decimal(5, 2)
   rate      Decimal  @default(0.00) @db.Decimal(10, 2)
   unit_qty  Int      @default(1)

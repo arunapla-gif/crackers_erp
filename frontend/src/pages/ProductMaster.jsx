@@ -3,7 +3,7 @@ import { erpApi } from '../api/erpApi';
 
 export default function ProductMaster() {
   const [formData, setFormData] = useState({
-    code: '', name: '', type: 'INV', category: '', hsn: '3604', tax: '18.00', rate: '0.00', unit_qty: '1', unit: 'Case', status: 'Active', factoryAliasId: ''
+    code: '', name: '', type: 'INV', category: '', subCategory: '', hsn: '3604', tax: '18.00', rate: '0.00', unit_qty: '1', unit: 'Case', status: 'Active', factoryAliasId: ''
   });
   const [products, setProducts] = useState([]);
   const [message, setMessage] = useState('');
@@ -28,6 +28,7 @@ export default function ProductMaster() {
         name: '',
         type: 'INV',
         category: '',
+        subCategory: '',
         hsn: '3604',
         tax: '18.00',
         rate: '0.00',
@@ -62,6 +63,7 @@ export default function ProductMaster() {
     setFormData({
       ...product,
       category: product.category || '',
+      subCategory: product.subCategory || '',
       tax: String(product.tax),
       rate: String(product.rate),
       unit_qty: String(product.unit_qty),
@@ -120,6 +122,7 @@ export default function ProductMaster() {
             <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Code</th>
             <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Name</th>
             <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Category</th>
+            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Sub-Category</th>
             <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">HSN</th>
             <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Rate</th>
             <th className="text-center font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Status</th>
@@ -132,6 +135,7 @@ export default function ProductMaster() {
               <td className="bg-white border-y border-slate-200 border-l rounded-l-[14px] p-[10px] font-[800] text-slate-800">{p.code}</td>
               <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.name}</td>
               <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold text-active">{p.category || '-'}</td>
+              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-medium text-slate-500">{p.subCategory || '-'}</td>
               <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.hsn}</td>
               <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">₹{p.rate}</td>
               <td className="bg-white border-y border-slate-200 p-[10px] text-center">
@@ -180,11 +184,15 @@ export default function ProductMaster() {
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Product Name *</label>
             <input name="name" value={formData.name} onChange={handleChange} placeholder="e.g. 1000 Wala" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
           </div>
-          <div className="col-span-1 md:col-span-3">
+          <div className="col-span-1 md:col-span-2">
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Product Category</label>
-            <input name="category" value={formData.category} onChange={handleChange} placeholder="e.g. Sparklers, Rockets" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
+            <input name="category" value={formData.category} onChange={handleChange} placeholder="e.g. STANDARD WALAS" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all uppercase" />
           </div>
-          <div className="col-span-1 md:col-span-3">
+          <div className="col-span-1 md:col-span-2">
+            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Sub-Category</label>
+            <input name="subCategory" value={formData.subCategory} onChange={handleChange} placeholder="e.g. 400 COUNT" className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all uppercase" />
+          </div>
+          <div className="col-span-1 md:col-span-2">
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Type</label>
             <select name="type" value={formData.type} onChange={handleChange} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all">
               <option value="INV">Invoice Item (INV)</option>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { erpApi } from '../api/erpApi';
 import { useProducts, useCustomers } from '../api/queries';
@@ -36,95 +36,87 @@ export default function SalesOrderEntry() {
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [newCustomerData, setNewCustomerData] = useState({ name: '', mobile: '', city: '', state: '', gstin: '' });
   
-  const [customRates, setCustomRates] = useState({}); // { productId: customRate }
-  
-  const [rows, setRows] = useState([{ id: Date.now(), productId: null, product: '', qty: 1, rate: 0, total: 0 }]);
+  const [customRates, setCustomRates] = useState({});
+  const [cart, setCart] = useState({}); // { [productId]: qty }
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const addRow = () => setRows([...rows, { id: Date.now(), productId: null, product: '', qty: 1, rate: 0, total: 0 }]);
-  const removeRow = (id) => setRows(rows.filter(r => r.id !== id));
-  
-  const updateRow = (id, field, value) => {
-    setRows(rows.map(r => {
-      if (r.id === id) {
-        const updated = { ...r, [field]: value };
-        if (field === 'qty' || field === 'rate' || field === 'productId') {
-          updated.total = (parseFloat(updated.qty || 0) * parseFloat(updated.rate || 0));
-        }
-        return updated;
-      }
-      return r;
-    }));
-  };
-
   // Fetch custom prices when customer changes
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchCustomPrices = async () => {
       if (!selectedCustomerId || isNewCustomer) {
         setCustomRates({});
-        // Revert to standard rates for existing rows
-        setRows(prevRows => prevRows.map(r => {
-          if (!r.productId) return r;
-          const p = products.find(prod => prod.id === r.productId);
-          const rate = p ? parseFloat(p.rate) : 0;
-          return { ...r, rate, total: (parseFloat(r.qty || 0) * rate) };
-        }));
         return;
       }
-
       try {
         const prices = await erpApi.getCustomerPrices(selectedCustomerId);
         const pricesMap = {};
-        prices.forEach(cp => pricesMap[cp.productId] = parseFloat(cp.rate));
+        prices.forEach(p => pricesMap[p.productId] = parseFloat(p.rate));
         setCustomRates(pricesMap);
-        
-        // Auto-update existing rows with new custom prices
-        setRows(prevRows => prevRows.map(r => {
-          if (!r.productId) return r;
-          const p = products.find(prod => prod.id === r.productId);
-          const baseRate = p ? parseFloat(p.rate) : 0;
-          const rate = pricesMap[r.productId] !== undefined ? pricesMap[r.productId] : baseRate;
-          return { ...r, rate, total: (parseFloat(r.qty || 0) * rate) };
-        }));
       } catch (err) {
-        console.error("Failed to fetch customer prices");
+        console.error('Failed to fetch customer prices');
       }
     };
     fetchCustomPrices();
-  }, [selectedCustomerId, isNewCustomer, products]);
+  }, [selectedCustomerId, isNewCustomer]);
 
-  const handleProductSelect = (id, searchValue) => {
-    // Extract code if format is "CODE - NAME"
-    const productCode = searchValue.includes(' - ') ? searchValue.split(' - ')[0].trim() : searchValue.trim();
-    const product = products.find(p => p.code === productCode.toUpperCase());
-    if (product) {
-      const standardRate = parseFloat(product.rate);
-      const customRate = customRates[product.id];
-      const finalRate = customRate !== undefined ? customRate : standardRate;
-      
-      updateRow(id, 'productSearch', searchValue);
-      updateRow(id, 'product', product.name);
-      updateRow(id, 'productId', product.id);
-      updateRow(id, 'rate', finalRate);
-    } else {
-      updateRow(id, 'productSearch', searchValue);
-    }
+  const updateCart = (productId, delta) => {
+    setCart(prev => {
+      const currentQty = prev[productId] || 0;
+      const newQty = Math.max(0, currentQty + delta);
+      const newCart = { ...prev };
+      if (newQty === 0) delete newCart[productId];
+      else newCart[productId] = newQty;
+      return newCart;
+    });
   };
 
-  const subtotal = rows.reduce((sum, r) => sum + (r.total || 0), 0);
+  const getProductRate = (productId) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return 0;
+    const standardRate = parseFloat(product.rate);
+    const customRate = customRates[productId];
+    return customRate !== undefined ? customRate : standardRate;
+  };
+
+  const cartItems = Object.keys(cart).map(idStr => {
+    const productId = parseInt(idStr);
+    const qty = cart[productId];
+    const product = products.find(p => p.id === productId);
+    const rate = getProductRate(productId);
+    return {
+      productId,
+      product: product?.name || '',
+      qty,
+      rate,
+      total: rate * qty
+    };
+  });
+
+  const subtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
+
+  const epProducts = products.filter(p => p.type === 'EP');
+  
+  const groupedProducts = epProducts.reduce((groups, p) => {
+    const cat = p.category || 'UNCATEGORIZED';
+    const subCat = p.subCategory || 'STANDARD';
+    if (!groups[cat]) groups[cat] = {};
+    if (!groups[cat][subCat]) groups[cat][subCat] = [];
+    groups[cat][subCat].push(p);
+    return groups;
+  }, {});
 
   const handleSubmit = async () => {
     if (!isNewCustomer && !selectedCustomerId) {
-      alert("Please select a customer or add a new one.");
+      alert('Please select a customer or add a new one.');
       return;
     }
     if (isNewCustomer && !newCustomerData.name) {
-      alert("New Customer Name is required.");
+      alert('New Customer Name is required.');
       return;
     }
-    if (rows.length === 0 || rows.every(r => !r.product)) {
-      alert("Add at least one product.");
+    if (cartItems.length === 0) {
+      alert('Add at least one product.');
       return;
     }
 
@@ -132,26 +124,20 @@ export default function SalesOrderEntry() {
       customerId: isNewCustomer ? null : selectedCustomerId,
       newCustomerData: isNewCustomer ? newCustomerData : null,
       subtotal,
-      items: rows.filter(r => r.product).map(r => ({
-        productId: r.productId,
-        product: r.product,
-        qty: parseInt(r.qty) || 0,
-        rate: parseFloat(r.rate) || 0,
-        total: parseFloat(r.total) || 0
-      }))
+      items: cartItems
     };
 
     setIsSubmitting(true);
     try {
       await erpApi.createSalesOrder(payload);
       setMessage('Order submitted successfully for approval!');
-      setRows([{ id: Date.now(), productId: null, productSearch: '', product: '', qty: 1, rate: 0, total: 0 }]);
+      setCart({});
       setSelectedCustomerId(null);
       setNewCustomerData({ name: '', mobile: '', city: '', state: '', gstin: '' });
       setIsNewCustomer(false);
       setTimeout(() => setMessage(''), 4000);
     } catch (e) {
-      alert("Error submitting order: " + (e.response?.data?.error || e.message));
+      alert('Error submitting order: ' + (e.response?.data?.error || e.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -163,121 +149,139 @@ export default function SalesOrderEntry() {
       {/* HEADER SECTION */}
       <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
         <h2 className="text-[16px] font-black text-active uppercase tracking-[1px] mb-4 flex justify-between items-center">
-          <span>Draft Sales Order</span>
-          {message && <span className="text-[12px] bg-green-100 text-green-700 px-3 py-1 rounded-full">{message}</span>}
+          <span>Create New Sales Order</span>
+          <span className="text-[11px] bg-active/10 text-active px-3 py-1 rounded-full">ESTIMATE</span>
         </h2>
+        
+        {message && (
+          <div className="mb-4 bg-green-50 text-green-700 p-4 rounded-[16px] font-black border border-green-200 text-[14px]">
+            {message}
+          </div>
+        )}
 
-        <div className="mb-4 flex items-center gap-4">
-          <button 
-            onClick={() => setIsNewCustomer(false)}
-            className={`flex-1 py-2 rounded-xl text-[13px] font-bold border-2 transition-all ${!isNewCustomer ? 'border-active bg-active/5 text-active' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-          >
-            Select Existing Customer
-          </button>
-          <button 
-            onClick={() => setIsNewCustomer(true)}
-            className={`flex-1 py-2 rounded-xl text-[13px] font-bold border-2 transition-all ${isNewCustomer ? 'border-active bg-active/5 text-active' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-          >
-            + New Lead / Customer
-          </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Customer Selection */}
+          <div className="col-span-1 md:col-span-2">
+            <div className="flex justify-between items-center mb-[3px]">
+              <label className="block text-[12px] font-[800] text-[#334155]">Select Customer</label>
+              <button 
+                onClick={() => { setIsNewCustomer(!isNewCustomer); setSelectedCustomerId(null); }}
+                className="text-[11px] font-black text-active hover:text-active-dark transition-colors"
+              >
+                {isNewCustomer ? "Select Existing" : "+ Add New Customer"}
+              </button>
+            </div>
+            
+            {!isNewCustomer ? (
+              <Select
+                styles={selectStyles}
+                value={customers.map(c => ({ value: c.id, label: `${c.name} - ${c.city || 'N/A'}` })).find(opt => opt.value === selectedCustomerId) || null}
+                onChange={(opt) => setSelectedCustomerId(opt ? opt.value : null)}
+                options={customers.map(c => ({ value: c.id, label: `${c.name} - ${c.city || 'N/A'}` }))}
+                isClearable
+                placeholder="Search Customer..."
+              />
+            ) : (
+              <div className="bg-active/5 p-4 rounded-[16px] border border-active/20 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in zoom-in duration-300">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">New Customer Name *</label>
+                  <input value={newCustomerData.name} onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})} className="w-full h-[43px] px-[12px] border border-active/30 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Name" />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Mobile</label>
+                  <input value={newCustomerData.mobile} onChange={e => setNewCustomerData({...newCustomerData, mobile: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Mobile" />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">City</label>
+                  <input value={newCustomerData.city} onChange={e => setNewCustomerData({...newCustomerData, city: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="City" />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+      </div>
 
-        {!isNewCustomer ? (
-          <div>
-            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Select Customer</label>
-            <Select
-              styles={selectStyles}
-              options={customers.map(c => ({ value: c.id, label: c.name }))}
-              value={selectedCustomerId ? { value: selectedCustomerId, label: customers.find(c => c.id === selectedCustomerId)?.name } : null}
-              onChange={(selected) => setSelectedCustomerId(selected ? selected.value : null)}
-              placeholder="Search assigned customers..."
-              isClearable
-            />
+      {/* MENU SECTION */}
+      <div className="bg-white rounded-[24px] p-[24px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
+        <h3 className="text-[14px] font-black text-slate-800 uppercase tracking-widest mb-6 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-active"></span> Product Menu
+        </h3>
+
+        {Object.entries(groupedProducts).map(([category, subCategories]) => (
+          <div key={category} className="mb-10 last:mb-0">
+            {/* Main Category Header */}
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 py-3 mb-4 border-b-2 border-slate-100">
+              <h4 className="text-[18px] font-black text-active uppercase tracking-wider">{category}</h4>
+            </div>
+
+            <div className="space-y-8">
+              {Object.entries(subCategories).map(([subCategory, items]) => (
+                <div key={subCategory} className="bg-slate-50/50 rounded-[20px] p-5 border border-slate-100">
+                  {/* Sub Category Header */}
+                  <h5 className="text-[12px] font-black text-slate-500 uppercase tracking-[1.5px] mb-4 flex items-center gap-2">
+                    <div className="h-[1px] flex-1 bg-slate-200"></div>
+                    {subCategory}
+                    <div className="h-[1px] flex-1 bg-slate-200"></div>
+                  </h5>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {items.map(product => {
+                      const qty = cart[product.id] || 0;
+                      const rate = getProductRate(product.id);
+                      return (
+                        <div key={product.id} className={`flex items-center justify-between p-3 rounded-[14px] border transition-all ${qty > 0 ? 'bg-active/5 border-active/30' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                          <div className="flex-1 pr-3">
+                            <div className="text-[10px] font-black text-slate-400 mb-0.5">{product.code}</div>
+                            <div className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</div>
+                            <div className="text-[12px] font-black text-active mt-1">₹{rate.toLocaleString()}</div>
+                          </div>
+                          
+                          <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-[12px] border border-slate-200">
+                            <button 
+                              onClick={() => updateCart(product.id, -1)}
+                              className={`w-[28px] h-[28px] flex items-center justify-center rounded-[8px] font-black text-[16px] transition-colors ${qty > 0 ? 'bg-white text-rose-500 shadow-sm border border-slate-200 hover:bg-rose-50' : 'text-slate-300'}`}
+                              disabled={qty === 0}
+                            >
+                              -
+                            </button>
+                            <span className="w-[20px] text-center text-[14px] font-black text-slate-700">{qty}</span>
+                            <button 
+                              onClick={() => updateCart(product.id, 1)}
+                              className="w-[28px] h-[28px] flex items-center justify-center rounded-[8px] bg-active text-white font-black text-[16px] shadow-sm hover:bg-active-dark transition-colors"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-            <div className="sm:col-span-2">
-              <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Customer Name *</label>
-              <input value={newCustomerData.name} onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] font-bold focus:border-active focus:ring-[3px] focus:ring-active/15" placeholder="Business Name" />
-            </div>
-            <div>
-              <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Mobile</label>
-              <input value={newCustomerData.mobile} onChange={e => setNewCustomerData({...newCustomerData, mobile: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15" placeholder="10 digits" />
-            </div>
-            <div>
-              <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">GSTIN (Optional)</label>
-              <input value={newCustomerData.gstin} onChange={e => setNewCustomerData({...newCustomerData, gstin: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] uppercase focus:border-active focus:ring-[3px] focus:ring-active/15" placeholder="15 chars" />
-            </div>
-            <div>
-              <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">City</label>
-              <input value={newCustomerData.city} onChange={e => setNewCustomerData({...newCustomerData, city: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15" placeholder="City" />
-            </div>
-            <div>
-              <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">State</label>
-              <input value={newCustomerData.state} onChange={e => setNewCustomerData({...newCustomerData, state: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15" placeholder="State" />
-            </div>
-          </div>
+        ))}
+        {epProducts.length === 0 && (
+          <div className="text-center py-10 text-slate-500 font-bold">No products found for your assigned categories.</div>
         )}
       </div>
 
-      {/* ITEMS SECTION */}
-      <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
-        <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-widest mb-4">Requested Products</h3>
-        <datalist id="productSearch">
-          {products.filter(p => p.type === 'EP').map(p => (
-            <option key={p.id} value={`${p.code} - ${p.name}`} />
-          ))}
-        </datalist>
-
-        <div className="space-y-4">
-          {rows.map((row, index) => (
-            <div key={row.id} className="bg-slate-50 border border-slate-200 rounded-[20px] p-4 relative shadow-sm">
-              <div className="absolute top-4 right-4 flex gap-1">
-                <button onClick={addRow} className="w-[28px] h-[28px] flex items-center justify-center bg-active/20 text-active-dark rounded-[8px] font-bold hover:bg-active hover:text-white transition-colors">+</button>
-                <button onClick={() => removeRow(row.id)} className="w-[28px] h-[28px] flex items-center justify-center bg-white border border-slate-200 text-slate-600 rounded-[8px] font-bold hover:bg-rose-50 hover:text-rose-600 transition-colors">-</button>
-              </div>
-              
-              <div className="mb-3 pr-16">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Item #{index + 1}</span>
-                <input list="productSearch" value={row.productSearch !== undefined ? row.productSearch : (row.productId ? `${products.find(p => p.id === row.productId)?.code} - ${row.product}` : '')} placeholder="Search by Code or Name..." className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] uppercase font-bold mb-2 focus:border-active focus:ring-[3px] focus:ring-active/15" onChange={(e) => handleProductSelect(row.id, e.target.value)} />
-                <input value={row.product} onChange={(e) => updateRow(row.id, 'product', e.target.value)} placeholder="Product Name (Auto-filled)" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-[10px] text-[13px] font-medium focus:border-active focus:ring-[3px] focus:ring-active/15" readOnly />
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Qty</label>
-                  <input type="number" value={row.qty} onChange={(e) => updateRow(row.id, 'qty', parseInt(e.target.value) || 0)} className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] font-black focus:border-active focus:ring-[3px] focus:ring-active/15" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Rate</label>
-                  <input type="number" value={row.rate} onChange={(e) => updateRow(row.id, 'rate', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] font-bold focus:border-active focus:ring-[3px] focus:ring-active/15" />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Total</label>
-                  <input readOnly value={row.total} className="w-full px-3 py-2 bg-slate-100 border border-slate-200 text-slate-800 rounded-[10px] text-[13px] font-black outline-none shadow-inner" />
-                </div>
-              </div>
-            </div>
-          ))}
-          <button onClick={addRow} className="w-full py-3 bg-slate-50 text-slate-600 rounded-[14px] font-black text-[12px] border border-dashed border-slate-300 hover:bg-slate-100 transition-colors">+ ADD NEW ITEM</button>
-        </div>
-      </div>
-
       {/* FOOTER ACTION */}
-      <div className="bg-active-dark rounded-[24px] p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div className="bg-active-dark rounded-[24px] p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-6 z-20">
         <div>
           <span className="block text-[12px] font-bold text-white/70 uppercase tracking-widest">Order Subtotal</span>
-          <span className="text-[32px] font-black tracking-tighter">₹{subtotal.toFixed(2)}</span>
+          <span className="block text-3xl font-black tracking-tight">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
+        
         <button 
-          onClick={handleSubmit} 
-          disabled={isSubmitting}
-          className="w-full sm:w-auto bg-white text-active-dark px-8 py-4 rounded-2xl font-black text-[15px] shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100"
+          onClick={handleSubmit}
+          disabled={isSubmitting || cartItems.length === 0}
+          className="w-full sm:w-auto px-8 py-4 bg-white text-active-dark rounded-[16px] font-black text-[14px] tracking-wide shadow-[0_4px_14px_rgba(0,0,0,0.2)] hover:-translate-y-[2px] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:hover:translate-y-0"
         >
-          {isSubmitting ? 'SUBMITTING...' : 'SUBMIT ORDER REQUEST'}
+          {isSubmitting ? 'SUBMITTING...' : `SUBMIT ORDER (${cartItems.length} ITEMS)`}
         </button>
       </div>
-
+      
     </div>
   );
 }
