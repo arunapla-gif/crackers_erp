@@ -166,7 +166,11 @@ export default function ProductMaster() {
                       {groupKey}
                     </td>
                   </tr>
-                  {groups[groupKey].map((p, i) => (
+                  {groups[groupKey].sort((a, b) => {
+                    const numA = parseInt(a.name.match(/\d+/)?.[0] || 0);
+                    const numB = parseInt(b.name.match(/\d+/)?.[0] || 0);
+                    return numA - numB;
+                  }).map((p, i) => (
                     <tr key={p.id || i} className={`hover:bg-slate-50 transition-all ${p.status === 'Inactive' ? 'opacity-60 grayscale' : ''}`}>
                       <td className="bg-white border-y border-slate-200 border-l rounded-l-[14px] p-[10px] font-[800] text-slate-800">{p.code}</td>
                       <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.name}</td>

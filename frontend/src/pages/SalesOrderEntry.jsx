@@ -215,7 +215,17 @@ export default function SalesOrderEntry() {
             </div>
 
             <div className="space-y-8">
-              {Object.entries(subCategories).map(([subCategory, items]) => (
+              {Object.keys(subCategories).sort((a, b) => {
+                const customOrder = ['400 COUNT', '400 COUNT (CORE & CELLOPHANE)', '600 COUNT', '700 COUNT', '800 COUNT'];
+                const indexA = customOrder.indexOf(a.toUpperCase());
+                const indexB = customOrder.indexOf(b.toUpperCase());
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                return a.localeCompare(b);
+              }).map(subCategory => {
+                const items = subCategories[subCategory];
+                return (
                 <div key={subCategory} className="bg-slate-50/50 rounded-[20px] p-5 border border-slate-100">
                   {/* Sub Category Header */}
                   <h5 className="text-[12px] font-black text-slate-500 uppercase tracking-[1.5px] mb-4 flex items-center gap-2">
@@ -225,7 +235,11 @@ export default function SalesOrderEntry() {
                   </h5>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {items.map(product => {
+                    {items.sort((a, b) => {
+                      const numA = parseInt(a.name.match(/\d+/)?.[0] || 0);
+                      const numB = parseInt(b.name.match(/\d+/)?.[0] || 0);
+                      return numA - numB;
+                    }).map(product => {
                       const qty = cart[product.id] || 0;
                       const rate = getProductRate(product.id);
                       return (
@@ -257,7 +271,8 @@ export default function SalesOrderEntry() {
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
