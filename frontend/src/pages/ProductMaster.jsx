@@ -110,60 +110,94 @@ export default function ProductMaster() {
     }
   };
 
-  const renderProductTable = (title, items) => (
-    <div className="bg-white/88 backdrop-blur-[14px] rounded-[26px] p-[18px] shadow-[0_18px_48px_rgba(15,23,42,0.08)] border border-slate-200 overflow-x-auto">
-      <h2 className="text-[13px] font-black text-active uppercase tracking-[0.7px] flex items-center gap-[10px] mb-3">
-        <span className="w-[9px] h-[9px] rounded-full bg-active shadow-[0_0_0_5px_color-mix(in_srgb,var(--active)_14%,transparent)]"></span>
-        {title} ({items.length})
-      </h2>
-      <table className="w-full border-separate border-spacing-y-[8px] text-[14px]">
-        <thead>
-          <tr>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Code</th>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Name</th>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Category</th>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Sub-Category</th>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">HSN</th>
-            <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Rate</th>
-            <th className="text-center font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Status</th>
-            <th className="text-right font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((p, i) => (
-            <tr key={i} className={`hover:bg-slate-50 transition-all ${p.status === 'Inactive' ? 'opacity-60 grayscale' : ''}`}>
-              <td className="bg-white border-y border-slate-200 border-l rounded-l-[14px] p-[10px] font-[800] text-slate-800">{p.code}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.name}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold text-active">{p.category || '-'}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-medium text-slate-500">{p.subCategory || '-'}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.hsn}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">₹{p.rate}</td>
-              <td className="bg-white border-y border-slate-200 p-[10px] text-center">
-                <span className={`inline-block px-2 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider ${p.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                  {p.status || 'Active'}
-                </span>
-              </td>
-              <td className="bg-white border-y border-slate-200 border-r rounded-r-[14px] p-[10px] text-right">
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => handleEdit(p)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-[8px] font-bold text-[11px] transition-colors">
-                    Edit
-                  </button>
-                  <button onClick={() => handleToggleStatus(p)} className={`px-3 py-1 rounded-[8px] font-bold text-[11px] transition-colors ${p.status === 'Inactive' ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}>
-                    {p.status === 'Inactive' ? 'Enable' : 'Disable'}
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-          {items.length === 0 && (
+  const renderProductTable = (title, items) => {
+    const groups = {};
+    items.forEach(p => {
+      const groupKey = p.subCategory || p.category || 'UNCATEGORIZED';
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(p);
+    });
+
+    const customOrder = [
+      '400 COUNT',
+      '400 COUNT (CORE & CELLOPHANE)',
+      '600 COUNT',
+      '700 COUNT',
+      '800 COUNT'
+    ];
+    
+    const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+      const indexA = customOrder.indexOf(a.toUpperCase());
+      const indexB = customOrder.indexOf(b.toUpperCase());
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    return (
+      <div className="bg-white/88 backdrop-blur-[14px] rounded-[26px] p-[18px] shadow-[0_18px_48px_rgba(15,23,42,0.08)] border border-slate-200 overflow-x-auto">
+        <h2 className="text-[13px] font-black text-active uppercase tracking-[0.7px] flex items-center gap-[10px] mb-3">
+          <span className="w-[9px] h-[9px] rounded-full bg-active shadow-[0_0_0_5px_color-mix(in_srgb,var(--active)_14%,transparent)]"></span>
+          {title} ({items.length})
+        </h2>
+        <table className="w-full border-separate border-spacing-y-[8px] text-[14px]">
+          <thead>
             <tr>
-              <td colSpan={7} className="bg-white border border-slate-200 rounded-[14px] p-[10px] text-center text-slate-500">No products found in this category</td>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Code</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Name</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Category</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">HSN</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Rate</th>
+              <th className="text-center font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Status</th>
+              <th className="text-right font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Actions</th>
             </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="bg-white border border-slate-200 rounded-[14px] p-[10px] text-center text-slate-500">No products found in this category</td>
+              </tr>
+            ) : (
+              sortedGroupKeys.map(groupKey => (
+                <React.Fragment key={groupKey}>
+                  <tr>
+                    <td colSpan={7} className="bg-[#b4d2a5] text-center font-bold text-slate-900 py-[6px] border-y border-[#9bb88d] text-[12px] uppercase tracking-[1px] shadow-sm">
+                      {groupKey}
+                    </td>
+                  </tr>
+                  {groups[groupKey].map((p, i) => (
+                    <tr key={p.id || i} className={`hover:bg-slate-50 transition-all ${p.status === 'Inactive' ? 'opacity-60 grayscale' : ''}`}>
+                      <td className="bg-white border-y border-slate-200 border-l rounded-l-[14px] p-[10px] font-[800] text-slate-800">{p.code}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.name}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold text-active">{p.category || '-'}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.hsn}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">₹{p.rate}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-center">
+                        <span className={`inline-block px-2 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider ${p.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                          {p.status || 'Active'}
+                        </span>
+                      </td>
+                      <td className="bg-white border-y border-slate-200 border-r rounded-r-[14px] p-[10px] text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleEdit(p)} className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-[8px] font-bold text-[11px] transition-colors">
+                            Edit
+                          </button>
+                          <button onClick={() => handleToggleStatus(p)} className={`px-3 py-1 rounded-[8px] font-bold text-[11px] transition-colors ${p.status === 'Inactive' ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}>
+                            {p.status === 'Inactive' ? 'Enable' : 'Disable'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-[14px]">
