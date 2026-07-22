@@ -3,7 +3,7 @@ import { erpApi } from '../api/erpApi';
 
 export default function ProductMaster() {
   const [formData, setFormData] = useState({
-    code: '', name: '', type: 'INV', category: '', hsn: '3604', tax: '18.00', rate: '0.00', unit_qty: '1', unit: 'Case', status: 'Active'
+    code: '', name: '', type: 'INV', category: '', hsn: '3604', tax: '18.00', rate: '0.00', unit_qty: '1', unit: 'Case', status: 'Active', factoryAliasId: ''
   });
   const [products, setProducts] = useState([]);
   const [message, setMessage] = useState('');
@@ -33,7 +33,8 @@ export default function ProductMaster() {
         rate: '0.00',
         unit_qty: '1',
         unit: 'Case',
-        status: 'Active'
+        status: 'Active',
+        factoryAliasId: ''
       });
     }
   };
@@ -63,7 +64,8 @@ export default function ProductMaster() {
       category: product.category || '',
       tax: String(product.tax),
       rate: String(product.rate),
-      unit_qty: String(product.unit_qty)
+      unit_qty: String(product.unit_qty),
+      factoryAliasId: product.factoryAliasId ? String(product.factoryAliasId) : ''
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -95,7 +97,8 @@ export default function ProductMaster() {
         ...formData,
         tax: parseFloat(formData.tax),
         rate: parseFloat(formData.rate),
-        unit_qty: parseInt(formData.unit_qty)
+        unit_qty: parseInt(formData.unit_qty),
+        factoryAliasId: formData.factoryAliasId ? parseInt(formData.factoryAliasId) : null
       });
       setMessage(`Product ${formData.code} saved successfully!`);
       handleClear();
@@ -213,6 +216,16 @@ export default function ProductMaster() {
               <option>Box</option>
               <option>Pkt</option>
               <option>Pcs</option>
+            </select>
+          </div>
+          <div className="col-span-1 md:col-span-12 mt-2 pt-2 border-t border-slate-100">
+            <label className="block text-[12px] font-[800] text-amber-600 mb-[3px]">Factory Dispatch Mapping (Optional)</label>
+            <p className="text-[10px] text-slate-500 mb-2">If selected, selling this product will internally generate a factory order for the mapped product instead.</p>
+            <select name="factoryAliasId" value={formData.factoryAliasId} onChange={handleChange} className="w-full md:w-1/2 min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-amber-300 rounded-[14px] text-[14px] focus:outline-none focus:border-amber-500 focus:ring-[4px] focus:ring-amber-500/15 transition-all">
+              <option value="">-- No Mapping (Deduct Own Stock) --</option>
+              {products.filter(p => p.id !== formData.id).map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              ))}
             </select>
           </div>
         </div>

@@ -285,12 +285,12 @@ app.get('/api/products/next-code', async (req, res) => {
 });
 
 app.post('/api/products', async (req, res) => {
-  const { code, name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status } = req.body;
+  const { code, name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId } = req.body;
   try {
     const product = await prisma.product.upsert({
       where: { code },
-      update: { name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status },
-      create: { code, name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status },
+      update: { name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId },
+      create: { code, name, type, category, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId },
     });
     res.json(product);
   } catch (err) {
@@ -1461,6 +1461,66 @@ app.get('/api/sales-orders/pending', async (req, res) => {
       include: { rep: { select: { username: true } }, customer: true, items: true }
     });
     res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sales-orders/approved', async (req, res) => {
+  try {
+    const where = { status: 'APPROVED' };
+    if (req.user && req.user.role === 'REP') {
+      where.repId = req.user.id;
+    }
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      include: { rep: { select: { username: true } }, customer: true, items: true },
+      take: 50 // Limit to recent approved
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sales-orders/:id/factory-view', async (req, res) => {
+  try {
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { customer: true, items: true }
+    });
+    
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    
+    // Translate items
+    const translatedItems = await Promise.all(order.items.map(async (item) => {
+      if (!item.productId) return { ...item, rate: 0, total: 0 };
+      
+      const prod = await prisma.product.findUnique({
+        where: { id: item.productId },
+        include: { factoryAlias: true }
+      });
+      
+      if (prod && prod.factoryAlias) {
+        return {
+          ...item,
+          productId: prod.factoryAlias.id,
+          product: prod.factoryAlias.name, // The physical box
+          rate: 0,
+          total: 0
+        };
+      }
+      
+      return { ...item, rate: 0, total: 0 };
+    }));
+    
+    res.json({
+      ...order,
+      subtotal: 0,
+      items: translatedItems
+    });
+    
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

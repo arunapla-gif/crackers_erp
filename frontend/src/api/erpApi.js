@@ -196,6 +196,24 @@ export const erpApi = {
       throw error;
     }
   },
+  getApprovedSalesOrders: async () => {
+    try {
+      const response = await api.get('/sales-orders/approved');
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching approved sales orders", error);
+      throw error;
+    }
+  },
+  getFactoryView: async (id) => {
+    try {
+      const response = await api.get(`/sales-orders/${id}/factory-view`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching factory view", error);
+      throw error;
+    }
+  },
   createSalesOrder: async (data) => {
     try {
       const response = await api.post('/sales-orders', data);

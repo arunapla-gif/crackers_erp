@@ -45,8 +45,11 @@ model Product {
   unit      String   @default("Case")
   pack_unit String?
   status    String   @default("Active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  factoryAliasId Int?
+  factoryAlias   Product? @relation("FactoryMapping", fields: [factoryAliasId], references: [id])
+  aliases        Product[] @relation("FactoryMapping")
   @@schema("crackers")
 
 }
