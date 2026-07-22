@@ -36,6 +36,8 @@ export default function SalesOrderEntry() {
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [newCustomerData, setNewCustomerData] = useState({ name: '', mobile: '', city: '', state: '', gstin: '' });
   
+  const [customRates, setCustomRates] = useState({}); // { productId: customRate }
+  
   const [rows, setRows] = useState([{ id: Date.now(), productId: null, product: '', qty: 1, rate: 0, total: 0 }]);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +49,7 @@ export default function SalesOrderEntry() {
     setRows(rows.map(r => {
       if (r.id === id) {
         const updated = { ...r, [field]: value };
-        if (field === 'qty' || field === 'rate') {
+        if (field === 'qty' || field === 'rate' || field === 'productId') {
           updated.total = (parseFloat(updated.qty || 0) * parseFloat(updated.rate || 0));
         }
         return updated;
@@ -56,12 +58,52 @@ export default function SalesOrderEntry() {
     }));
   };
 
+  // Fetch custom prices when customer changes
+  React.useEffect(() => {
+    const fetchCustomPrices = async () => {
+      if (!selectedCustomerId || isNewCustomer) {
+        setCustomRates({});
+        // Revert to standard rates for existing rows
+        setRows(prevRows => prevRows.map(r => {
+          if (!r.productId) return r;
+          const p = products.find(prod => prod.id === r.productId);
+          const rate = p ? parseFloat(p.rate) : 0;
+          return { ...r, rate, total: (parseFloat(r.qty || 0) * rate) };
+        }));
+        return;
+      }
+
+      try {
+        const prices = await erpApi.getCustomerPrices(selectedCustomerId);
+        const pricesMap = {};
+        prices.forEach(cp => pricesMap[cp.productId] = parseFloat(cp.rate));
+        setCustomRates(pricesMap);
+        
+        // Auto-update existing rows with new custom prices
+        setRows(prevRows => prevRows.map(r => {
+          if (!r.productId) return r;
+          const p = products.find(prod => prod.id === r.productId);
+          const baseRate = p ? parseFloat(p.rate) : 0;
+          const rate = pricesMap[r.productId] !== undefined ? pricesMap[r.productId] : baseRate;
+          return { ...r, rate, total: (parseFloat(r.qty || 0) * rate) };
+        }));
+      } catch (err) {
+        console.error("Failed to fetch customer prices");
+      }
+    };
+    fetchCustomPrices();
+  }, [selectedCustomerId, isNewCustomer, products]);
+
   const handleProductSelect = (id, productCode) => {
     const product = products.find(p => p.code === productCode);
     if (product) {
+      const standardRate = parseFloat(product.rate);
+      const customRate = customRates[product.id];
+      const finalRate = customRate !== undefined ? customRate : standardRate;
+      
       updateRow(id, 'product', product.name);
       updateRow(id, 'productId', product.id);
-      updateRow(id, 'rate', parseFloat(product.rate));
+      updateRow(id, 'rate', finalRate);
     }
   };
 

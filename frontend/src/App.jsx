@@ -24,6 +24,7 @@ import EmployeeMaster from './pages/EmployeeMaster';
 import PayrollEntry from './pages/PayrollEntry';
 import CompanyProfileMaster from './pages/CompanyProfileMaster';
 import InvoicePrint from './pages/InvoicePrint';
+import CustomerRates from './pages/CustomerRates';
 import { useStore } from './store/useStore';
 import { useAuth } from './store/useAuth';
 import SalesOrderEntry from './pages/SalesOrderEntry';
@@ -100,6 +101,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="customers" element={<CustomerMaster />} />
+            <Route path="customer-rates" element={<CustomerRates />} />
             <Route path="suppliers" element={<SupplierMaster />} />
             <Route path="products" element={<ProductMaster />} />
             <Route path="transporters" element={<TransporterMaster />} />

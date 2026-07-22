@@ -38,6 +38,7 @@ export default function UserMaster() {
     permissions: JSON.parse(JSON.stringify(DEFAULT_PERMS))
   });
   const [users, setUsers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [message, setMessage] = useState('');
 
   // Protect route
@@ -47,17 +48,23 @@ export default function UserMaster() {
     }
   }, [user, navigate]);
 
-  const fetchUsers = async () => {
+  const fetchUsersAndCategories = async () => {
     try {
-      const data = await erpApi.getUsers();
-      setUsers(data);
+      const [userData, prodData] = await Promise.all([
+        erpApi.getUsers(),
+        erpApi.getProducts()
+      ]);
+      setUsers(userData);
+      
+      const uniqueCategories = [...new Set(prodData.map(p => p.category).filter(Boolean))].sort();
+      setCategories(uniqueCategories);
     } catch (e) {
-      console.log('Failed to fetch users');
+      console.log('Failed to fetch users or categories');
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsersAndCategories();
   }, []);
 
   const handleChange = (e) => {
@@ -76,6 +83,23 @@ export default function UserMaster() {
         }
       }
     }));
+  };
+
+  const handleCategoryToggle = (category) => {
+    setFormData(prev => {
+      const currentAllowed = prev.permissions.allowedCategories || [];
+      const newAllowed = currentAllowed.includes(category)
+        ? currentAllowed.filter(c => c !== category)
+        : [...currentAllowed, category];
+      
+      return {
+        ...prev,
+        permissions: {
+          ...prev.permissions,
+          allowedCategories: newAllowed
+        }
+      };
+    });
   };
 
   const handleClear = () => {
@@ -111,7 +135,7 @@ export default function UserMaster() {
     try {
       await erpApi.saveUser({ ...u, status: newStatus });
       setMessage(`User marked as ${newStatus}!`);
-      fetchUsers();
+      fetchUsersAndCategories();
     } catch (error) {
       alert('Error updating user status');
     }
@@ -130,7 +154,7 @@ export default function UserMaster() {
       await erpApi.saveUser(formData);
       setMessage('User saved successfully!');
       handleClear();
-      fetchUsers();
+      fetchUsersAndCategories();
     } catch (error) {
       alert(error.message || 'Error saving user');
     }
@@ -175,7 +199,29 @@ export default function UserMaster() {
         </div>
 
         {/* Permissions Matrix */}
-        {formData.role !== 'ADMIN' && (
+        {formData.role === 'REP' && (
+          <div className="mt-4 border border-slate-200 rounded-[18px] overflow-hidden mb-6">
+            <div className="bg-orange-50 p-3 border-b border-orange-200">
+              <h3 className="text-[12px] font-black text-orange-700 uppercase tracking-wide">Rep Allowed Product Categories</h3>
+              <p className="text-[10px] text-orange-600/80 font-bold mt-1">Select which product categories this rep is allowed to see and sell. If none are selected, they can see all.</p>
+            </div>
+            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white">
+              {categories.map(cat => (
+                <label key={cat} className="flex items-center gap-2 cursor-pointer group">
+                  <input 
+                    type="checkbox"
+                    checked={(formData.permissions.allowedCategories || []).includes(cat)}
+                    onChange={() => handleCategoryToggle(cat)}
+                    className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+                  />
+                  <span className="text-xs font-bold text-slate-700 group-hover:text-orange-600 transition-colors">{cat}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {formData.role === 'STAFF' && (
           <div className="mt-4 border border-slate-200 rounded-[18px] overflow-hidden">
             <div className="bg-slate-50 p-3 border-b border-slate-200">
               <h3 className="text-[12px] font-black text-slate-700 uppercase tracking-wide">Granular Module Permissions</h3>

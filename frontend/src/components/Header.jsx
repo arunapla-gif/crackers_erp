@@ -149,6 +149,7 @@ export default function Header() {
                       </div>
                       <div className="flex flex-col gap-[2px]">
                         {canView('customers') && <MenuItem icon="👥" title="Customer Master" desc="Manage customers" onClick={() => handleNavigate('/customers', 'SALES')} textHoverClass="group-hover:text-active" />}
+                        {isAdmin && <MenuItem icon="💰" title="Customer Rates" desc="Custom pricing" onClick={() => handleNavigate('/customer-rates', 'SALES')} textHoverClass="group-hover:text-active" />}
                         {canView('transporters') && <MenuItem icon="🚚" title="Transporter Master" desc="Logistics & shipping" onClick={() => handleNavigate('/transporters', 'SALES')} textHoverClass="group-hover:text-active" />}
                         {canView('vehicles') && <MenuItem icon="🚛" title="Vehicle Master" desc="Manage dispatch fleet" onClick={() => handleNavigate('/vehicles', 'SALES')} textHoverClass="group-hover:text-active" />}
                       </div>

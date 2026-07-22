@@ -83,6 +83,26 @@ export const erpApi = {
       throw error;
     }
   },
+  
+  getCustomerPrices: async (id) => {
+    try {
+      const response = await api.get(`/customers/${id}/prices`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching customer prices", error);
+      throw error;
+    }
+  },
+  
+  saveCustomerPrices: async (id, prices) => {
+    try {
+      const response = await api.post(`/customers/${id}/prices`, { prices });
+      return response.data;
+    } catch (error) {
+      console.error("Error saving customer prices", error);
+      throw error;
+    }
+  },
 
   // Supplier APIs
   getSuppliers: async () => {

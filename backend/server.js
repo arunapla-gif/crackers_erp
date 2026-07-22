@@ -252,7 +252,59 @@ app.post('/api/suppliers', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     const products = await prisma.product.findMany();
+    
+    // Rep Restriction Logic
+    if (req.user && req.user.role === 'REP') {
+      const allowedCategories = req.user.permissions?.allowedCategories;
+      if (Array.isArray(allowedCategories) && allowedCategories.length > 0) {
+        const filteredProducts = products.filter(p => allowedCategories.includes(p.category));
+        return res.json(filteredProducts);
+      }
+    }
+    
     res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Customer Prices Route
+app.get('/api/customers/:id/prices', async (req, res) => {
+  try {
+    const prices = await prisma.customerPrice.findMany({
+      where: { customerId: parseInt(req.params.id) }
+    });
+    res.json(prices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/customers/:id/prices', requireAdmin, async (req, res) => {
+  const { prices } = req.body; // Array of { productId, rate }
+  const customerId = parseInt(req.params.id);
+  
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Clear old prices for these products or all?
+      // Better to upsert individual rows to not lose data on partial saves, 
+      // but if the UI sends the whole sheet, we can clear and recreate.
+      await tx.customerPrice.deleteMany({
+        where: { customerId }
+      });
+      
+      const validPrices = prices.filter(p => p.rate !== null && p.rate !== undefined && p.rate !== '');
+      if (validPrices.length > 0) {
+        await tx.customerPrice.createMany({
+          data: validPrices.map(p => ({
+            customerId,
+            productId: parseInt(p.productId),
+            rate: parseFloat(p.rate)
+          }))
+        });
+      }
+    });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

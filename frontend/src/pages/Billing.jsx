@@ -90,6 +90,7 @@ export default function Billing() {
 
   const [message, setMessage] = useState('');
   const [isGatewayOpen, setIsGatewayOpen] = useState(false);
+  const [customRates, setCustomRates] = useState({});
 
   // Persist header to localStorage on change
   useEffect(() => {
@@ -118,14 +119,65 @@ export default function Billing() {
     calculateTotals();
   }, [currentType, calculateTotals]);
 
+  // Fetch custom prices when customer changes
+  useEffect(() => {
+    const fetchCustomPrices = async () => {
+      if (!invoiceHeader.customer) {
+        setCustomRates({});
+        // Revert to standard rates for existing rows
+        setRows(prevRows => prevRows.map(r => {
+          if (!r.productId) return r;
+          const p = products.find(prod => prod.id === r.productId);
+          const rate = p ? parseFloat(p.rate) : 0;
+          const updated = { ...r, rate };
+          updated.gross = (parseFloat(updated.qty || 0) * rate);
+          updated.taxAmt = updated.gross * (parseFloat(updated.tax || 0) / 100);
+          updated.total = updated.gross + updated.taxAmt;
+          return updated;
+        }));
+        return;
+      }
+
+      const customerObj = customers.find(c => c.name === invoiceHeader.customer);
+      if (!customerObj) return;
+
+      try {
+        const prices = await erpApi.getCustomerPrices(customerObj.id);
+        const pricesMap = {};
+        prices.forEach(cp => pricesMap[cp.productId] = parseFloat(cp.rate));
+        setCustomRates(pricesMap);
+        
+        // Auto-update existing rows with new custom prices
+        setRows(prevRows => prevRows.map(r => {
+          if (!r.productId) return r;
+          const p = products.find(prod => prod.id === r.productId);
+          const baseRate = p ? parseFloat(p.rate) : 0;
+          const rate = pricesMap[r.productId] !== undefined ? pricesMap[r.productId] : baseRate;
+          const updated = { ...r, rate };
+          updated.gross = (parseFloat(updated.qty || 0) * rate);
+          updated.taxAmt = updated.gross * (parseFloat(updated.tax || 0) / 100);
+          updated.total = updated.gross + updated.taxAmt;
+          return updated;
+        }));
+      } catch (err) {
+        console.error("Failed to fetch customer prices");
+      }
+    };
+    fetchCustomPrices();
+  }, [invoiceHeader.customer, customers, products]);
+
   const handleProductSelect = (id, productCode) => {
     const product = products.find(p => p.code === productCode);
     if (product) {
+      const standardRate = parseFloat(product.rate);
+      const customRate = customRates[product.id];
+      const finalRate = customRate !== undefined ? customRate : standardRate;
+      
       updateRow(id, 'product', product.name);
       updateRow(id, 'productId', product.id);
       updateRow(id, 'hsn', product.hsn);
       updateRow(id, 'tax', parseFloat(product.tax));
-      updateRow(id, 'rate', parseFloat(product.rate));
+      updateRow(id, 'rate', finalRate);
     }
   };
 
