@@ -9,6 +9,7 @@ export default function Dashboard() {
   const setCurrentType = useStore((state) => state.setCurrentType);
   const { user, logout } = useAuth();
   const [repStats, setRepStats] = useState(null);
+  const [debugError, setDebugError] = useState(null);
   
   const handleLogout = () => {
     logout();
@@ -23,10 +24,13 @@ export default function Dashboard() {
     if (user?.role === 'REP') {
       const fetchRepStats = async () => {
         try {
+          setDebugError("Fetching...");
           const stats = await erpApi.getRepDashboard();
           setRepStats(stats);
+          setDebugError(null);
         } catch (error) {
           console.error("Failed to load rep stats", error);
+          setDebugError(error.message + " | " + (error.response?.data?.error || ""));
         }
       };
       fetchRepStats();
@@ -73,6 +77,12 @@ export default function Dashboard() {
           {isRep ? "Here is a quick overview of your sales performance." : "Select a module below to begin your work. Your dashboard is customized based on your role access."}
         </p>
       </div>
+      
+      {debugError && (
+        <div className="bg-red-100 text-red-800 p-4 rounded-xl text-center font-bold mb-4">
+          DEBUG API ERROR: {debugError}
+        </div>
+      )}
 
       {isRep && repStats && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
