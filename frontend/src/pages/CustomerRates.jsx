@@ -80,6 +80,30 @@ export default function CustomerRates() {
     (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const groups = {};
+  filteredProducts.forEach(p => {
+    const groupKey = p.subCategory || p.category || 'UNCATEGORIZED';
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(p);
+  });
+
+  const customOrder = [
+    '400 COUNT',
+    '400 COUNT (CORE & CELLOPHANE)',
+    '600 COUNT',
+    '700 COUNT',
+    '800 COUNT'
+  ];
+  
+  const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+    const indexA = customOrder.indexOf(a.toUpperCase());
+    const indexB = customOrder.indexOf(b.toUpperCase());
+    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+    if (indexA !== -1) return -1;
+    if (indexB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
   return (
     <div className="max-w-[1000px] mx-auto space-y-6 pt-4">
       <div>
@@ -133,24 +157,43 @@ export default function CustomerRates() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.map(p => (
-                      <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                        <td className="py-3 px-4 text-slate-500 font-bold text-xs">{p.category || '-'}</td>
-                        <td className="py-3 px-4 text-slate-700 font-bold">{p.code}</td>
-                        <td className="py-3 px-4 text-slate-800 font-bold">{p.name}</td>
-                        <td className="py-3 px-4 text-slate-500 text-right font-medium">₹{parseFloat(p.rate).toFixed(2)}</td>
-                        <td className="py-2 px-4">
-                          <input 
-                            type="number" 
-                            step="0.01" 
-                            placeholder="Standard"
-                            value={prices[p.id] !== undefined ? prices[p.id] : ''}
-                            onChange={(e) => handlePriceChange(p.id, e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-[8px] text-[13px] font-bold text-active text-right focus:outline-none focus:border-active focus:ring-[3px] focus:ring-active/20"
-                          />
-                        </td>
+                    {filteredProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-500 font-bold">No products found.</td>
                       </tr>
-                    ))}
+                    ) : (
+                      sortedGroupKeys.map(groupKey => (
+                        <React.Fragment key={groupKey}>
+                          <tr>
+                            <td colSpan={5} className="bg-[#b4d2a5] text-center font-bold text-slate-900 py-[6px] border-y border-[#9bb88d] text-[12px] uppercase tracking-[1px] shadow-sm">
+                              {groupKey}
+                            </td>
+                          </tr>
+                          {groups[groupKey].sort((a, b) => {
+                            const numA = parseInt(a.name.match(/\d+/)?.[0] || 0);
+                            const numB = parseInt(b.name.match(/\d+/)?.[0] || 0);
+                            return numA - numB;
+                          }).map(p => (
+                            <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                              <td className="py-3 px-4 text-slate-500 font-bold text-xs">{p.category || '-'}</td>
+                              <td className="py-3 px-4 text-slate-700 font-bold">{p.code}</td>
+                              <td className="py-3 px-4 text-slate-800 font-bold">{p.name}</td>
+                              <td className="py-3 px-4 text-slate-500 text-right font-medium">₹{parseFloat(p.rate).toFixed(2)}</td>
+                              <td className="py-2 px-4">
+                                <input 
+                                  type="number" 
+                                  step="0.01" 
+                                  placeholder="Standard"
+                                  value={prices[p.id] !== undefined ? prices[p.id] : ''}
+                                  onChange={(e) => handlePriceChange(p.id, e.target.value)}
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-[8px] text-[13px] font-bold text-active text-right focus:outline-none focus:border-active focus:ring-[3px] focus:ring-active/20"
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
