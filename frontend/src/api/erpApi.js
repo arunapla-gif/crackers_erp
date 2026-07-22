@@ -683,5 +683,15 @@ export const erpApi = {
       console.error("Error fetching price trends:", error);
       throw error;
     }
+  },
+  
+  getRepDashboard: async () => {
+    try {
+      const response = await api.get(`/rep/dashboard`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching rep dashboard", error);
+      throw error;
+    }
   }
 };

@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { useAuth } from '../store/useAuth';
+import { erpApi } from '../api/erpApi';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const setCurrentType = useStore((state) => state.setCurrentType);
   const { user, logout } = useAuth();
+  const [repStats, setRepStats] = useState(null);
   
   const handleLogout = () => {
     logout();
@@ -17,7 +19,19 @@ export default function Dashboard() {
   // or default to INV to keep it consistent with the overall app colors.
   useEffect(() => {
     setCurrentType('INV');
-  }, [setCurrentType]);
+    
+    if (user?.role === 'REP') {
+      const fetchRepStats = async () => {
+        try {
+          const stats = await erpApi.getRepDashboard();
+          setRepStats(stats);
+        } catch (error) {
+          console.error("Failed to load rep stats", error);
+        }
+      };
+      fetchRepStats();
+    }
+  }, [setCurrentType, user?.role]);
 
   const handleNavigate = (path, type) => {
     if (type) setCurrentType(type);
@@ -56,23 +70,102 @@ export default function Dashboard() {
           Welcome back, {user?.username || 'User'}! 👋
         </h1>
         <p className="text-sm md:text-base font-bold text-slate-500 max-w-xl mx-auto">
-          Select a module below to begin your work. Your dashboard is customized based on your role access.
+          {isRep ? "Here is a quick overview of your sales performance." : "Select a module below to begin your work. Your dashboard is customized based on your role access."}
         </p>
       </div>
 
-      {isAdmin && (
-        <div className="flex justify-center mb-8">
-          <button 
-            onClick={() => handleNavigate('/pending-orders', 'SALES')}
-            className="flex items-center gap-2 bg-amber-100 border border-amber-200 text-amber-800 px-6 py-3 rounded-full text-sm font-black shadow-sm hover:bg-amber-200 hover:-translate-y-1 transition-all"
-          >
-            <span className="text-xl">🔔</span> Review Pending Sales Orders
-          </button>
+      {isRep && repStats && (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Rep Stats Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+              <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Approved Sales</span>
+              <span className="text-3xl md:text-4xl font-black text-active tracking-tight">₹{(repStats.totalSales || 0).toLocaleString()}</span>
+            </div>
+            <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+              <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Pending Orders</span>
+              <span className="text-3xl md:text-4xl font-black text-amber-500 tracking-tight">{repStats.pendingOrdersCount}</span>
+            </div>
+            <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+              <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Assigned Customers</span>
+              <span className="text-3xl md:text-4xl font-black text-emerald-500 tracking-tight">{repStats.totalCustomers}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Quick Actions */}
+            <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm">
+              <h2 className="text-[14px] font-black text-slate-700 uppercase tracking-wide mb-4">Quick Actions</h2>
+              <div className="space-y-3">
+                <button 
+                  onClick={() => handleNavigate('/sales-order', 'SALES')}
+                  className="w-full flex items-center justify-between p-4 bg-active-soft text-active-dark rounded-[16px] font-bold hover:bg-active hover:text-white transition-all group shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">📝</span>
+                    <span>Create New Sales Order</span>
+                  </div>
+                  <span className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
+                </button>
+                <button 
+                  onClick={() => handleNavigate('/customers', 'SALES')}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 text-slate-700 rounded-[16px] font-bold hover:bg-slate-100 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">👥</span>
+                    <span>View Customer Directory</span>
+                  </div>
+                  <span className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Recent Orders */}
+            <div className="bg-white rounded-[24px] p-6 border border-slate-200 shadow-sm">
+              <h2 className="text-[14px] font-black text-slate-700 uppercase tracking-wide mb-4">Recent Orders</h2>
+              <div className="space-y-3">
+                {repStats.recentOrders && repStats.recentOrders.length > 0 ? (
+                  repStats.recentOrders.map(order => (
+                    <div key={order.id} className="flex justify-between items-center p-3 border-b border-slate-100 last:border-0 hover:bg-slate-50 rounded-lg transition-colors">
+                      <div>
+                        <div className="text-[13px] font-bold text-slate-800">{order.customerName}</div>
+                        <div className="text-[11px] font-semibold text-slate-500">{new Date(order.date).toLocaleDateString()}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[13px] font-black text-slate-700">₹{parseFloat(order.subtotal).toLocaleString()}</div>
+                        <div className={`text-[10px] font-bold uppercase tracking-wider ${
+                          order.status === 'APPROVED' ? 'text-emerald-500' : 
+                          order.status === 'REJECTED' ? 'text-rose-500' : 'text-amber-500'
+                        }`}>
+                          {order.status}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 text-sm font-bold text-slate-400">No recent orders found.</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Primary Action Modules - 6 Category Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Primary Action Modules - 6 Category Grid (Hidden for Reps) */}
+      {!isRep && (
+        <>
+          {isAdmin && (
+            <div className="flex justify-center mb-8">
+              <button 
+                onClick={() => handleNavigate('/pending-orders', 'SALES')}
+                className="flex items-center gap-2 bg-amber-100 border border-amber-200 text-amber-800 px-6 py-3 rounded-full text-sm font-black shadow-sm hover:bg-amber-200 hover:-translate-y-1 transition-all"
+              >
+                <span className="text-xl">🔔</span> Review Pending Sales Orders
+              </button>
+            </div>
+          )}
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* Sales */}
         {showSales && (
@@ -175,7 +268,9 @@ export default function Dashboard() {
             </div>
           </button>
         )}
-      </div>
+          </div>
+        </>
+      )}
 
     </div>
   );
