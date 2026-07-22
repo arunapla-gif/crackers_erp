@@ -150,7 +150,6 @@ export default function SalesOrderEntry() {
       <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
         <h2 className="text-[16px] font-black text-active uppercase tracking-[1px] mb-4 flex justify-between items-center">
           <span>Create New Sales Order</span>
-          <span className="text-[11px] bg-active/10 text-active px-3 py-1 rounded-full">ESTIMATE</span>
         </h2>
         
         {message && (
