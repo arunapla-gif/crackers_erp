@@ -71,6 +71,15 @@ export default function SalesOrderEntry() {
     });
   };
 
+  const setCartQty = (productId, qty) => {
+    setCart(prev => {
+      const newCart = { ...prev };
+      if (qty <= 0) delete newCart[productId];
+      else newCart[productId] = qty;
+      return newCart;
+    });
+  };
+
   const getProductRate = (productId) => {
     const product = products.find(p => p.id === productId);
     if (!product) return 0;
@@ -81,15 +90,16 @@ export default function SalesOrderEntry() {
 
   const cartItems = Object.keys(cart).map(idStr => {
     const productId = parseInt(idStr);
-    const qty = cart[productId];
+    const qty = cart[productId]; // This is Cases
     const product = products.find(p => p.id === productId);
-    const rate = getProductRate(productId);
+    const rate = getProductRate(productId); // Rate per Box
+    const boxesPerCase = product?.boxesPerCase || 1;
     return {
       productId,
       product: product?.name || '',
       qty,
       rate,
-      total: rate * qty
+      total: rate * boxesPerCase * qty
     };
   });
 
@@ -246,7 +256,10 @@ export default function SalesOrderEntry() {
                           <div className="flex-1 pr-3">
                             <div className="text-[10px] font-black text-slate-400 mb-0.5">{product.code}</div>
                             <div className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</div>
-                            <div className="text-[12px] font-black text-active mt-1">₹{rate.toLocaleString()}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[12px] font-black text-active">₹{rate.toLocaleString()} / Box</span>
+                              {qty > 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">(= {qty * (product.boxesPerCase || 1)} Boxes)</span>}
+                            </div>
                           </div>
                           
                           <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-[12px] border border-slate-200">
@@ -257,7 +270,13 @@ export default function SalesOrderEntry() {
                             >
                               -
                             </button>
-                            <span className="w-[20px] text-center text-[14px] font-black text-slate-700">{qty}</span>
+                            <input 
+                              type="number" 
+                              value={qty || ''} 
+                              onChange={(e) => setCartQty(product.id, parseInt(e.target.value) || 0)}
+                              className="w-[36px] text-center text-[14px] font-black text-slate-700 bg-transparent border-none focus:outline-none focus:ring-0 p-0 m-0 hide-arrows"
+                              placeholder="0"
+                            />
                             <button 
                               onClick={() => updateCart(product.id, 1)}
                               className="w-[28px] h-[28px] flex items-center justify-center rounded-[8px] bg-active text-white font-black text-[16px] shadow-sm hover:bg-active-dark transition-colors"

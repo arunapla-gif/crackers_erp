@@ -43,6 +43,7 @@ model Product {
   hsn         String   @default("3604")
   tax       Decimal  @default(18.00) @db.Decimal(5, 2)
   rate      Decimal  @default(0.00) @db.Decimal(10, 2)
+  boxesPerCase Int   @default(1)
   unit_qty  Int      @default(1)
   unit      String   @default("Case")
   pack_unit String?

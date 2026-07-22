@@ -343,12 +343,12 @@ app.get('/api/products/next-code', async (req, res) => {
 });
 
 app.post('/api/products', async (req, res) => {
-  const { code, name, type, category, subCategory, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId } = req.body;
+  const { code, name, type, category, subCategory, hsn, tax, rate, boxesPerCase, unit_qty, unit, pack_unit, status, factoryAliasId } = req.body;
   try {
     const product = await prisma.product.upsert({
       where: { code },
-      update: { name, type, category, subCategory, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId },
-      create: { code, name, type, category, subCategory, hsn, tax, rate, unit_qty, unit, pack_unit, status, factoryAliasId },
+      update: { name, type, category, subCategory, hsn, tax, rate, boxesPerCase: parseInt(boxesPerCase) || 1, unit_qty, unit, pack_unit, status, factoryAliasId },
+      create: { code, name, type, category, subCategory, hsn, tax, rate, boxesPerCase: parseInt(boxesPerCase) || 1, unit_qty, unit, pack_unit, status, factoryAliasId },
     });
     res.json(product);
   } catch (err) {

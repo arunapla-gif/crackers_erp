@@ -3,7 +3,7 @@ import { erpApi } from '../api/erpApi';
 
 export default function ProductMaster() {
   const [formData, setFormData] = useState({
-    code: '', name: '', type: 'INV', category: '', subCategory: '', hsn: '3604', tax: '18.00', rate: '0.00', unit_qty: '1', unit: 'Case', status: 'Active', factoryAliasId: ''
+    code: '', name: '', type: 'INV', category: '', subCategory: '', hsn: '3604', tax: '18.00', rate: '0.00', boxesPerCase: '1', unit_qty: '1', unit: 'Case', status: 'Active', factoryAliasId: ''
   });
   const [products, setProducts] = useState([]);
   const [message, setMessage] = useState('');
@@ -32,6 +32,7 @@ export default function ProductMaster() {
         hsn: '3604',
         tax: '18.00',
         rate: '0.00',
+        boxesPerCase: '1',
         unit_qty: '1',
         unit: 'Case',
         status: 'Active',
@@ -149,6 +150,7 @@ export default function ProductMaster() {
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Category</th>
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">HSN</th>
               <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Rate</th>
+              <th className="text-left font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Pack (Box/Case)</th>
               <th className="text-center font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Status</th>
               <th className="text-right font-bold text-slate-500 text-[11px] tracking-[0.5px] uppercase p-[10px]">Actions</th>
             </tr>
@@ -177,6 +179,7 @@ export default function ProductMaster() {
                       <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold text-active">{p.category || '-'}</td>
                       <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">{p.hsn}</td>
                       <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700">₹{p.rate}</td>
+                      <td className="bg-white border-y border-slate-200 p-[10px] text-slate-700 font-bold">{p.boxesPerCase}</td>
                       <td className="bg-white border-y border-slate-200 p-[10px] text-center">
                         <span className={`inline-block px-2 py-1 rounded-[6px] text-[10px] font-bold uppercase tracking-wider ${p.status === 'Inactive' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
                           {p.status || 'Active'}
@@ -250,6 +253,10 @@ export default function ProductMaster() {
           <div className="col-span-1 md:col-span-2">
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Rate (₹)</label>
             <input name="rate" type="number" step="0.01" value={formData.rate} onChange={handleChange} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
+          </div>
+          <div className="col-span-1 md:col-span-2">
+            <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Boxes / Case</label>
+            <input name="boxesPerCase" type="number" value={formData.boxesPerCase} onChange={handleChange} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] focus:outline-none focus:border-active focus:ring-[4px] focus:ring-active/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-all" />
           </div>
           <div className="col-span-1 md:col-span-2">
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Unit Qty</label>
