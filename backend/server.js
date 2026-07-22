@@ -1509,32 +1509,33 @@ app.get('/api/rep/dashboard', async (req, res) => {
     
     const repId = req.user.id;
 
-    // 1. Total Approved Sales
-    const approvedOrders = await prisma.salesOrder.findMany({
-      where: { repId, status: 'APPROVED' },
-      select: { subtotal: true }
-    });
+    // Run queries concurrently
+    const [approvedOrders, pendingOrdersCount, totalCustomers, recentOrders] = await Promise.all([
+      // 1. Total Approved Sales
+      prisma.salesOrder.findMany({
+        where: { repId, status: 'APPROVED' },
+        select: { subtotal: true }
+      }),
+      // 2. Pending Orders Count
+      prisma.salesOrder.count({
+        where: { repId, status: 'PENDING' }
+      }),
+      // 3. Total Assigned Customers
+      prisma.customer.count({
+        where: { repId }
+      }),
+      // 4. Recent Orders
+      prisma.salesOrder.findMany({
+        where: { repId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          customer: { select: { name: true } }
+        }
+      })
+    ]);
+
     const totalSales = approvedOrders.reduce((sum, order) => sum + parseFloat(order.subtotal || 0), 0);
-
-    // 2. Pending Orders Count
-    const pendingOrdersCount = await prisma.salesOrder.count({
-      where: { repId, status: 'PENDING' }
-    });
-
-    // 3. Total Assigned Customers
-    const totalCustomers = await prisma.customer.count({
-      where: { repId }
-    });
-
-    // 4. Recent Orders
-    const recentOrders = await prisma.salesOrder.findMany({
-      where: { repId },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-      include: {
-        customer: { select: { name: true } }
-      }
-    });
     
     const recentOrdersFormatted = recentOrders.map(ro => ({
       id: ro.id,

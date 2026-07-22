@@ -9,6 +9,7 @@ export default function Dashboard() {
   const setCurrentType = useStore((state) => state.setCurrentType);
   const { user, logout } = useAuth();
   const [repStats, setRepStats] = useState(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [debugError, setDebugError] = useState(null);
   
   const handleLogout = () => {
@@ -23,14 +24,14 @@ export default function Dashboard() {
     
     if (user?.role === 'REP') {
       const fetchRepStats = async () => {
+        setIsLoadingStats(true);
         try {
-          setDebugError("Fetching...");
           const stats = await erpApi.getRepDashboard();
           setRepStats(stats);
-          setDebugError(null);
         } catch (error) {
           console.error("Failed to load rep stats", error);
-          setDebugError(error.message + " | " + (error.response?.data?.error || ""));
+        } finally {
+          setIsLoadingStats(false);
         }
       };
       fetchRepStats();
@@ -78,13 +79,22 @@ export default function Dashboard() {
         </p>
       </div>
       
-      {debugError && (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl text-center font-bold mb-4">
-          DEBUG API ERROR: {debugError}
+      {/* Loading Skeleton */}
+      {isRep && isLoadingStats && !repStats && (
+        <div className="space-y-8 animate-pulse">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-[24px] h-[120px] border border-slate-100 shadow-sm"></div>
+            <div className="bg-white rounded-[24px] h-[120px] border border-slate-100 shadow-sm"></div>
+            <div className="bg-white rounded-[24px] h-[120px] border border-slate-100 shadow-sm"></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-[24px] h-[200px] border border-slate-100 shadow-sm"></div>
+            <div className="bg-white rounded-[24px] h-[200px] border border-slate-100 shadow-sm"></div>
+          </div>
         </div>
       )}
 
-      {isRep && repStats && (
+      {isRep && repStats && !isLoadingStats && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* Rep Stats Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
