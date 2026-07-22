@@ -10,7 +10,6 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const [repStats, setRepStats] = useState(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
-  const [debugError, setDebugError] = useState(null);
   
   const handleLogout = () => {
     logout();
