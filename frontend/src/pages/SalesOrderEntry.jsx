@@ -94,16 +94,21 @@ export default function SalesOrderEntry() {
     fetchCustomPrices();
   }, [selectedCustomerId, isNewCustomer, products]);
 
-  const handleProductSelect = (id, productCode) => {
-    const product = products.find(p => p.code === productCode);
+  const handleProductSelect = (id, searchValue) => {
+    // Extract code if format is "CODE - NAME"
+    const productCode = searchValue.includes(' - ') ? searchValue.split(' - ')[0].trim() : searchValue.trim();
+    const product = products.find(p => p.code === productCode.toUpperCase());
     if (product) {
       const standardRate = parseFloat(product.rate);
       const customRate = customRates[product.id];
       const finalRate = customRate !== undefined ? customRate : standardRate;
       
+      updateRow(id, 'productSearch', searchValue);
       updateRow(id, 'product', product.name);
       updateRow(id, 'productId', product.id);
       updateRow(id, 'rate', finalRate);
+    } else {
+      updateRow(id, 'productSearch', searchValue);
     }
   };
 
@@ -140,7 +145,7 @@ export default function SalesOrderEntry() {
     try {
       await erpApi.createSalesOrder(payload);
       setMessage('Order submitted successfully for approval!');
-      setRows([{ id: Date.now(), productId: null, product: '', qty: 1, rate: 0, total: 0 }]);
+      setRows([{ id: Date.now(), productId: null, productSearch: '', product: '', qty: 1, rate: 0, total: 0 }]);
       setSelectedCustomerId(null);
       setNewCustomerData({ name: '', mobile: '', city: '', state: '', gstin: '' });
       setIsNewCustomer(false);
@@ -218,7 +223,11 @@ export default function SalesOrderEntry() {
       {/* ITEMS SECTION */}
       <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
         <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-widest mb-4">Requested Products</h3>
-        <datalist id="productCodes">{products.map(p => <option key={p.id} value={p.code}>{p.name}</option>)}</datalist>
+        <datalist id="productSearch">
+          {products.filter(p => p.type === 'EP').map(p => (
+            <option key={p.id} value={`${p.code} - ${p.name}`} />
+          ))}
+        </datalist>
 
         <div className="space-y-4">
           {rows.map((row, index) => (
@@ -230,8 +239,8 @@ export default function SalesOrderEntry() {
               
               <div className="mb-3 pr-16">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Item #{index + 1}</span>
-                <input list="productCodes" placeholder="Code (e.g. SP01)" className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] uppercase font-bold mb-2 focus:border-active focus:ring-[3px] focus:ring-active/15" onChange={(e) => handleProductSelect(row.id, e.target.value.toUpperCase())} />
-                <input value={row.product} onChange={(e) => updateRow(row.id, 'product', e.target.value)} placeholder="Product Name" className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] font-medium focus:border-active focus:ring-[3px] focus:ring-active/15" />
+                <input list="productSearch" value={row.productSearch !== undefined ? row.productSearch : (row.productId ? `${products.find(p => p.id === row.productId)?.code} - ${row.product}` : '')} placeholder="Search by Code or Name..." className="w-full px-3 py-2 border border-slate-200 rounded-[10px] text-[13px] uppercase font-bold mb-2 focus:border-active focus:ring-[3px] focus:ring-active/15" onChange={(e) => handleProductSelect(row.id, e.target.value)} />
+                <input value={row.product} onChange={(e) => updateRow(row.id, 'product', e.target.value)} placeholder="Product Name (Auto-filled)" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-[10px] text-[13px] font-medium focus:border-active focus:ring-[3px] focus:ring-active/15" readOnly />
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
