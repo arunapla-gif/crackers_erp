@@ -217,13 +217,13 @@ export default function SalesOrderEntry() {
         </h3>
 
         {Object.entries(groupedProducts).map(([category, subCategories]) => (
-          <div key={category} className="mb-10 last:mb-0">
+          <div key={category} className="mb-8">
             {/* Main Category Header */}
-            <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 py-3 mb-4 border-b-2 border-slate-100">
-              <h4 className="text-[18px] font-black text-active uppercase tracking-wider">{category}</h4>
+            <div className="sticky top-0 bg-slate-800 text-white z-10 py-1.5 px-3 mb-2 shadow-sm">
+              <h4 className="text-[14px] font-black uppercase tracking-wider">{category}</h4>
             </div>
 
-            <div className="space-y-8">
+            <div className="flex flex-col">
               {Object.keys(subCategories).sort((a, b) => {
                 const customOrder = ['400 COUNT', '400 COUNT (CORE & CELLOPHANE)', '600 COUNT', '700 COUNT', '800 COUNT'];
                 const indexA = customOrder.indexOf(a.toUpperCase());
@@ -235,15 +235,15 @@ export default function SalesOrderEntry() {
               }).map(subCategory => {
                 const items = subCategories[subCategory];
                 return (
-                <div key={subCategory} className="bg-slate-50/50 rounded-[20px] p-5 border border-slate-100">
+                <div key={subCategory} className="mb-4">
                   {/* Sub Category Header */}
-                  <h5 className="text-[12px] font-black text-slate-500 uppercase tracking-[1.5px] mb-4 flex items-center gap-2">
-                    <div className="h-[1px] flex-1 bg-slate-200"></div>
-                    {subCategory}
-                    <div className="h-[1px] flex-1 bg-slate-200"></div>
-                  </h5>
+                  <div className="bg-slate-200 px-3 py-1 mb-1">
+                    <h5 className="text-[11px] font-black text-slate-700 uppercase tracking-[1px]">
+                      {subCategory}
+                    </h5>
+                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col border-b border-slate-200">
                     {items.sort((a, b) => {
                       const numA = parseInt(a.name.match(/\d+/)?.[0] || 0);
                       const numB = parseInt(b.name.match(/\d+/)?.[0] || 0);
@@ -252,39 +252,27 @@ export default function SalesOrderEntry() {
                       const qty = cart[product.id] || 0;
                       const rate = getProductRate(product.id);
                       return (
-                        <div key={product.id} className={`flex items-center justify-between p-3 rounded-[14px] border transition-all ${qty > 0 ? 'bg-active/5 border-active/30' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-                          <div className="flex-1 pr-3">
-                            <div className="text-[10px] font-black text-slate-400 mb-0.5">{product.code}</div>
-                            <div className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</div>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
-                              <span className="text-[12px] font-black text-active shrink-0">₹{rate.toLocaleString()} / Box</span>
-                              {qty > 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">(= {qty * (product.boxesPerCase || 1)} Boxes)</span>}
+                        <div key={product.id} className={`flex items-center justify-between py-2 px-2 border-t border-slate-100 transition-colors ${qty > 0 ? 'bg-amber-50/50' : 'bg-white'}`}>
+                          <div className="flex-1 pr-2">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-[10px] font-black text-slate-400 w-[45px] shrink-0">{product.code}</span>
+                              <span className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</span>
+                            </div>
+                            <div className="text-[11px] font-bold text-active mt-0.5 pl-[53px]">
+                              ₹{rate.toLocaleString()} / Box {qty > 0 && <span className="text-slate-500 ml-1">(= {qty * (product.boxesPerCase || 1)} Bxs)</span>}
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-2 sm:gap-3 bg-slate-50 p-1.5 rounded-[12px] border border-slate-200 shrink-0">
-                            <button 
-                              onClick={() => updateCart(product.id, -1)}
-                              className={`w-[28px] h-[28px] flex items-center justify-center rounded-[8px] font-black text-[16px] transition-colors ${qty > 0 ? 'bg-white text-rose-500 shadow-sm border border-slate-200 hover:bg-rose-50' : 'text-slate-300'}`}
-                              disabled={qty === 0}
-                            >
-                              -
-                            </button>
+                          <div className="shrink-0 flex items-center">
                             <input 
                               type="number" 
                               inputMode="numeric"
                               pattern="[0-9]*"
                               value={qty || ''} 
                               onChange={(e) => setCartQty(product.id, parseInt(e.target.value) || 0)}
-                              className="w-[36px] text-center text-[16px] font-black text-slate-700 bg-transparent border-none focus:outline-none focus:ring-0 p-0 m-0 hide-arrows"
+                              className="w-[60px] h-[36px] text-center text-[16px] font-black text-slate-800 bg-white border border-slate-300 rounded-[6px] focus:outline-none focus:border-active focus:ring-2 focus:ring-active/20 p-0 m-0 hide-arrows shadow-sm"
                               placeholder="0"
                             />
-                            <button 
-                              onClick={() => updateCart(product.id, 1)}
-                              className="w-[28px] h-[28px] flex items-center justify-center rounded-[8px] bg-active text-white font-black text-[16px] shadow-sm hover:bg-active-dark transition-colors"
-                            >
-                              +
-                            </button>
                           </div>
                         </div>
                       );
