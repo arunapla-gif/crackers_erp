@@ -40,6 +40,28 @@ export default function SalesOrderEntry() {
   const [cart, setCart] = useState({}); // { [productId]: qty }
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState('NEW_ORDER');
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Fetch recent orders for history tab
+  useEffect(() => {
+    if (activeTab === 'HISTORY') {
+      const fetchHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+          const stats = await erpApi.getRepDashboard();
+          setRecentOrders(stats.recentOrders || []);
+        } catch (error) {
+          console.error("Failed to load history", error);
+        } finally {
+          setIsLoadingHistory(false);
+        }
+      };
+      fetchHistory();
+    }
+  }, [activeTab]);
 
   // Fetch custom prices when customer changes
   useEffect(() => {
@@ -156,6 +178,56 @@ export default function SalesOrderEntry() {
   return (
     <div className="max-w-[800px] mx-auto space-y-[18px]">
       
+      {/* Top Tabs */}
+      <div className="flex bg-slate-100 p-1 rounded-[16px]">
+        <button 
+          onClick={() => setActiveTab('NEW_ORDER')}
+          className={`flex-1 py-2 text-[14px] font-bold rounded-[12px] transition-all ${activeTab === 'NEW_ORDER' ? 'bg-white text-active shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          New Order
+        </button>
+        <button 
+          onClick={() => setActiveTab('HISTORY')}
+          className={`flex-1 py-2 text-[14px] font-bold rounded-[12px] transition-all ${activeTab === 'HISTORY' ? 'bg-white text-active shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          My History
+        </button>
+      </div>
+
+      {activeTab === 'HISTORY' ? (
+        <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
+          <h2 className="text-[16px] font-black text-slate-800 uppercase tracking-[1px] mb-4">
+            Recent Orders
+          </h2>
+          
+          {isLoadingHistory ? (
+            <div className="text-center py-10 text-slate-400 font-bold">Loading history...</div>
+          ) : recentOrders.length > 0 ? (
+            <div className="space-y-3">
+              {recentOrders.map(order => (
+                <div key={order.id} className="flex justify-between items-center p-3 border border-slate-100 bg-slate-50 rounded-[12px]">
+                  <div>
+                    <div className="text-[14px] font-bold text-slate-800">{order.customerName}</div>
+                    <div className="text-[12px] font-semibold text-slate-500">{new Date(order.date).toLocaleDateString()}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[14px] font-black text-slate-700">₹{parseFloat(order.subtotal).toLocaleString()}</div>
+                    <div className={`text-[11px] font-bold uppercase tracking-wider ${
+                      order.status === 'APPROVED' ? 'text-emerald-500' : 
+                      order.status === 'REJECTED' ? 'text-rose-500' : 'text-amber-500'
+                    }`}>
+                      {order.status}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 text-slate-400 font-bold">No recent orders found.</div>
+          )}
+        </div>
+      ) : (
+        <>
       {/* HEADER SECTION */}
       <div className="bg-white rounded-[24px] p-[20px] shadow-[0_8px_24px_rgba(15,23,42,0.04)] border border-slate-200">
         <h2 className="text-[16px] font-black text-active uppercase tracking-[1px] mb-4 flex justify-between items-center">
@@ -306,7 +378,8 @@ export default function SalesOrderEntry() {
           {isSubmitting ? 'SUBMITTING...' : `SUBMIT ORDER (${cartItems.length} ITEMS)`}
         </button>
       </div>
-      
+      </>
+      )}
     </div>
   );
 }
