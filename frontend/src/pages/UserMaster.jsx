@@ -39,6 +39,7 @@ export default function UserMaster() {
   });
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
   const [message, setMessage] = useState('');
 
   // Protect route
@@ -57,7 +58,20 @@ export default function UserMaster() {
       setUsers(userData);
       
       const uniqueCategories = [...new Set(prodData.map(p => p.category).filter(Boolean))].sort();
+      
+      const uniqueSubCategories = [...new Set(prodData.map(p => p.subCategory).filter(Boolean))].sort();
+      const customOrder = ['400 COUNT', '400 COUNT (CORE & CELLOPHANE)', '600 COUNT', '700 COUNT', '800 COUNT'];
+      uniqueSubCategories.sort((a, b) => {
+        const indexA = customOrder.indexOf(a.toUpperCase());
+        const indexB = customOrder.indexOf(b.toUpperCase());
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
       setCategories(uniqueCategories);
+      setSubCategories(uniqueSubCategories);
     } catch (e) {
       console.log('Failed to fetch users or categories');
     }
@@ -203,20 +217,41 @@ export default function UserMaster() {
           <div className="mt-4 border border-slate-200 rounded-[18px] overflow-hidden mb-6">
             <div className="bg-orange-50 p-3 border-b border-orange-200">
               <h3 className="text-[12px] font-black text-orange-700 uppercase tracking-wide">Rep Allowed Product Categories</h3>
-              <p className="text-[10px] text-orange-600/80 font-bold mt-1">Select which product categories this rep is allowed to see and sell. If none are selected, they can see all.</p>
+              <p className="text-[10px] text-orange-600/80 font-bold mt-1">Select which product categories or sub-categories this rep is allowed to see and sell. If none are selected, they can see all.</p>
             </div>
-            <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white">
-              {categories.map(cat => (
-                <label key={cat} className="flex items-center gap-2 cursor-pointer group">
-                  <input 
-                    type="checkbox"
-                    checked={(formData.permissions.allowedCategories || []).includes(cat)}
-                    onChange={() => handleCategoryToggle(cat)}
-                    className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
-                  />
-                  <span className="text-xs font-bold text-slate-700 group-hover:text-orange-600 transition-colors">{cat}</span>
-                </label>
-              ))}
+            
+            <div className="p-4 bg-white">
+              <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Main Categories</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+                {categories.map(cat => (
+                  <label key={cat} className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox"
+                      checked={(formData.permissions.allowedCategories || []).includes(cat)}
+                      onChange={() => handleCategoryToggle(cat)}
+                      className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <span className="text-xs font-bold text-slate-700 group-hover:text-orange-600 transition-colors">{cat}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="h-[1px] w-full bg-slate-100 mb-4"></div>
+              
+              <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">Sub-Categories</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {subCategories.map(cat => (
+                  <label key={cat} className="flex items-center gap-2 cursor-pointer group">
+                    <input 
+                      type="checkbox"
+                      checked={(formData.permissions.allowedCategories || []).includes(cat)}
+                      onChange={() => handleCategoryToggle(cat)}
+                      className="w-4 h-4 text-orange-600 bg-gray-100 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <span className="text-xs font-bold text-slate-700 group-hover:text-orange-600 transition-colors">{cat}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
