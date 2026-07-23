@@ -1416,6 +1416,59 @@ app.get('/api/legacy/analytics/price-trends', async (req, res) => {
   }
 });
 
+// =========================================
+// GSTIN VERIFICATION (APPYFLOW)
+// =========================================
+app.get('/api/gstin/:gstin', async (req, res) => {
+  const { gstin } = req.params;
+  const apiKey = process.env.APPYFLOW_API_KEY;
+
+  if (!apiKey) {
+    console.log(`[Mock GSTIN] API Key missing, returning mock data for ${gstin}`);
+    // Mock response for testing the UI flow without an API key
+    return res.json({
+      gstin: gstin,
+      legalName: "MOCK ENTERPRISES (TESTING)",
+      tradeName: "MOCK SHOP",
+      address: "123 Mock Street, Fake City",
+      city: "Mock City",
+      state: "Tamil Nadu",
+      pincode: "626123",
+      status: "Active"
+    });
+  }
+
+  try {
+    const response = await fetch(`https://b2b.appyflow.in/api/verifyGST?gstNo=${gstin}&key_secret=${apiKey}`);
+    const data = await response.json();
+
+    if (data && data.error === false && data.taxpayerInfo) {
+      const info = data.taxpayerInfo;
+      const primaryAddress = info.pradr?.addr || {};
+      
+      res.json({
+        gstin: info.gstin,
+        legalName: info.lgnm,
+        tradeName: info.tradeNam || info.lgnm,
+        address: `${primaryAddress.bno || ''} ${primaryAddress.st || ''} ${primaryAddress.loc || ''}`.trim(),
+        city: primaryAddress.dst || primaryAddress.loc || '',
+        state: info.pradr?.addr?.stcd || '', // Might need state code mapping depending on Appyflow output
+        pincode: primaryAddress.pncd || '',
+        status: info.sts || 'Active'
+      });
+    } else {
+      res.status(400).json({ error: "Invalid GSTIN or data not found from Appyflow." });
+    }
+  } catch (error) {
+    console.error("Appyflow API Error:", error.message);
+    res.status(500).json({ error: "Failed to verify GSTIN via Appyflow." });
+  }
+});
+
+// ==========================================
+// MASTER - PRODUCTS
+// ==========================================
+
 // ==========================================
 // E-WAY BILL REPORTING
 // ==========================================
@@ -1692,6 +1745,25 @@ app.post('/api/sales-orders/:id/approve-customer', requireAdmin, async (req, res
     const updatedOrder = await prisma.salesOrder.update({
       where: { id: orderId },
       data: { customerId: customer.id, newCustomerData: null },
+      include: { customer: true, items: true }
+    });
+
+    res.json(updatedOrder);
+  } catch (err) {
+      res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/sales-orders/:id/link-customer', requireAdmin, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const { customerId } = req.body;
+    
+    if (!customerId) return res.status(400).json({ error: 'Customer ID is required' });
+
+    const updatedOrder = await prisma.salesOrder.update({
+      where: { id: orderId },
+      data: { customerId: parseInt(customerId), newCustomerData: null },
       include: { customer: true, items: true }
     });
 

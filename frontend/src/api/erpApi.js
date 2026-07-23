@@ -248,7 +248,17 @@ export const erpApi = {
       const response = await api.post(`/sales-orders/${id}/approve-customer`);
       return response.data;
     } catch (error) {
-      console.error("Error approving customer from sales order", error);
+      console.error("Error approving sales order customer", error);
+      throw error;
+    }
+  },
+  
+  linkCustomerToOrder: async (orderId, customerId) => {
+    try {
+      const response = await api.post(`/sales-orders/${orderId}/link-customer`, { customerId });
+      return response.data;
+    } catch (error) {
+      console.error("Error linking customer to order", error);
       throw error;
     }
   },
@@ -692,6 +702,18 @@ export const erpApi = {
     } catch (error) {
       console.error("Error fetching rep dashboard", error);
       throw error;
+    }
+  },
+
+  // ==========================================
+  // GSTIN VERIFICATION
+  // ==========================================
+  verifyGSTIN: async (gstin) => {
+    try {
+      const response = await api.get(`/gstin/${gstin}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data?.error || "Failed to verify GSTIN";
     }
   }
 };

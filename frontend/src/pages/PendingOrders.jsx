@@ -249,17 +249,21 @@ export default function PendingOrders() {
                     >
                       Reject Order
                     </button>
-                    <button 
-                      disabled={isNewCustomer}
-                      onClick={() => handleApproveOrder(order)}
-                      className={`font-black text-[13px] px-8 py-3 rounded-xl shadow-lg transition-all ${
-                        isNewCustomer 
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                        : 'bg-active-dark text-white hover:scale-105 active:scale-95 shadow-[0_8px_20px_rgba(0,0,0,0.15)]'
-                      }`}
-                    >
-                      {isNewCustomer ? 'Awaiting Lead Approval' : 'Approve & Create Performa'}
-                    </button>
+                    {isNewCustomer ? (
+                      <button 
+                        onClick={() => navigate('/customers', { state: { verifyLead: true, orderId: order.id, leadData: newCustomerObj } })}
+                        className="bg-amber-500 text-white font-black text-[13px] px-8 py-3 rounded-xl shadow-lg hover:bg-amber-600 transition-all hover:scale-105 active:scale-95 shadow-[0_8px_20px_rgba(0,0,0,0.15)] flex items-center gap-2"
+                      >
+                        <span className="animate-pulse">⚠️</span> Verify Lead in Master
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleApproveOrder(order)}
+                        className="bg-active-dark text-white font-black text-[13px] px-8 py-3 rounded-xl shadow-lg hover:scale-105 active:scale-95 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.15)]"
+                      >
+                        Approve & Create Performa
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="bg-slate-50 px-6 py-4 flex justify-end items-center border-t border-slate-100 gap-4">

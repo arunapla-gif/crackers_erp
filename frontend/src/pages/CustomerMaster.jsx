@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { erpApi } from '../api/erpApi';
 
 export default function CustomerMaster() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const verifyLeadState = location.state?.verifyLead;
+  const leadData = location.state?.leadData;
+  const pendingOrderId = location.state?.orderId;
+
   const [formData, setFormData] = useState({
     id: null, name: '', mobile: '', reference: '', address: '', city: '', district: '', state: '', pincode: '', id_number: '', gstin: '', status: 'Active', addresses: [], repId: ''
   });
@@ -29,10 +36,50 @@ export default function CustomerMaster() {
     }
   };
 
+  const verifyGstinData = async (gstin) => {
+    setIsSearchingGSTIN(true);
+    try {
+      // Using the erpApi which calls our backend route
+      const data = await erpApi.verifyGSTIN(gstin);
+      
+      setFormData((prev) => ({
+        ...prev,
+        name: data.tradeName || data.legalName || prev.name,
+        address: data.address || prev.address,
+        city: data.city || prev.city,
+        state: data.state || prev.state,
+        pincode: data.pincode || prev.pincode
+      }));
+    } catch (err) {
+      console.error("Error fetching GSTIN data:", err);
+    } finally {
+      setIsSearchingGSTIN(false);
+    }
+  };
+
   useEffect(() => {
     fetchCustomers();
     fetchReps();
-  }, []);
+    
+    // Intercept Lead Verification from Pending Orders
+    if (verifyLeadState && leadData) {
+      setMessage("LEAD VERIFICATION MODE: Please verify all details and save to approve the pending order.");
+      
+      const incomingGstin = (leadData.gstin || leadData.type === 'GST') ? (leadData.gstin || '') : 'URP';
+      setFormData(prev => ({
+        ...prev,
+        name: leadData.name || '',
+        city: leadData.city || '',
+        mobile: leadData.mobile || '',
+        gstin: incomingGstin
+      }));
+      
+      // Auto-trigger full GSTIN verification if GSTIN exists
+      if (incomingGstin !== 'URP' && incomingGstin.length === 15) {
+        verifyGstinData(incomingGstin);
+      }
+    }
+  }, [verifyLeadState, leadData]);
 
   const handleChange = async (e) => {
     const { name, value } = e.target;
@@ -41,69 +88,7 @@ export default function CustomerMaster() {
     setFormData((prev) => ({ ...prev, [name]: finalValue }));
 
     if (name === 'gstin' && finalValue.length === 15) {
-      setIsSearchingGSTIN(true);
-      try {
-        const response = await fetch(`https://appyflow.in/api/verifyGST?gstNo=${finalValue}&key_secret=7eWP3WelRNexYGJ172L3Hb8JNrY2`);
-        const data = await response.json();
-        
-        if (!data.error && data.taxpayerInfo) {
-          const info = data.taxpayerInfo;
-          let addresses = [];
-          
-          // 1. Parse Principal Address
-          if (info.pradr && info.pradr.addr) {
-            const addrInfo = info.pradr.addr;
-            const addrParts = [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.loc, addrInfo.flno].filter(Boolean);
-            addresses.push({
-              type: 'Principal Place',
-              address: addrParts.join(', '),
-              city: addrInfo.loc || addrInfo.city || '',
-              district: addrInfo.dst || '',
-              state: addrInfo.stcd || '',
-              pincode: addrInfo.pncd || ''
-            });
-          }
-
-          // 2. Parse Additional Addresses
-          if (info.adadr && Array.isArray(info.adadr)) {
-            info.adadr.forEach((ad, idx) => {
-              if (ad.addr) {
-                const addrInfo = ad.addr;
-                const addrParts = [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.loc, addrInfo.flno].filter(Boolean);
-                addresses.push({
-                  type: `Additional Place ${idx + 1}`,
-                  address: addrParts.join(', '),
-                  city: addrInfo.loc || addrInfo.city || '',
-                  district: addrInfo.dst || '',
-                  state: addrInfo.stcd || '',
-                  pincode: addrInfo.pncd || ''
-                });
-              }
-            });
-          }
-
-          const businessName = info.tradeNam || info.lgnm || '';
-          
-          if (addresses.length > 0) {
-            // Auto-fill the first one (Principal) by default, but save all of them silently
-            setFormData((prev) => ({
-              ...prev,
-              name: businessName,
-              address: addresses[0].address,
-              city: addresses[0].city,
-              district: addresses[0].district,
-              state: addresses[0].state,
-              pincode: addresses[0].pincode,
-              addresses: addresses
-            }));
-          }
-        } else {
-          console.warn("GSTIN search returned an error or no data:", data.message);
-        }
-      } catch (err) {
-        console.error("Error fetching GSTIN data:", err);
-      }
-      setIsSearchingGSTIN(false);
+      verifyGstinData(finalValue);
     }
 
     if (name === 'pincode' && finalValue.length === 6) {
@@ -161,12 +146,24 @@ export default function CustomerMaster() {
       repId: formData.repId || null
     };
     try {
-      await erpApi.saveCustomer(payload);
+      const savedCustomer = await erpApi.saveCustomer(payload);
+      
+      // If we are in Lead Verification Mode, link the new customer to the order
+      if (verifyLeadState && pendingOrderId && savedCustomer?.id) {
+        setMessage('Customer verified! Linking to pending order...');
+        await erpApi.linkCustomerToOrder(pendingOrderId, savedCustomer.id);
+        setMessage('Order Linked! Returning to Pending Orders...');
+        setTimeout(() => {
+          navigate('/pending-orders');
+        }, 1500);
+        return; // Don't clear form yet since we are navigating away
+      }
+
       setMessage('Customer saved successfully!');
       handleClear();
       fetchCustomers();
     } catch (error) {
-      alert('Error saving to PostgreSQL. Ensure backend is running.');
+      alert('Error saving customer. Ensure backend is running.');
     }
   };
 

@@ -33,6 +33,8 @@ export default function SalesOrderEntry() {
   const { data: customers = [] } = useCustomers();
   
   const [isNewCustomer, setIsNewCustomer] = useState(false);
+  const [newCustomerType, setNewCustomerType] = useState('UNREGISTERED');
+  const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [newCustomerData, setNewCustomerData] = useState({ name: '', mobile: '', city: '', state: '', gstin: '' });
   
@@ -138,15 +140,28 @@ export default function SalesOrderEntry() {
     return groups;
   }, {});
 
+  // Add new customer validation
+  const validateNewCustomer = () => {
+    if (!isNewCustomer) return true;
+    if (newCustomerType === 'GST' && (!newCustomerData.gstin || newCustomerData.gstin.length !== 15)) {
+      alert("Please enter a valid 15-character GSTIN.");
+      return false;
+    }
+    if (!newCustomerData.name) {
+      alert("Please provide the customer Name or Fetch it via GSTIN.");
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async () => {
     if (!isNewCustomer && !selectedCustomerId) {
       alert('Please select a customer or add a new one.');
       return;
     }
-    if (isNewCustomer && !newCustomerData.name) {
-      alert('New Customer Name is required.');
-      return;
-    }
+    
+    if (!validateNewCustomer()) return;
+    
     if (cartItems.length === 0) {
       alert('Add at least one product.');
       return;
@@ -154,7 +169,7 @@ export default function SalesOrderEntry() {
 
     const payload = {
       customerId: isNewCustomer ? null : selectedCustomerId,
-      newCustomerData: isNewCustomer ? newCustomerData : null,
+      newCustomerData: isNewCustomer ? { ...newCustomerData, type: newCustomerType } : null,
       subtotal,
       items: cartItems
     };
@@ -167,6 +182,7 @@ export default function SalesOrderEntry() {
       setSelectedCustomerId(null);
       setNewCustomerData({ name: '', mobile: '', city: '', state: '', gstin: '' });
       setIsNewCustomer(false);
+      setNewCustomerType('UNREGISTERED');
       setTimeout(() => setMessage(''), 4000);
     } catch (e) {
       alert('Error submitting order: ' + (e.response?.data?.error || e.message));
@@ -263,18 +279,71 @@ export default function SalesOrderEntry() {
                 placeholder="Search Customer..."
               />
             ) : (
-              <div className="bg-active/5 p-4 rounded-[16px] border border-active/20 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in zoom-in duration-300">
-                <div className="col-span-1 md:col-span-2">
-                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">New Customer Name *</label>
-                  <input value={newCustomerData.name} onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})} className="w-full h-[43px] px-[12px] border border-active/30 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Name" />
+              <div className="bg-active/5 p-4 rounded-[16px] border border-active/20 flex flex-col gap-4 animate-in fade-in zoom-in duration-300">
+                {/* GST Toggle */}
+                <div className="flex bg-white rounded-[12px] p-1 border border-slate-200">
+                  <button 
+                    onClick={() => setNewCustomerType('GST')}
+                    className={`flex-1 py-1.5 text-[12px] font-bold rounded-[8px] transition-all ${newCustomerType === 'GST' ? 'bg-active text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >GST Registered</button>
+                  <button 
+                    onClick={() => setNewCustomerType('UNREGISTERED')}
+                    className={`flex-1 py-1.5 text-[12px] font-bold rounded-[8px] transition-all ${newCustomerType === 'UNREGISTERED' ? 'bg-active text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >Unregistered / Cash</button>
                 </div>
-                <div>
-                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Mobile</label>
-                  <input value={newCustomerData.mobile} onChange={e => setNewCustomerData({...newCustomerData, mobile: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Mobile" />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">City</label>
-                  <input value={newCustomerData.city} onChange={e => setNewCustomerData({...newCustomerData, city: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="City" />
+
+                {newCustomerType === 'GST' && (
+                  <div>
+                    <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">GSTIN (15 Digits) *</label>
+                    <div className="flex gap-2">
+                      <input 
+                        value={newCustomerData.gstin} 
+                        onChange={e => setNewCustomerData({...newCustomerData, gstin: e.target.value.toUpperCase()})} 
+                        className="flex-1 h-[43px] px-[12px] border border-active/30 rounded-[14px] text-[14px] uppercase focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white font-mono" 
+                        placeholder="29ABCDE1234F1Z5" 
+                        maxLength={15}
+                      />
+                      <button 
+                        onClick={async () => {
+                          if (newCustomerData.gstin.length !== 15) return alert("Enter 15 character GSTIN");
+                          setIsVerifyingGstin(true);
+                          try {
+                            const data = await erpApi.verifyGSTIN(newCustomerData.gstin);
+                            setNewCustomerData({...newCustomerData, name: data.tradeName || data.legalName, city: data.city || ''});
+                          } catch(err) {
+                            alert(err);
+                          } finally {
+                            setIsVerifyingGstin(false);
+                          }
+                        }}
+                        disabled={isVerifyingGstin || newCustomerData.gstin.length !== 15}
+                        className="h-[43px] px-4 bg-active text-white rounded-[14px] font-bold text-[12px] disabled:opacity-50"
+                      >
+                        {isVerifyingGstin ? 'Fetching...' : 'Fetch'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="col-span-1 md:col-span-2">
+                    <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Shop / Customer Name *</label>
+                    <input 
+                      value={newCustomerData.name} 
+                      onChange={e => setNewCustomerData({...newCustomerData, name: e.target.value})} 
+                      disabled={newCustomerType === 'GST' && newCustomerData.name !== ''}
+                      className="w-full h-[43px] px-[12px] border border-active/30 rounded-[14px] text-[14px] focus:border-active disabled:bg-slate-100 disabled:text-slate-500 focus:ring-[3px] focus:ring-active/15 bg-white" 
+                      placeholder="Name" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Mobile</label>
+                    <input value={newCustomerData.mobile} onChange={e => setNewCustomerData({...newCustomerData, mobile: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Mobile" />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">City</label>
+                    <input value={newCustomerData.city} onChange={e => setNewCustomerData({...newCustomerData, city: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="City" />
+                  </div>
                 </div>
               </div>
             )}
