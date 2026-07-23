@@ -256,13 +256,13 @@ export default function SalesOrderEntry() {
                           <div className="flex-1 pr-3">
                             <div className="text-[10px] font-black text-slate-400 mb-0.5">{product.code}</div>
                             <div className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[12px] font-black text-active">₹{rate.toLocaleString()} / Box</span>
-                              {qty > 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">(= {qty * (product.boxesPerCase || 1)} Boxes)</span>}
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-[12px] font-black text-active shrink-0">₹{rate.toLocaleString()} / Box</span>
+                              {qty > 0 && <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">(= {qty * (product.boxesPerCase || 1)} Boxes)</span>}
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-[12px] border border-slate-200">
+                          <div className="flex items-center gap-2 sm:gap-3 bg-slate-50 p-1.5 rounded-[12px] border border-slate-200 shrink-0">
                             <button 
                               onClick={() => updateCart(product.id, -1)}
                               className={`w-[28px] h-[28px] flex items-center justify-center rounded-[8px] font-black text-[16px] transition-colors ${qty > 0 ? 'bg-white text-rose-500 shadow-sm border border-slate-200 hover:bg-rose-50' : 'text-slate-300'}`}
@@ -272,6 +272,8 @@ export default function SalesOrderEntry() {
                             </button>
                             <input 
                               type="number" 
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={qty || ''} 
                               onChange={(e) => setCartQty(product.id, parseInt(e.target.value) || 0)}
                               className="w-[36px] text-center text-[16px] font-black text-slate-700 bg-transparent border-none focus:outline-none focus:ring-0 p-0 m-0 hide-arrows"
