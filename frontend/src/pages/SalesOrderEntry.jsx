@@ -274,7 +274,7 @@ export default function SalesOrderEntry() {
                               type="number" 
                               value={qty || ''} 
                               onChange={(e) => setCartQty(product.id, parseInt(e.target.value) || 0)}
-                              className="w-[36px] text-center text-[14px] font-black text-slate-700 bg-transparent border-none focus:outline-none focus:ring-0 p-0 m-0 hide-arrows"
+                              className="w-[36px] text-center text-[16px] font-black text-slate-700 bg-transparent border-none focus:outline-none focus:ring-0 p-0 m-0 hide-arrows"
                               placeholder="0"
                             />
                             <button 
@@ -300,7 +300,7 @@ export default function SalesOrderEntry() {
       </div>
 
       {/* FOOTER ACTION */}
-      <div className="bg-active-dark rounded-[24px] p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-6 z-20">
+      <div className="bg-active-dark rounded-[24px] p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-6 z-20 mb-[env(safe-area-inset-bottom)]">
         <div>
           <span className="block text-[12px] font-bold text-white/70 uppercase tracking-widest">Order Subtotal</span>
           <span className="block text-3xl font-black tracking-tight">₹{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
