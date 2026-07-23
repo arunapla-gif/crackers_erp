@@ -235,12 +235,16 @@ export default function SalesOrderEntry() {
               }).map(subCategory => {
                 const items = subCategories[subCategory];
                 return (
-                <div key={subCategory} className="mb-4">
+                <div key={subCategory} className="mb-6">
                   {/* Sub Category Header */}
-                  <div className="py-1 mb-1 border-b border-slate-200">
-                    <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-[2px]">
-                      {subCategory}
-                    </h5>
+                  <div className="flex items-center gap-3 mt-4 mb-2">
+                    <div className="h-[2px] flex-1 bg-gradient-to-r from-transparent to-slate-200"></div>
+                    <div className="bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                      <h5 className="text-[10px] font-black text-slate-600 uppercase tracking-[3px]">
+                        {subCategory}
+                      </h5>
+                    </div>
+                    <div className="h-[2px] flex-1 bg-gradient-to-l from-transparent to-slate-200"></div>
                   </div>
 
                   <div className="flex flex-col">
