@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { useAuth } from '../store/useAuth';
+import { queryClient } from '../api/queryClient';
 
 const MenuItem = ({ icon, title, desc, onClick, themeClass = '', textHoverClass = '' }) => (
   <button 
@@ -58,6 +59,7 @@ export default function Header() {
   };
 
   const handleLogout = () => {
+    queryClient.clear();
     logout();
     navigate('/login');
   };
