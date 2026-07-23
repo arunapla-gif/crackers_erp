@@ -1438,31 +1438,41 @@ app.get('/api/gstin/:gstin', async (req, res) => {
     });
   }
 
-  try {
-    const response = await fetch(`https://b2b.appyflow.in/api/verifyGST?gstNo=${gstin}&key_secret=${apiKey}`);
-    const data = await response.json();
+  const https = require('https');
+  const url = `https://b2b.appyflow.in/api/verifyGST?gstNo=${gstin}&key_secret=${apiKey}`;
 
-    if (data && data.error === false && data.taxpayerInfo) {
-      const info = data.taxpayerInfo;
-      const primaryAddress = info.pradr?.addr || {};
-      
-      res.json({
-        gstin: info.gstin,
-        legalName: info.lgnm,
-        tradeName: info.tradeNam || info.lgnm,
-        address: `${primaryAddress.bno || ''} ${primaryAddress.st || ''} ${primaryAddress.loc || ''}`.trim(),
-        city: primaryAddress.dst || primaryAddress.loc || '',
-        state: info.pradr?.addr?.stcd || '', // Might need state code mapping depending on Appyflow output
-        pincode: primaryAddress.pncd || '',
-        status: info.sts || 'Active'
-      });
-    } else {
-      res.status(400).json({ error: "Invalid GSTIN or data not found from Appyflow." });
-    }
-  } catch (error) {
+  https.get(url, (apiRes) => {
+    let rawData = '';
+    apiRes.on('data', (chunk) => { rawData += chunk; });
+    apiRes.on('end', () => {
+      try {
+        const data = JSON.parse(rawData);
+        if (data && data.error === false && data.taxpayerInfo) {
+          const info = data.taxpayerInfo;
+          const primaryAddress = info.pradr?.addr || {};
+          
+          res.json({
+            gstin: info.gstin,
+            legalName: info.lgnm,
+            tradeName: info.tradeNam || info.lgnm,
+            address: `${primaryAddress.bno || ''} ${primaryAddress.st || ''} ${primaryAddress.loc || ''}`.trim(),
+            city: primaryAddress.dst || primaryAddress.loc || '',
+            state: info.pradr?.addr?.stcd || '',
+            pincode: primaryAddress.pncd || '',
+            status: info.sts || 'Active'
+          });
+        } else {
+          res.status(400).json({ error: "Invalid GSTIN or data not found from Appyflow." });
+        }
+      } catch (e) {
+        console.error("Appyflow JSON Parse Error:", e.message);
+        res.status(500).json({ error: "Failed to parse GSTIN response." });
+      }
+    });
+  }).on('error', (error) => {
     console.error("Appyflow API Error:", error.message);
     res.status(500).json({ error: "Failed to verify GSTIN via Appyflow." });
-  }
+  });
 });
 
 // ==========================================
