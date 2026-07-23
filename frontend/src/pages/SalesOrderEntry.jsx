@@ -217,10 +217,10 @@ export default function SalesOrderEntry() {
         </h3>
 
         {Object.entries(groupedProducts).map(([category, subCategories]) => (
-          <div key={category} className="mb-8">
+          <div key={category} className="mb-6">
             {/* Main Category Header */}
-            <div className="sticky top-0 bg-slate-800 text-white z-10 py-1.5 px-3 mb-2 shadow-sm">
-              <h4 className="text-[14px] font-black uppercase tracking-wider">{category}</h4>
+            <div className="sticky top-0 bg-white/95 backdrop-blur-md z-10 py-2 mb-2 border-b-2 border-active">
+              <h4 className="text-[15px] font-black text-slate-800 uppercase tracking-widest">{category}</h4>
             </div>
 
             <div className="flex flex-col">
@@ -237,13 +237,13 @@ export default function SalesOrderEntry() {
                 return (
                 <div key={subCategory} className="mb-4">
                   {/* Sub Category Header */}
-                  <div className="bg-slate-200 px-3 py-1 mb-1">
-                    <h5 className="text-[11px] font-black text-slate-700 uppercase tracking-[1px]">
+                  <div className="py-1 mb-1 border-b border-slate-200">
+                    <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-[2px]">
                       {subCategory}
                     </h5>
                   </div>
 
-                  <div className="flex flex-col border-b border-slate-200">
+                  <div className="flex flex-col">
                     {items.sort((a, b) => {
                       const numA = parseInt(a.name.match(/\d+/)?.[0] || 0);
                       const numB = parseInt(b.name.match(/\d+/)?.[0] || 0);
@@ -252,27 +252,25 @@ export default function SalesOrderEntry() {
                       const qty = cart[product.id] || 0;
                       const rate = getProductRate(product.id);
                       return (
-                        <div key={product.id} className={`flex items-center justify-between py-2 px-2 border-t border-slate-100 transition-colors ${qty > 0 ? 'bg-amber-50/50' : 'bg-white'}`}>
+                        <div key={product.id} className={`flex items-center justify-between py-2.5 border-b border-slate-100 transition-colors ${qty > 0 ? 'bg-active/5' : ''}`}>
                           <div className="flex-1 pr-2">
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-[10px] font-black text-slate-400 w-[45px] shrink-0">{product.code}</span>
-                              <span className="text-[13px] font-bold text-slate-800 leading-tight">{product.name}</span>
-                            </div>
-                            <div className="text-[11px] font-bold text-active mt-0.5 pl-[53px]">
-                              ₹{rate.toLocaleString()} / Box {qty > 0 && <span className="text-slate-500 ml-1">(= {qty * (product.boxesPerCase || 1)} Bxs)</span>}
+                            <div className="text-[14px] font-bold text-slate-800 leading-tight">{product.name}</div>
+                            <div className="text-[12px] font-bold text-slate-500 mt-0.5">
+                              ₹{rate.toLocaleString()}
                             </div>
                           </div>
                           
-                          <div className="shrink-0 flex items-center">
+                          <div className="shrink-0 flex flex-col items-end">
                             <input 
                               type="number" 
                               inputMode="numeric"
                               pattern="[0-9]*"
                               value={qty || ''} 
                               onChange={(e) => setCartQty(product.id, parseInt(e.target.value) || 0)}
-                              className="w-[60px] h-[36px] text-center text-[16px] font-black text-slate-800 bg-white border border-slate-300 rounded-[6px] focus:outline-none focus:border-active focus:ring-2 focus:ring-active/20 p-0 m-0 hide-arrows shadow-sm"
+                              className="w-[50px] h-[32px] text-center text-[16px] font-black text-slate-800 bg-slate-100 border-none rounded-[6px] focus:outline-none focus:ring-2 focus:ring-active p-0 m-0 hide-arrows"
                               placeholder="0"
                             />
+                            {qty > 0 && <span className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{qty * (product.boxesPerCase || 1)} BXS</span>}
                           </div>
                         </div>
                       );
