@@ -107,10 +107,31 @@ export default function Billing() {
     return '';
   };
 
-  // Open gateway if no company is selected
+  const handleGatewaySelect = (profile) => {
+    let newDispatchAddress = `${profile.address}, ${profile.city}, ${profile.district}, ${profile.state} - ${profile.pincode}`;
+    let defaultSeries = profile.billingSeries && profile.billingSeries.length > 0 ? profile.billingSeries[0].prefix : '';
+    let nextNo = getNextNumber(profile.id, defaultSeries, profiles);
+    setOriginState(profile.state);
+    setInvoiceHeader(prev => ({ 
+      ...prev, 
+      companyProfileName: `${profile.name} - ${profile.gstin}`, 
+      companyProfileId: profile.id, 
+      dispatchAddress: newDispatchAddress, 
+      series: defaultSeries, 
+      number: nextNo 
+    }));
+    setIsGatewayOpen(false);
+  };
+
+  // Auto-select first company profile to avoid manual entry
   useEffect(() => {
     if (profiles.length > 0 && !invoiceHeader.companyProfileId && !isGatewayOpen) {
-      setIsGatewayOpen(true);
+      if (profiles.length === 1 || currentType === 'PRO') {
+        // Auto select the first profile so series and number are auto-generated
+        handleGatewaySelect(profiles[0]);
+      } else {
+        setIsGatewayOpen(true);
+      }
     }
   }, [profiles, invoiceHeader.companyProfileId]);
 
@@ -306,21 +327,6 @@ export default function Billing() {
     }
   };
 
-  const handleGatewaySelect = (profile) => {
-    let newDispatchAddress = `${profile.address}, ${profile.city}, ${profile.district}, ${profile.state} - ${profile.pincode}`;
-    let defaultSeries = profile.billingSeries && profile.billingSeries.length > 0 ? profile.billingSeries[0].prefix : '';
-    let nextNo = getNextNumber(profile.id, defaultSeries, profiles);
-    setOriginState(profile.state);
-    setInvoiceHeader({ 
-      ...invoiceHeader, 
-      companyProfileName: `${profile.name} - ${profile.gstin}`, 
-      companyProfileId: profile.id, 
-      dispatchAddress: newDispatchAddress, 
-      series: defaultSeries, 
-      number: nextNo 
-    });
-    setIsGatewayOpen(false);
-  };
 
   if (isGatewayOpen) {
     return (
