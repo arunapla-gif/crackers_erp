@@ -1439,7 +1439,7 @@ app.get('/api/gstin/:gstin', async (req, res) => {
   }
 
   const https = require('https');
-  const url = `https://b2b.appyflow.in/api/verifyGST?gstNo=${gstin}&key_secret=${apiKey}`;
+  const url = `https://appyflow.in/api/verifyGST?gstNo=${gstin}&key_secret=${apiKey}`;
 
   https.get(url, (apiRes) => {
     let rawData = '';
