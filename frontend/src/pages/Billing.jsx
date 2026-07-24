@@ -109,7 +109,8 @@ export default function Billing() {
 
   const handleGatewaySelect = (profile) => {
     let newDispatchAddress = `${profile.address}, ${profile.city}, ${profile.district}, ${profile.state} - ${profile.pincode}`;
-    let defaultSeries = profile.billingSeries && profile.billingSeries.length > 0 ? profile.billingSeries[0].prefix : '';
+    let filteredSeries = profile.billingSeries ? profile.billingSeries.filter(s => s.docType === currentType) : [];
+    let defaultSeries = filteredSeries.length > 0 ? filteredSeries[0].prefix : '';
     let nextNo = getNextNumber(profile.id, defaultSeries, profiles);
     setOriginState(profile.state);
     setInvoiceHeader(prev => ({ 
@@ -410,7 +411,8 @@ export default function Billing() {
                     }
                     const profile = selected.profile;
                     let newDispatchAddress = `${profile.address}, ${profile.city}, ${profile.district}, ${profile.state} - ${profile.pincode}`;
-                    let defaultSeries = profile.billingSeries && profile.billingSeries.length > 0 ? profile.billingSeries[0].prefix : '';
+                    let filteredSeries = profile.billingSeries ? profile.billingSeries.filter(s => s.docType === currentType) : [];
+                    let defaultSeries = filteredSeries.length > 0 ? filteredSeries[0].prefix : '';
                     let nextNo = getNextNumber(profile.id, defaultSeries, profiles);
                     setOriginState(profile.state);
                     setInvoiceHeader({ ...invoiceHeader, companyProfileName: selected.label, companyProfileId: profile.id, dispatchAddress: newDispatchAddress, series: defaultSeries, number: nextNo });
@@ -491,7 +493,7 @@ export default function Billing() {
                     {(() => {
                       const activeProfile = profiles.find(p => p.id.toString() === String(invoiceHeader.companyProfileId));
                       if (activeProfile && activeProfile.billingSeries) {
-                        return activeProfile.billingSeries.map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
+                        return activeProfile.billingSeries.filter(s => s.docType === currentType).map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
                       }
                       return null;
                     })()}
@@ -714,7 +716,7 @@ export default function Billing() {
                               {(() => {
                                 const activeProfile = profiles.find(p => p.id.toString() === String(invoiceHeader.companyProfileId));
                                 if (activeProfile && activeProfile.billingSeries) {
-                                  return activeProfile.billingSeries.map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
+                                  return activeProfile.billingSeries.filter(s => s.docType === currentType).map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
                                 }
                                 return null;
                               })()}
@@ -762,7 +764,7 @@ export default function Billing() {
                         {(() => {
                           const activeProfile = profiles.find(p => p.id.toString() === String(invoiceHeader.companyProfileId));
                           if (activeProfile && activeProfile.billingSeries) {
-                            return activeProfile.billingSeries.map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
+                            return activeProfile.billingSeries.filter(s => s.docType === currentType).map(s => <option key={s.id} value={s.prefix}>{s.prefix}</option>);
                           }
                           return null;
                         })()}

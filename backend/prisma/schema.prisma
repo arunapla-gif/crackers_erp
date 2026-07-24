@@ -443,6 +443,7 @@ model BillingSeries {
   companyProfile   CompanyProfile @relation(fields: [companyProfileId], references: [id], onDelete: Cascade)
   prefix           String
   name             String
+  docType          String         @default("INV")
   lastNumber       Int            @default(0)
   status           String         @default("Active")
   createdAt        DateTime       @default(now())

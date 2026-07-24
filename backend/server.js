@@ -1162,17 +1162,17 @@ app.delete('/api/company-profiles/:id', async (req, res) => {
 
 // Billing Series Routes
 app.post('/api/billing-series', async (req, res) => {
-  const { id, companyProfileId, prefix, name, lastNumber, status } = req.body;
+  const { id, companyProfileId, prefix, name, docType, lastNumber, status } = req.body;
   try {
     if (id) {
       const series = await prisma.billingSeries.update({
         where: { id: parseInt(id) },
-        data: { prefix, name, lastNumber: parseInt(lastNumber || 0), status: status || 'Active' }
+        data: { prefix, name, docType: docType || 'INV', lastNumber: parseInt(lastNumber || 0), status: status || 'Active' }
       });
       res.json(series);
     } else {
       const series = await prisma.billingSeries.create({
-        data: { companyProfileId: parseInt(companyProfileId), prefix, name, lastNumber: parseInt(lastNumber || 0), status: status || 'Active' }
+        data: { companyProfileId: parseInt(companyProfileId), prefix, name, docType: docType || 'INV', lastNumber: parseInt(lastNumber || 0), status: status || 'Active' }
       });
       res.json(series);
     }

@@ -9,7 +9,7 @@ export default function CompanyProfileMaster() {
   const [message, setMessage] = useState('');
   const [isSearchingGSTIN, setIsSearchingGSTIN] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState(null);
-  const [seriesData, setSeriesData] = useState({ prefix: '', name: '', lastNumber: 0 });
+  const [seriesData, setSeriesData] = useState({ prefix: '', name: '', docType: 'INV', lastNumber: 0 });
   const [systemCredentials, setSystemCredentials] = useState(null);
 
   const loadProfiles = () => {
@@ -73,7 +73,7 @@ export default function CompanyProfileMaster() {
     e.preventDefault();
     try {
       await erpApi.saveBillingSeries({ ...seriesData, companyProfileId: selectedProfile.id });
-      setSeriesData({ prefix: '', name: '', lastNumber: 0 });
+      setSeriesData({ prefix: '', name: '', docType: 'INV', lastNumber: 0 });
       const updatedProfiles = await erpApi.getCompanyProfiles();
       setProfiles(updatedProfiles);
       setSelectedProfile(updatedProfiles.find(p => p.id === selectedProfile.id));
@@ -356,24 +356,48 @@ export default function CompanyProfileMaster() {
                 Billing Series Management
               </h3>
               
-              <form onSubmit={handleSaveSeries} className="flex gap-2 mb-6">
-                <input required placeholder="Prefix (e.g. RET-)" value={seriesData.prefix} onChange={e => setSeriesData({...seriesData, prefix: e.target.value.toUpperCase()})} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400 uppercase placeholder:normal-case" />
-                <input required placeholder="Series Name (e.g. Retail)" value={seriesData.name} onChange={e => setSeriesData({...seriesData, name: e.target.value})} className="flex-[1.5] px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400" />
-                <input type="number" placeholder="Last No." value={seriesData.lastNumber} onChange={e => setSeriesData({...seriesData, lastNumber: e.target.value})} className="w-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400" />
-                <button type="submit" className="px-5 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex items-center gap-2 text-[13px] font-black uppercase tracking-wider transition-all hover:shadow-[0_4px_12px_rgba(79,70,229,0.3)]"><FaPlus /> Add</button>
+              <form onSubmit={handleSaveSeries} className="flex flex-col gap-2 mb-6">
+                <div className="flex gap-2">
+                  <input required placeholder="Prefix (e.g. RET-)" value={seriesData.prefix} onChange={e => setSeriesData({...seriesData, prefix: e.target.value.toUpperCase()})} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400 uppercase placeholder:normal-case" />
+                  <input required placeholder="Series Name (e.g. Retail)" value={seriesData.name} onChange={e => setSeriesData({...seriesData, name: e.target.value})} className="flex-[1.5] px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400" />
+                  <input type="number" placeholder="Last No." value={seriesData.lastNumber} onChange={e => setSeriesData({...seriesData, lastNumber: e.target.value})} className="w-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400" />
+                </div>
+                <div className="flex gap-2">
+                  <select value={seriesData.docType} onChange={e => setSeriesData({...seriesData, docType: e.target.value})} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-[13px] font-bold focus:outline-none focus:border-indigo-400 text-slate-700">
+                    <option value="INV">Tax Invoice</option>
+                    <option value="EST">Estimate</option>
+                    <option value="PRO">Performa Invoice</option>
+                  </select>
+                  <button type="submit" className="px-5 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 flex justify-center items-center gap-2 text-[13px] font-black uppercase tracking-wider transition-all hover:shadow-[0_4px_12px_rgba(79,70,229,0.3)] min-w-[120px]"><FaPlus /> Add</button>
+                </div>
               </form>
               
               <div className="space-y-2">
                 {selectedProfile.billingSeries && selectedProfile.billingSeries.length > 0 ? (
                   selectedProfile.billingSeries.map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
-                      <div className="flex items-center gap-4">
-                        <div className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[13px] font-black uppercase tracking-widest">{s.prefix}</div>
-                        <div>
-                          <div className="text-[14px] font-bold text-slate-800">{s.name}</div>
-                          <div className="text-[11px] font-bold text-slate-400 mt-0.5">Current Bill No: <span className="text-emerald-500">{s.lastNumber}</span></div>
+                      <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className={`px-3 py-1.5 rounded-lg text-[13px] font-black uppercase tracking-widest ${
+                            s.docType === 'PRO' ? 'bg-purple-50 text-purple-600' :
+                            s.docType === 'EST' ? 'bg-amber-50 text-amber-600' :
+                            'bg-indigo-50 text-indigo-600'
+                          }`}>
+                            {s.prefix}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[14px] font-bold text-slate-800">{s.name}</span>
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                                s.docType === 'PRO' ? 'bg-purple-100 text-purple-700' :
+                                s.docType === 'EST' ? 'bg-amber-100 text-amber-700' :
+                                'bg-indigo-100 text-indigo-700'
+                              }`}>
+                                {s.docType === 'PRO' ? 'Performa' : s.docType === 'EST' ? 'Estimate' : 'Invoice'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-bold text-slate-400 mt-1">Current Bill No: <span className="text-emerald-500">{s.lastNumber}</span></div>
+                          </div>
                         </div>
-                      </div>
                       <button onClick={() => handleDeleteSeries(s.id)} className="w-8 h-8 rounded-lg bg-rose-50 text-rose-400 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors"><FaTrash size={12}/></button>
                     </div>
                   ))
