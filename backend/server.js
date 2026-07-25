@@ -1447,7 +1447,7 @@ app.get('/api/gstin/:gstin', async (req, res) => {
     apiRes.on('end', () => {
       try {
         const data = JSON.parse(rawData);
-        if (data && data.error === false && data.taxpayerInfo) {
+        if (data && !data.error && data.taxpayerInfo) {
           const info = data.taxpayerInfo;
           const primaryAddress = info.pradr?.addr || {};
           
