@@ -36,7 +36,7 @@ export default function SalesOrderEntry() {
   const [newCustomerType, setNewCustomerType] = useState('UNREGISTERED');
   const [isVerifyingGstin, setIsVerifyingGstin] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
-  const [newCustomerData, setNewCustomerData] = useState({ name: '', mobile: '', city: '', state: '', gstin: '' });
+  const [newCustomerData, setNewCustomerData] = useState({ name: '', mobile: '', city: '', state: '', gstin: '', id_number: '', pincode: '' });
   
   const [customRates, setCustomRates] = useState({});
   const [cart, setCart] = useState({}); // { [productId]: qty }
@@ -147,6 +147,16 @@ export default function SalesOrderEntry() {
       alert("Please enter a valid 15-character GSTIN.");
       return false;
     }
+    if (newCustomerType === 'UNREGISTERED') {
+      if (!newCustomerData.id_number) {
+        alert("Please provide Aadhaar / PAN Number for Unregistered customer.");
+        return false;
+      }
+      if (!newCustomerData.pincode) {
+        alert("Please provide Pincode for Unregistered customer.");
+        return false;
+      }
+    }
     if (!newCustomerData.name) {
       alert("Please provide the customer Name or Fetch it via GSTIN.");
       return false;
@@ -180,7 +190,7 @@ export default function SalesOrderEntry() {
       setMessage('Order submitted successfully for approval!');
       setCart({});
       setSelectedCustomerId(null);
-      setNewCustomerData({ name: '', mobile: '', city: '', state: '', gstin: '' });
+      setNewCustomerData({ name: '', mobile: '', city: '', state: '', gstin: '', id_number: '', pincode: '' });
       setIsNewCustomer(false);
       setNewCustomerType('UNREGISTERED');
       setTimeout(() => setMessage(''), 4000);
@@ -344,6 +354,18 @@ export default function SalesOrderEntry() {
                     <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">City</label>
                     <input value={newCustomerData.city} onChange={e => setNewCustomerData({...newCustomerData, city: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="City" />
                   </div>
+                  {newCustomerType === 'UNREGISTERED' && (
+                    <>
+                      <div>
+                        <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Aadhaar / PAN *</label>
+                        <input value={newCustomerData.id_number || ''} onChange={e => setNewCustomerData({...newCustomerData, id_number: e.target.value.toUpperCase()})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white uppercase" placeholder="Aadhaar or PAN" />
+                      </div>
+                      <div>
+                        <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Pincode *</label>
+                        <input value={newCustomerData.pincode || ''} onChange={e => setNewCustomerData({...newCustomerData, pincode: e.target.value})} className="w-full h-[43px] px-[12px] border border-slate-300 rounded-[14px] text-[14px] focus:border-active focus:ring-[3px] focus:ring-active/15 bg-white" placeholder="Pincode" maxLength={6} />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

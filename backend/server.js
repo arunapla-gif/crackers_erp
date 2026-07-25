@@ -1746,6 +1746,8 @@ app.post('/api/sales-orders/:id/approve-customer', requireAdmin, async (req, res
         mobile: customerData.mobile || null,
         city: customerData.city || null,
         state: customerData.state || null,
+        pincode: customerData.pincode || null,
+        id_number: customerData.id_number || null,
         gstin: customerData.gstin || 'URP',
         repId: order.repId,
         status: 'Active'
