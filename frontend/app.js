@@ -1,4 +1,4 @@
-const API_URL = 'https://crackers-erp-api.onrender.com/api';
+const API_URL = 'https://crackers-erp-api-production.up.railway.app/api';
 
 async function saveCustomer() {
   const name = document.getElementById('custName').value.trim();

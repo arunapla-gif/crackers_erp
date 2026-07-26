@@ -29,7 +29,7 @@ export default function Login() {
     }, 5000);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://crackers-erp-api.onrender.com/api';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://crackers-erp-api-production.up.railway.app/api';
       const res = await fetch(`${apiUrl}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
