@@ -100,8 +100,93 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
+const isAdminUser = (req) => req.user && req.user.role === 'ADMIN';
+const isSupervisorUser = (req) => req.user && req.user.role === 'SUPERVISOR';
+const isRepUser = (req) => req.user && req.user.role === 'REP';
+
+const SUPERVISOR_MODULE_ACTIONS = {
+  production: ['view', 'add', 'edit', 'delete'],
+  employees: ['view', 'add', 'edit'],
+  advances: ['view', 'add'],
+  factory_orders: ['view'],
+  products_wip: ['view']
+};
+
+const canAccessModule = async (req, mod, action = 'view') => {
+  if (!req.user) return false;
+  if (isAdminUser(req)) return true;
+  if (isSupervisorUser(req)) {
+    return Boolean(SUPERVISOR_MODULE_ACTIONS[mod]?.includes(action));
+  }
+  if (req.user.role === 'STAFF') {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { permissions: true, status: true }
+    });
+    if (!dbUser || dbUser.status !== 'Active') return false;
+    return Boolean(dbUser.permissions?.[mod]?.[action]);
+  }
+  return false;
+};
+
+const normalizeUtcDate = (dateInput) => {
+  const dateStr = String(dateInput || '').split('T')[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateInput);
+  }
+  return new Date(`${dateStr}T00:00:00.000Z`);
+};
+
+const getUtcDayBounds = (dateInput) => {
+  const dateStr = String(dateInput || '').split('T')[0];
+  return {
+    start: new Date(`${dateStr}T00:00:00.000Z`),
+    end: new Date(`${dateStr}T23:59:59.999Z`)
+  };
+};
+
+const sanitizeEmployeeForRole = (emp, req) => {
+  if (!emp || !isSupervisorUser(req)) return emp;
+  return {
+    ...emp,
+    salary: null
+  };
+};
+
+const sanitizeProductionForRole = (record, req) => {
+  if (!record || !isSupervisorUser(req)) return record;
+  return {
+    ...record,
+    totalAmount: null,
+    employee: record.employee ? sanitizeEmployeeForRole(record.employee, req) : record.employee,
+    items: Array.isArray(record.items)
+      ? record.items.map((item) => ({
+          ...item,
+          pieceRate: null,
+          total: null
+        }))
+      : record.items
+  };
+};
+
 // Apply authentication to all routes below this point
 app.use(authenticateToken);
+
+// Current Authenticated User Profile
+app.get('/api/me', async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, username: true, role: true, permissions: true, status: true, createdAt: true }
+    });
+    if (!user || user.status !== 'Active') {
+      return res.status(401).json({ error: 'User account is inactive or missing.' });
+    }
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Apply admin requirement to sensitive routes
 app.use('/api/users', requireAdmin);
@@ -176,6 +261,9 @@ app.delete('/api/users/:id', async (req, res) => {
 // Customers Routes
 app.get('/api/customers', async (req, res) => {
   try {
+    if (isSupervisorUser(req)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
     const where = {};
     if (req.user && req.user.role === 'REP') {
       where.repId = req.user.id;
@@ -188,6 +276,9 @@ app.get('/api/customers', async (req, res) => {
 });
 
 app.post('/api/customers', async (req, res) => {
+  if (isSupervisorUser(req)) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
   const { id, name, mobile, reference, address, city, district, state, pincode, id_number, gstin, status, addresses, repId } = req.body;
   const currentStatus = status || 'Active';
   try {
@@ -251,6 +342,21 @@ app.post('/api/suppliers', async (req, res) => {
 // Products Routes
 app.get('/api/products', async (req, res) => {
   try {
+    // Supervisor Restriction Logic: WIP factory items only, with all rupee rates hidden
+    if (isSupervisorUser(req)) {
+      const wipProducts = await prisma.product.findMany({
+        where: { type: 'WIP' },
+        orderBy: { name: 'asc' }
+      });
+      return res.json(
+        wipProducts.map((p) => ({
+          ...p,
+          rate: null,
+          tax: null
+        }))
+      );
+    }
+
     const products = await prisma.product.findMany();
     
     // Rep Restriction Logic
@@ -277,6 +383,9 @@ app.get('/api/products', async (req, res) => {
 // Customer Prices Route
 app.get('/api/customers/:id/prices', async (req, res) => {
   try {
+    if (isSupervisorUser(req)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
     const prices = await prisma.customerPrice.findMany({
       where: { customerId: parseInt(req.params.id) }
     });
@@ -343,6 +452,9 @@ app.get('/api/products/next-code', async (req, res) => {
 });
 
 app.post('/api/products', async (req, res) => {
+  if (isSupervisorUser(req)) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
   const { code, name, type, category, subCategory, hsn, tax, rate, boxesPerCase, unit_qty, unit, pack_unit, status, factoryAliasId } = req.body;
   try {
     const product = await prisma.product.upsert({
@@ -359,6 +471,9 @@ app.post('/api/products', async (req, res) => {
 // Invoices Routes
 app.get('/api/invoices/:number', async (req, res) => {
   try {
+    if (isSupervisorUser(req)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
     const invoice = await prisma.invoice.findUnique({
       where: { number: req.params.number },
       include: { items: true, charges: true, companyProfile: true }
@@ -371,6 +486,9 @@ app.get('/api/invoices/:number', async (req, res) => {
 });
 
 app.post('/api/invoices', async (req, res) => {
+  if (isSupervisorUser(req)) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
   const { series, number, date, customer, customerAddress, state, vehicleNo, distance, transporterId, ewayBillNo, companyProfileId, dispatchAddress, subtotal, cgst, sgst, igst, tax, grand_total, items, charges, repId } = req.body;
   try {
     const invoice = await prisma.$transaction(async (tx) => {
@@ -815,6 +933,9 @@ app.post('/api/transfers', async (req, res) => {
 // History Routes for Reports
 app.get('/api/history/invoices', async (req, res) => {
   try {
+    if (isSupervisorUser(req)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
     const where = {};
     if (req.user && req.user.role === 'REP') {
       where.repId = req.user.id;
@@ -860,8 +981,14 @@ app.get('/api/history/transfers', async (req, res) => {
 // Employees Routes
 app.get('/api/employees', async (req, res) => {
   try {
-    const employees = await prisma.employee.findMany();
-    res.json(employees);
+    const allowed =
+      (await canAccessModule(req, 'employees', 'view')) ||
+      (await canAccessModule(req, 'production', 'view')) ||
+      (await canAccessModule(req, 'payroll', 'view'));
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const employees = await prisma.employee.findMany({ orderBy: { name: 'asc' } });
+    res.json(employees.map((emp) => sanitizeEmployeeForRole(emp, req)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -871,17 +998,45 @@ app.post('/api/employees', async (req, res) => {
   const { id, name, mobile, role, salary, paymentType, unit, status } = req.body;
   const currentStatus = status || 'Active';
   try {
+    const allowed = await canAccessModule(req, 'employees', id ? 'edit' : 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Employee name is required.' });
+    }
+
     if (id) {
+      const updateData = {
+        name: String(name).trim(),
+        mobile: mobile || null,
+        role: role || null,
+        paymentType: paymentType || 'Monthly',
+        unit: unit || null,
+        status: currentStatus
+      };
+      // Preserve Admin-managed salary when edited by Supervisor
+      if (!isSupervisorUser(req) && salary !== undefined && salary !== null && salary !== '') {
+        updateData.salary = parseFloat(salary || 0);
+      }
+
       const employee = await prisma.employee.update({
         where: { id: parseInt(id) },
-        data: { name, mobile, role, salary: parseFloat(salary || 0), paymentType: paymentType || 'Monthly', unit: unit || null, status: currentStatus }
+        data: updateData
       });
-      return res.json(employee);
+      return res.json(sanitizeEmployeeForRole(employee, req));
     } else {
       const employee = await prisma.employee.create({
-        data: { name, mobile, role, salary: parseFloat(salary || 0), paymentType: paymentType || 'Monthly', unit: unit || null, status: currentStatus }
+        data: {
+          name: String(name).trim(),
+          mobile: mobile || null,
+          role: role || null,
+          salary: isSupervisorUser(req) ? 0 : parseFloat(salary || 0),
+          paymentType: paymentType || 'Monthly',
+          unit: unit || null,
+          status: currentStatus
+        }
       });
-      return res.json(employee);
+      return res.json(sanitizeEmployeeForRole(employee, req));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -890,6 +1045,9 @@ app.post('/api/employees', async (req, res) => {
 
 app.delete('/api/employees/:id', async (req, res) => {
   try {
+    const allowed = await canAccessModule(req, 'employees', 'delete');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
     await prisma.employee.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Employee deleted' });
   } catch (err) {
@@ -897,9 +1055,15 @@ app.delete('/api/employees/:id', async (req, res) => {
   }
 });
 
-// Payroll Routes
+// Payroll Routes (Admin / authorized HR Staff only — blocked for Supervisor & Rep)
 app.get('/api/payrolls', async (req, res) => {
   try {
+    if (isSupervisorUser(req) || isRepUser(req)) {
+      return res.status(403).json({ error: 'Payroll access restricted.' });
+    }
+    const allowed = await canAccessModule(req, 'payroll', 'view');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
     const payrolls = await prisma.payroll.findMany({
       include: { employee: true },
       orderBy: { createdAt: 'desc' }
@@ -911,6 +1075,12 @@ app.get('/api/payrolls', async (req, res) => {
 });
 
 app.post('/api/payrolls', async (req, res) => {
+  if (isSupervisorUser(req) || isRepUser(req)) {
+    return res.status(403).json({ error: 'Payroll access restricted.' });
+  }
+  const allowed = await canAccessModule(req, 'payroll', 'add');
+  if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
   const { employeeId, month, paymentType, daysWorked, basicSalary, allowance, deduction, netSalary, status, periodStr } = req.body;
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -963,11 +1133,39 @@ app.post('/api/payrolls', async (req, res) => {
 });
 
 // Employee Advances Routes
+app.get('/api/advances', async (req, res) => {
+  try {
+    const allowed =
+      (await canAccessModule(req, 'advances', 'view')) ||
+      (await canAccessModule(req, 'employees', 'view'));
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const advances = await prisma.employeeAdvance.findMany({
+      take: limit,
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      include: {
+        employee: {
+          select: { id: true, name: true, role: true, advanceBalance: true, status: true }
+        }
+      }
+    });
+    res.json(advances);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/advances/:employeeId', async (req, res) => {
   try {
+    const allowed =
+      (await canAccessModule(req, 'advances', 'view')) ||
+      (await canAccessModule(req, 'employees', 'view'));
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
     const advances = await prisma.employeeAdvance.findMany({
       where: { employeeId: parseInt(req.params.employeeId) },
-      orderBy: { date: 'desc' }
+      orderBy: [{ date: 'desc' }, { id: 'desc' }]
     });
     res.json(advances);
   } catch (err) {
@@ -978,13 +1176,23 @@ app.get('/api/advances/:employeeId', async (req, res) => {
 app.post('/api/advances', async (req, res) => {
   const { employeeId, date, amount, description } = req.body;
   try {
+    const allowed =
+      (await canAccessModule(req, 'advances', 'add')) ||
+      (await canAccessModule(req, 'employees', 'edit'));
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const parsedAmount = parseFloat(amount);
+    if (!employeeId || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'Valid employeeId and positive amount are required.' });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const advance = await tx.employeeAdvance.create({
         data: {
           employeeId: parseInt(employeeId),
-          date: new Date(date),
+          date: normalizeUtcDate(date || new Date().toISOString().split('T')[0]),
           type: "GIVEN",
-          amount: parseFloat(amount),
+          amount: parsedAmount,
           description: description || "Advance Given"
         }
       });
@@ -993,7 +1201,7 @@ app.post('/api/advances', async (req, res) => {
       if (emp) {
         await tx.employee.update({
           where: { id: parseInt(employeeId) },
-          data: { advanceBalance: parseFloat(emp.advanceBalance) + parseFloat(amount) }
+          data: { advanceBalance: parseFloat(emp.advanceBalance) + parsedAmount }
         });
       }
 
@@ -1006,61 +1214,187 @@ app.post('/api/advances', async (req, res) => {
 });
 
 // Daily Production Routes
+const resolveProductionItems = async (tx, items, allowClientRates) => {
+  const wipProducts = await tx.product.findMany({
+    where: { type: 'WIP' },
+    select: { name: true, rate: true }
+  });
+  const rateByName = new Map(
+    wipProducts.map((p) => [String(p.name).trim().toLowerCase(), parseFloat(p.rate || 0)])
+  );
+
+  let computedTotalAmount = 0;
+  const normalizedItems = (items || [])
+    .map((item) => {
+      const quantity = parseInt(item.quantity || 0);
+      const itemName = String(item.itemName || '').trim();
+      const serverRate = rateByName.get(itemName.toLowerCase()) || 0;
+      const clientRate = parseFloat(item.pieceRate || 0);
+      const pieceRate = allowClientRates && clientRate > 0 ? clientRate : serverRate;
+      const lineTotal = quantity * pieceRate;
+      computedTotalAmount += lineTotal;
+      return {
+        itemName,
+        quantity,
+        pieceRate,
+        total: Number(lineTotal.toFixed(2))
+      };
+    })
+    .filter((item) => item.itemName && item.quantity > 0);
+
+  return {
+    items: normalizedItems,
+    totalAmount: Number(computedTotalAmount.toFixed(2))
+  };
+};
+
 app.get('/api/production/daily', async (req, res) => {
   try {
+    const allowed = await canAccessModule(req, 'production', 'view');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const { date, startDate, endDate, limit } = req.query;
+    const where = {};
+    if (date) {
+      const { start, end } = getUtcDayBounds(date);
+      where.date = { gte: start, lte: end };
+    } else if (startDate && endDate) {
+      where.date = {
+        gte: getUtcDayBounds(startDate).start,
+        lte: getUtcDayBounds(endDate).end
+      };
+    }
+
     const records = await prisma.dailyProduction.findMany({
+      where,
       include: { employee: true, items: true },
-      orderBy: { date: 'desc' }
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      ...(limit ? { take: Math.min(parseInt(limit) || 100, 500) } : {})
     });
-    res.json(records);
+    res.json(records.map((r) => sanitizeProductionForRole(r, req)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/production/daily', async (req, res) => {
-  const { id, date, employeeId, totalAmount, items } = req.body;
+  const { id, date, employeeId, items } = req.body;
   try {
-    if (id) {
-      // First delete existing items
-      await prisma.dailyProductionItem.deleteMany({ where: { dailyProductionId: parseInt(id) } });
-      const record = await prisma.dailyProduction.update({
-        where: { id: parseInt(id) },
+    const allowed = await canAccessModule(req, 'production', id ? 'edit' : 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const allowClientRates = !isSupervisorUser(req);
+    const normalizedDate = normalizeUtcDate(date);
+
+    const record = await prisma.$transaction(async (tx) => {
+      const resolved = await resolveProductionItems(tx, items, allowClientRates);
+
+      if (id) {
+        await tx.dailyProductionItem.deleteMany({ where: { dailyProductionId: parseInt(id) } });
+        return tx.dailyProduction.update({
+          where: { id: parseInt(id) },
+          data: {
+            date: normalizedDate,
+            employeeId: parseInt(employeeId),
+            totalAmount: resolved.totalAmount,
+            items: { create: resolved.items }
+          },
+          include: { items: true, employee: true }
+        });
+      }
+
+      return tx.dailyProduction.create({
         data: {
-          date: new Date(date),
+          date: normalizedDate,
           employeeId: parseInt(employeeId),
-          totalAmount: parseFloat(totalAmount || 0),
-          items: {
-            create: items.map(item => ({
-              itemName: item.itemName,
-              quantity: parseInt(item.quantity || 0),
-              pieceRate: parseFloat(item.pieceRate || 0),
-              total: parseFloat(item.total || 0)
-            }))
-          }
+          totalAmount: resolved.totalAmount,
+          items: { create: resolved.items }
         },
         include: { items: true, employee: true }
       });
-      return res.json(record);
-    } else {
-      const record = await prisma.dailyProduction.create({
-        data: {
-          date: new Date(date),
-          employeeId: parseInt(employeeId),
-          totalAmount: parseFloat(totalAmount || 0),
-          items: {
-            create: items.map(item => ({
-              itemName: item.itemName,
-              quantity: parseInt(item.quantity || 0),
-              pieceRate: parseFloat(item.pieceRate || 0),
-              total: parseFloat(item.total || 0)
-            }))
-          }
-        },
-        include: { items: true, employee: true }
-      });
-      return res.json(record);
+    });
+
+    res.json(sanitizeProductionForRole(record, req));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/production/daily/bulk', async (req, res) => {
+  const { date, entries } = req.body;
+  try {
+    const allowed = await canAccessModule(req, 'production', 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+    if (!date || !Array.isArray(entries)) {
+      return res.status(400).json({ error: 'date and entries array are required.' });
     }
+
+    const allowClientRates = !isSupervisorUser(req);
+    const normalizedDate = normalizeUtcDate(date);
+    const { start, end } = getUtcDayBounds(date);
+
+    const savedRecords = await prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const entry of entries) {
+        const empId = parseInt(entry.employeeId);
+        if (!empId) continue;
+
+        const resolved = await resolveProductionItems(tx, entry.items, allowClientRates);
+        const existingForDay = await tx.dailyProduction.findMany({
+          where: {
+            employeeId: empId,
+            date: { gte: start, lte: end }
+          },
+          orderBy: { id: 'asc' }
+        });
+
+        if (resolved.items.length === 0) {
+          if (existingForDay.length > 0) {
+            await tx.dailyProduction.deleteMany({
+              where: { id: { in: existingForDay.map((r) => r.id) } }
+            });
+          }
+          continue;
+        }
+
+        if (existingForDay.length > 0) {
+          const primaryId = existingForDay[0].id;
+          if (existingForDay.length > 1) {
+            await tx.dailyProduction.deleteMany({
+              where: { id: { in: existingForDay.slice(1).map((r) => r.id) } }
+            });
+          }
+          await tx.dailyProductionItem.deleteMany({ where: { dailyProductionId: primaryId } });
+          const updated = await tx.dailyProduction.update({
+            where: { id: primaryId },
+            data: {
+              date: normalizedDate,
+              totalAmount: resolved.totalAmount,
+              items: { create: resolved.items }
+            },
+            include: { items: true, employee: true }
+          });
+          results.push(updated);
+        } else {
+          const created = await tx.dailyProduction.create({
+            data: {
+              date: normalizedDate,
+              employeeId: empId,
+              totalAmount: resolved.totalAmount,
+              items: { create: resolved.items }
+            },
+            include: { items: true, employee: true }
+          });
+          results.push(created);
+        }
+      }
+      return results;
+    });
+
+    res.json({
+      savedCount: savedRecords.length,
+      records: savedRecords.map((r) => sanitizeProductionForRole(r, req))
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1068,6 +1402,9 @@ app.post('/api/production/daily', async (req, res) => {
 
 app.delete('/api/production/daily/:id', async (req, res) => {
   try {
+    const allowed = await canAccessModule(req, 'production', 'delete');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
     await prisma.dailyProduction.delete({ where: { id: parseInt(req.params.id) } });
     res.json({ message: 'Daily production deleted' });
   } catch (err) {
@@ -1078,41 +1415,65 @@ app.delete('/api/production/daily/:id', async (req, res) => {
 app.get('/api/production/aggregate', async (req, res) => {
   const { employeeId, startDate, endDate } = req.query; // 'YYYY-MM-DD' format
   try {
+    if (isSupervisorUser(req) || isRepUser(req)) {
+      return res.status(403).json({ error: 'Wage aggregate access restricted.' });
+    }
+    const allowed = await canAccessModule(req, 'payroll', 'view');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
     if (!employeeId || !startDate || !endDate) {
       return res.status(400).json({ error: 'employeeId, startDate, and endDate are required' });
     }
-    
-    // Parse the dates
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
 
-    const aggregate = await prisma.dailyProduction.aggregate({
-      where: {
-        employeeId: parseInt(employeeId),
-        date: {
-          gte: start,
-          lte: end,
-        }
-      },
-      _sum: {
-        totalAmount: true
-      }
+    const start = getUtcDayBounds(startDate).start;
+    const end = getUtcDayBounds(endDate).end;
+
+    const [details, wipProducts] = await Promise.all([
+      prisma.dailyProduction.findMany({
+        where: {
+          employeeId: parseInt(employeeId),
+          date: { gte: start, lte: end }
+        },
+        include: { items: true },
+        orderBy: { date: 'asc' }
+      }),
+      prisma.product.findMany({
+        where: { type: 'WIP' },
+        select: { name: true, rate: true }
+      })
+    ]);
+
+    const rateByName = new Map(
+      wipProducts.map((p) => [String(p.name).trim().toLowerCase(), parseFloat(p.rate || 0)])
+    );
+
+    // Fallback to current WIP product rate when pieceRate/totalAmount was recorded as 0
+    let grandTotal = 0;
+    const enrichedDetails = details.map((log) => {
+      let logAmount = 0;
+      const items = log.items.map((item) => {
+        const storedRate = parseFloat(item.pieceRate || 0);
+        const effectiveRate =
+          storedRate > 0 ? storedRate : rateByName.get(String(item.itemName).trim().toLowerCase()) || 0;
+        const storedTotal = parseFloat(item.total || 0);
+        const effectiveTotal = storedTotal > 0 ? storedTotal : item.quantity * effectiveRate;
+        logAmount += effectiveTotal;
+        return {
+          ...item,
+          pieceRate: effectiveRate,
+          total: Number(effectiveTotal.toFixed(2))
+        };
+      });
+      const finalLogAmount = logAmount > 0 ? logAmount : parseFloat(log.totalAmount || 0);
+      grandTotal += finalLogAmount;
+      return {
+        ...log,
+        totalAmount: Number(finalLogAmount.toFixed(2)),
+        items
+      };
     });
 
-    const details = await prisma.dailyProduction.findMany({
-      where: {
-        employeeId: parseInt(employeeId),
-        date: { gte: start, lte: end }
-      },
-      include: {
-        items: true
-      },
-      orderBy: { date: 'asc' }
-    });
-
-    res.json({ totalAmount: aggregate._sum.totalAmount || 0, details });
+    res.json({ totalAmount: Number(grandTotal.toFixed(2)), details: enrichedDetails });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1432,9 +1793,20 @@ app.get('/api/gstin/:gstin', async (req, res) => {
       tradeName: "MOCK SHOP",
       address: "123 Mock Street, Fake City",
       city: "Mock City",
+      district: "Virudhunagar",
       state: "Tamil Nadu",
       pincode: "626123",
-      status: "Active"
+      status: "Active",
+      addresses: [
+        {
+          type: "Principal Place",
+          address: "123 Mock Street, Fake City",
+          city: "Mock City",
+          district: "Virudhunagar",
+          state: "Tamil Nadu",
+          pincode: "626123"
+        }
+      ]
     });
   }
 
@@ -1450,16 +1822,47 @@ app.get('/api/gstin/:gstin', async (req, res) => {
         if (data && !data.error && data.taxpayerInfo) {
           const info = data.taxpayerInfo;
           const primaryAddress = info.pradr?.addr || {};
-          
+          const buildAddrStr = (addrInfo) =>
+            [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.loc, addrInfo.flno].filter(Boolean).join(', ');
+          const addresses = [];
+
+          if (info.pradr?.addr) {
+            addresses.push({
+              type: 'Principal Place',
+              address: buildAddrStr(primaryAddress),
+              city: primaryAddress.loc || primaryAddress.city || primaryAddress.dst || '',
+              district: primaryAddress.dst || '',
+              state: primaryAddress.stcd || '',
+              pincode: primaryAddress.pncd || ''
+            });
+          }
+
+          if (Array.isArray(info.adadr)) {
+            info.adadr.forEach((ad, idx) => {
+              if (ad.addr) {
+                addresses.push({
+                  type: `Additional Place ${idx + 1}`,
+                  address: buildAddrStr(ad.addr),
+                  city: ad.addr.loc || ad.addr.city || ad.addr.dst || '',
+                  district: ad.addr.dst || '',
+                  state: ad.addr.stcd || '',
+                  pincode: ad.addr.pncd || ''
+                });
+              }
+            });
+          }
+
           res.json({
             gstin: info.gstin,
             legalName: info.lgnm,
             tradeName: info.tradeNam || info.lgnm,
             address: `${primaryAddress.bno || ''} ${primaryAddress.st || ''} ${primaryAddress.loc || ''}`.trim(),
             city: primaryAddress.dst || primaryAddress.loc || '',
+            district: primaryAddress.dst || '',
             state: info.pradr?.addr?.stcd || '',
             pincode: primaryAddress.pncd || '',
-            status: info.sts || 'Active'
+            status: info.sts || 'Active',
+            addresses
           });
         } else {
           res.status(400).json({ error: "Invalid GSTIN or data not found from Appyflow." });
@@ -1628,6 +2031,9 @@ app.get('/api/rep/dashboard', async (req, res) => {
 // Sales Orders Routes
 app.get('/api/sales-orders/pending', async (req, res) => {
   try {
+    if (isSupervisorUser(req)) {
+      return res.status(403).json({ error: 'Access denied.' });
+    }
     const where = { status: 'PENDING' };
     if (req.user && req.user.role === 'REP') {
       where.repId = req.user.id;
@@ -1655,6 +2061,39 @@ app.get('/api/sales-orders/approved', async (req, res) => {
       include: { rep: { select: { username: true } }, customer: true, items: true },
       take: 50 // Limit to recent approved
     });
+
+    if (isSupervisorUser(req) || req.query.factoryView === '1') {
+      const productIds = [
+        ...new Set(orders.flatMap((o) => o.items.map((i) => i.productId).filter(Boolean)))
+      ];
+      const products = productIds.length
+        ? await prisma.product.findMany({
+            where: { id: { in: productIds } },
+            include: { factoryAlias: true }
+          })
+        : [];
+      const productMap = new Map(products.map((p) => [p.id, p]));
+
+      const factoryOrders = orders.map((order) => ({
+        ...order,
+        subtotal: null,
+        items: order.items.map((item) => {
+          const prod = item.productId ? productMap.get(item.productId) : null;
+          const alias = prod?.factoryAlias;
+          return {
+            ...item,
+            productId: alias ? alias.id : item.productId,
+            product: alias ? alias.name : item.product,
+            unit: alias ? alias.unit : (prod?.unit || null),
+            boxesPerCase: alias ? alias.boxesPerCase : (prod?.boxesPerCase || 1),
+            rate: null,
+            total: null
+          };
+        })
+      }));
+      return res.json(factoryOrders);
+    }
+
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: err.message });

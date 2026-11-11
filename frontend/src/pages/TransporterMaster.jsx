@@ -31,39 +31,17 @@ export default function TransporterMaster() {
     if (name === 'gstin' && finalValue.length === 15) {
       setIsSearchingGSTIN(true);
       try {
-        const response = await fetch(`https://appyflow.in/api/verifyGST?gstNo=${finalValue}&key_secret=7eWP3WelRNexYGJ172L3Hb8JNrY2`);
-        const data = await response.json();
-        
-        if (!data.error && data.taxpayerInfo) {
-          const info = data.taxpayerInfo;
-          let address = '';
-          let city = '';
-          let district = '';
-          let state = '';
-          let pincode = '';
-          
-          if (info.pradr && info.pradr.addr) {
-            const addrInfo = info.pradr.addr;
-            const addrParts = [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.flno].filter(Boolean);
-            address = addrParts.join(', ');
-            city = addrInfo.loc || addrInfo.city || '';
-            district = addrInfo.dst || '';
-            state = addrInfo.stcd || '';
-            pincode = addrInfo.pncd || '';
-          }
-
-          const businessName = info.tradeNam || info.lgnm || '';
-          
-          setFormData((prev) => ({
-            ...prev,
-            name: businessName,
-            address: address,
-            city: city,
-            district: district,
-            state: state,
-            pincode: pincode
-          }));
-        }
+        const data = await erpApi.verifyGSTIN(finalValue);
+        const primary = Array.isArray(data.addresses) && data.addresses.length > 0 ? data.addresses[0] : {};
+        setFormData((prev) => ({
+          ...prev,
+          name: data.tradeName || data.legalName || prev.name,
+          address: primary.address || data.address || prev.address,
+          city: primary.city || data.city || prev.city,
+          district: primary.district || data.district || data.city || prev.district,
+          state: primary.state || data.state || prev.state,
+          pincode: primary.pincode || data.pincode || prev.pincode
+        }));
       } catch (err) {
         console.error("Error fetching GSTIN data:", err);
       }

@@ -45,7 +45,7 @@ export const useCompanyProfiles = () => {
 
 export const useSaveInvoice = () => {
   return useMutation({
-    mutationFn: erpApi.createInvoice,
+    mutationFn: erpApi.saveInvoice,
     onMutate: async (newInvoice) => {
       // Cancel any outgoing refetches so they don't overwrite our optimistic update
       await queryClient.cancelQueries({ queryKey: ['invoices'] });
@@ -63,11 +63,14 @@ export const useSaveInvoice = () => {
     },
     // If the mutation fails, use the context returned from onMutate to roll back
     onError: (err, newInvoice, context) => {
-      queryClient.setQueryData(['invoices'], context.previousInvoices);
+      if (context?.previousInvoices !== undefined) {
+        queryClient.setQueryData(['invoices'], context.previousInvoices);
+      }
     },
     // Always refetch after error or success:
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['companyProfiles'] });
     },
   });
 };

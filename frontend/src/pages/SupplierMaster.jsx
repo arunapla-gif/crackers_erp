@@ -32,63 +32,32 @@ export default function SupplierMaster() {
     if (name === 'gstin' && finalValue.length === 15) {
       setIsSearchingGSTIN(true);
       try {
-        const response = await fetch(`https://appyflow.in/api/verifyGST?gstNo=${finalValue}&key_secret=7eWP3WelRNexYGJ172L3Hb8JNrY2`);
-        const data = await response.json();
-        
-        if (!data.error && data.taxpayerInfo) {
-          const info = data.taxpayerInfo;
-          let addresses = [];
-          
-          // 1. Parse Principal Address
-          if (info.pradr && info.pradr.addr) {
-            const addrInfo = info.pradr.addr;
-            const addrParts = [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.loc, addrInfo.flno].filter(Boolean);
-            addresses.push({
-              type: 'Principal Place',
-              address: addrParts.join(', '),
-              city: addrInfo.loc || addrInfo.city || '',
-              district: addrInfo.dst || '',
-              state: addrInfo.stcd || '',
-              pincode: addrInfo.pncd || ''
-            });
-          }
+        const data = await erpApi.verifyGSTIN(finalValue);
+        const businessName = data.tradeName || data.legalName || '';
+        const addresses = Array.isArray(data.addresses) && data.addresses.length > 0
+          ? data.addresses
+          : (data.address || data.city || data.state || data.pincode)
+            ? [{
+                type: 'Principal Place',
+                address: data.address || '',
+                city: data.city || '',
+                district: data.district || data.city || '',
+                state: data.state || '',
+                pincode: data.pincode || ''
+              }]
+            : [];
 
-          // 2. Parse Additional Addresses
-          if (info.adadr && Array.isArray(info.adadr)) {
-            info.adadr.forEach((ad, idx) => {
-              if (ad.addr) {
-                const addrInfo = ad.addr;
-                const addrParts = [addrInfo.bno, addrInfo.bnm, addrInfo.st, addrInfo.loc, addrInfo.flno].filter(Boolean);
-                addresses.push({
-                  type: `Additional Place ${idx + 1}`,
-                  address: addrParts.join(', '),
-                  city: addrInfo.loc || addrInfo.city || '',
-                  district: addrInfo.dst || '',
-                  state: addrInfo.stcd || '',
-                  pincode: addrInfo.pncd || ''
-                });
-              }
-            });
-          }
-
-          const businessName = info.tradeNam || info.lgnm || '';
-          
-          if (addresses.length > 0) {
-            // Auto-fill the first one (Principal) by default, but save all of them silently
-            setFormData((prev) => ({
-              ...prev,
-              name: businessName,
-              address: addresses[0].address,
-              city: addresses[0].city,
-              district: addresses[0].district,
-              state: addresses[0].state,
-              pincode: addresses[0].pincode,
-              addresses: addresses
-            }));
-          }
-        } else {
-          console.warn("GSTIN search returned an error or no data:", data.message);
-        }
+        const primary = addresses[0] || {};
+        setFormData((prev) => ({
+          ...prev,
+          name: businessName || prev.name,
+          address: primary.address || data.address || prev.address,
+          city: primary.city || data.city || prev.city,
+          district: primary.district || data.district || data.city || prev.district,
+          state: primary.state || data.state || prev.state,
+          pincode: primary.pincode || data.pincode || prev.pincode,
+          addresses: addresses.length > 0 ? addresses : prev.addresses
+        }));
       } catch (err) {
         console.error("Error fetching GSTIN data:", err);
       }

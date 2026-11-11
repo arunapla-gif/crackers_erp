@@ -13,7 +13,7 @@ export default function AdminDashboard({ navigation }) {
         <View style={styles.header}>
           <View>
             <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.nameText}>{user?.name || 'Admin'} 👋</Text>
+            <Text style={styles.nameText}>{user?.username || 'Admin'} 👋</Text>
           </View>
           <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
             <Text style={styles.logoutBtnText}>Logout</Text>

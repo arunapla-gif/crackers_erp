@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://crackers-erp-api.onrender.com/api';
+const API_BASE_URL = 'https://crackers-erp-api-production.up.railway.app/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -64,7 +64,7 @@ export const erpApi = {
   // Rep Dashboard
   getRepDashboard: async () => {
     try {
-      const response = await api.get('/rep-dashboard');
+      const response = await api.get('/rep/dashboard');
       return response.data;
     } catch (error) {
       throw error;
@@ -74,7 +74,7 @@ export const erpApi = {
   // Orders
   saveOrder: async (orderData) => {
     try {
-      const response = await api.post('/orders', orderData);
+      const response = await api.post('/sales-orders', orderData);
       return response.data;
     } catch (error) {
       throw error;
@@ -159,7 +159,7 @@ export const erpApi = {
   },
   generateEwayBill: async (invoiceNo, mode) => {
     try {
-      const response = await api.post(`/invoices/eway-bill`, { invoiceNo, mode });
+      const response = await api.post(`/invoices/${encodeURIComponent(invoiceNo)}/ewaybill`, { mode });
       return response.data;
     } catch (error) {
       console.error("Error generating eway bill", error);

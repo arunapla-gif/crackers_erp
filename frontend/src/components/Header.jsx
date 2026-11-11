@@ -66,7 +66,11 @@ export default function Header() {
 
   const isAdmin = user?.role === 'ADMIN';
   const isRep = user?.role === 'REP';
-  const canView = (mod) => isAdmin || user?.permissions?.[mod]?.view;
+  const isSupervisor = user?.role === 'SUPERVISOR';
+  const canView = (mod) =>
+    isAdmin ||
+    (isSupervisor && (mod === 'production' || mod === 'employees')) ||
+    (!isSupervisor && user?.permissions?.[mod]?.view);
 
   // Check if any item in a section is visible
   const showSalesSection = isRep || canView('billing') || canView('customers') || canView('transporters') || canView('reports') || canView('vehicles');

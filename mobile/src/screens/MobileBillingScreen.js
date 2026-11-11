@@ -22,6 +22,8 @@ export default function MobileBillingScreen({ navigation }) {
   // Invoice Header State
   const [invoiceHeader, setInvoiceHeader] = useState({
     companyProfileId: null,
+    series: '',
+    number: '',
     date: new Date().toISOString().split('T')[0],
     transporterId: null,
     vehicleNo: '',
@@ -177,9 +179,42 @@ export default function MobileBillingScreen({ navigation }) {
     ]);
   };
 
+  const getSeriesAndNextNumber = (profile, docType) => {
+    const activeSeries = profile?.billingSeries?.find(s => s.docType === docType && s.status !== 'Inactive');
+    if (activeSeries) {
+      return {
+        series: activeSeries.prefix,
+        number: String((activeSeries.lastNumber || 0) + 1).padStart(4, '0')
+      };
+    }
+    return {
+      series: `${docType}-`,
+      number: String(Date.now()).slice(-6)
+    };
+  };
+
+  useEffect(() => {
+    if (!invoiceHeader.companyProfileId) return;
+    const prof = companyProfiles.find(p => p.id === invoiceHeader.companyProfileId);
+    if (prof) {
+      const { series, number } = getSeriesAndNextNumber(prof, currentType);
+      setInvoiceHeader(prev => ({ ...prev, series, number }));
+    }
+  }, [currentType, invoiceHeader.companyProfileId, companyProfiles]);
+
   const submitInvoice = async () => {
     setIsSubmitting(true);
     const totals = calculateTotals();
+    const selectedProfile = companyProfiles.find(p => p.id === invoiceHeader.companyProfileId);
+    const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+    const originState = selectedProfile?.state || 'Tamil Nadu';
+    const destState = selectedCustomer?.state || originState;
+    const isIntraState = originState.toLowerCase() === destState.toLowerCase();
+
+    const fallbackDoc = getSeriesAndNextNumber(selectedProfile, currentType);
+    const activeSeries = invoiceHeader.series || fallbackDoc.series;
+    const activeNumber = invoiceHeader.number || fallbackDoc.number;
+    const fullNumber = `${activeSeries}${activeNumber}`;
     
     const items = Object.keys(cart).map(idStr => {
       const id = parseInt(idStr);
@@ -187,45 +222,63 @@ export default function MobileBillingScreen({ navigation }) {
       const boxes = p?.boxesPerCase || 1;
       const qty = cart[id];
       const rate = parseFloat(p.rate);
-      const amount = qty * boxes * rate;
+      const totalQty = qty * boxes;
+      const amount = totalQty * rate;
       return {
         productId: id,
         product: p.name,
-        qty: qty * boxes,
+        hsn: p.hsn || '3604',
+        qty: totalQty,
         rate: rate,
-        tax: currentType === 'INV' ? (amount * 0.18) : 0,
-        total: amount
+        tax: currentType === 'INV' ? parseFloat(p.tax || 18) : 0,
+        total: parseFloat(amount.toFixed(2))
       };
     });
 
     const charges = [];
-    if (totals.discountAmt > 0) charges.push({ name: 'Discount', type: 'PERCENT', mode: 'DEDUCT', value: discountPercent, amount: -totals.discountAmt });
-    if (totals.freightAmt > 0) charges.push({ name: 'Lorry Freight', type: 'AMOUNT', mode: 'ADD', value: lorryFreight, amount: totals.freightAmt });
+    if (totals.discountAmt > 0) charges.push({ name: 'Discount', source: 'MANUAL', type: 'PERCENT', mode: 'DEDUCT', value: parseFloat(discountPercent) || 0, amount: -totals.discountAmt });
+    if (totals.freightAmt > 0) charges.push({ name: 'Lorry Freight', source: 'MANUAL', type: 'AMOUNT', mode: 'ADD', value: parseFloat(lorryFreight) || 0, amount: totals.freightAmt });
     if (fetchedInvoiceTax > 0) charges.push({ name: `Invoice Tax ${invoiceTaxRef}`, source: 'INVOICE_TAX', mode: 'ADD', type: 'AMOUNT', value: fetchedInvoiceTax, amount: fetchedInvoiceTax });
 
     const payload = {
-      series: '', // Backend handles auto-generation if blank
-      number: '', 
+      series: activeSeries,
+      number: fullNumber,
       date: invoiceHeader.date,
-      customer: customers.find(c => c.id === selectedCustomerId)?.name || '',
+      customer: selectedCustomer?.name || '',
+      customerAddress: selectedCustomer?.address || '',
       vehicleNo: invoiceHeader.vehicleNo,
-      transporterId: invoiceHeader.transporterId,
+      transporterId: invoiceHeader.transporterId || null,
       companyProfileId: invoiceHeader.companyProfileId,
       dispatchAddress: invoiceHeader.dispatchAddress,
-      state: 'Tamil Nadu',
-      subtotal: totals.subtotal,
-      cgst: totals.tax / 2,
-      sgst: totals.tax / 2,
-      igst: 0,
-      tax: totals.tax,
+      state: destState,
+      subtotal: parseFloat(totals.subtotal.toFixed(2)),
+      cgst: (currentType === 'INV' && isIntraState) ? parseFloat((totals.tax / 2).toFixed(2)) : 0,
+      sgst: (currentType === 'INV' && isIntraState) ? parseFloat((totals.tax / 2).toFixed(2)) : 0,
+      igst: (currentType === 'INV' && !isIntraState) ? parseFloat(totals.tax.toFixed(2)) : 0,
+      tax: parseFloat(totals.tax.toFixed(2)),
       grand_total: totals.grandTotal,
       items,
-      charges,
-      type: currentType
+      charges
     };
 
     try {
       const res = await erpApi.saveInvoice(payload);
+
+      // Update local billing series counter so consecutive bills increment cleanly
+      if (/^\d+$/.test(activeNumber)) {
+        const parsedNum = parseInt(activeNumber, 10);
+        setCompanyProfiles(prev => prev.map(prof => {
+          if (prof.id !== invoiceHeader.companyProfileId || !prof.billingSeries) return prof;
+          return {
+            ...prof,
+            billingSeries: prof.billingSeries.map(bs =>
+              bs.prefix === activeSeries && parsedNum > (bs.lastNumber || 0)
+                ? { ...bs, lastNumber: parsedNum }
+                : bs
+            )
+          };
+        }));
+      }
       
       const generateEway = async (mode) => {
         try {
@@ -288,7 +341,15 @@ export default function MobileBillingScreen({ navigation }) {
               key={p.id} 
               style={styles.gatewayCard}
               onPress={() => {
-                setInvoiceHeader({...invoiceHeader, companyProfileId: p.id});
+                const { series, number } = getSeriesAndNextNumber(p, currentType);
+                const dispatchAddress = [p.address, p.city, p.district, p.state, p.pincode].filter(Boolean).join(', ');
+                setInvoiceHeader({
+                  ...invoiceHeader,
+                  companyProfileId: p.id,
+                  dispatchAddress,
+                  series,
+                  number
+                });
                 setShowGateway(false);
               }}
             >
@@ -314,10 +375,10 @@ export default function MobileBillingScreen({ navigation }) {
               {transporters.slice(0, 6).map(t => (
                 <TouchableOpacity 
                   key={t.id} 
-                  style={[styles.pill, invoiceHeader.transporterId === t.id && styles.pillActive]}
-                  onPress={() => setInvoiceHeader({...invoiceHeader, transporterId: t.id})}
+                  style={[styles.pill, invoiceHeader.transporterId === t.gstin && styles.pillActive]}
+                  onPress={() => setInvoiceHeader({...invoiceHeader, transporterId: invoiceHeader.transporterId === t.gstin ? null : t.gstin})}
                 >
-                  <Text style={[styles.pillText, invoiceHeader.transporterId === t.id && styles.pillTextActive]}>{t.name}</Text>
+                  <Text style={[styles.pillText, invoiceHeader.transporterId === t.gstin && styles.pillTextActive]}>{t.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>

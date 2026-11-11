@@ -54,6 +54,7 @@ export default function Billing() {
   const addRow = useStore(state => state.addRow);
   const removeRow = useStore(state => state.removeRow);
   const updateRow = useStore(state => state.updateRow);
+  const applyProductRates = useStore(state => state.applyProductRates);
   const addChargeRow = useStore(state => state.addChargeRow);
   const removeChargeRow = useStore(state => state.removeChargeRow);
   const updateChargeRow = useStore(state => state.updateChargeRow);
@@ -147,16 +148,7 @@ export default function Billing() {
       if (!invoiceHeader.customer) {
         setCustomRates({});
         // Revert to standard rates for existing rows
-        setRows(prevRows => prevRows.map(r => {
-          if (!r.productId) return r;
-          const p = products.find(prod => prod.id === r.productId);
-          const rate = p ? parseFloat(p.rate) : 0;
-          const updated = { ...r, rate };
-          updated.gross = (parseFloat(updated.qty || 0) * rate);
-          updated.taxAmt = updated.gross * (parseFloat(updated.tax || 0) / 100);
-          updated.total = updated.gross + updated.taxAmt;
-          return updated;
-        }));
+        applyProductRates(products, {});
         return;
       }
 
@@ -170,23 +162,13 @@ export default function Billing() {
         setCustomRates(pricesMap);
         
         // Auto-update existing rows with new custom prices
-        setRows(prevRows => prevRows.map(r => {
-          if (!r.productId) return r;
-          const p = products.find(prod => prod.id === r.productId);
-          const baseRate = p ? parseFloat(p.rate) : 0;
-          const rate = pricesMap[r.productId] !== undefined ? pricesMap[r.productId] : baseRate;
-          const updated = { ...r, rate };
-          updated.gross = (parseFloat(updated.qty || 0) * rate);
-          updated.taxAmt = updated.gross * (parseFloat(updated.tax || 0) / 100);
-          updated.total = updated.gross + updated.taxAmt;
-          return updated;
-        }));
+        applyProductRates(products, pricesMap);
       } catch (err) {
         console.error("Failed to fetch customer prices");
       }
     };
     fetchCustomPrices();
-  }, [invoiceHeader.customer, customers, products]);
+  }, [invoiceHeader.customer, customers, products, applyProductRates]);
 
   const handleProductSelect = (id, productCode) => {
     const product = products.find(p => p.code === productCode);
@@ -226,7 +208,7 @@ export default function Billing() {
   const handleSaveInvoice = async () => {
     if (!invoiceHeader.number) {
       alert("Invoice Number is required!");
-      return;
+      return null;
     }
     
     const fullNumber = invoiceHeader.series + invoiceHeader.number;
@@ -275,7 +257,13 @@ export default function Billing() {
       clearCart();
       localStorage.removeItem('crackers-erp-billing-header');
       
-      const nextNo = getNextNumber(invoiceHeader.companyProfileId, invoiceHeader.series, profiles);
+      const nextFromProfile = getNextNumber(invoiceHeader.companyProfileId, invoiceHeader.series, profiles);
+      const incrementedCurrent = /^\d+$/.test(invoiceHeader.number)
+        ? String(parseInt(invoiceHeader.number, 10) + 1).padStart(invoiceHeader.number.length, '0')
+        : nextFromProfile;
+      const nextNo = (nextFromProfile && parseInt(nextFromProfile, 10) > parseInt(invoiceHeader.number, 10))
+        ? nextFromProfile
+        : incrementedCurrent;
       
       setInvoiceHeader(prev => ({
         ...prev,
@@ -290,8 +278,10 @@ export default function Billing() {
       }));
 
       setTimeout(() => setMessage(''), 3000);
+      return fullNumber;
     } catch (error) {
       alert(`Error saving document: ${error.response?.data?.error || error.message}`);
+      return null;
     }
   };
 
@@ -300,12 +290,13 @@ export default function Billing() {
       alert("Please save the invoice with a number first!");
       return;
     }
-    await handleSaveInvoice();
-    setMessage(`Generating ${mode === 'PART_A' ? 'Part-A ' : 'Full '}E-Way Bill via GSTZen...`);
+    const savedNumber = await handleSaveInvoice();
+    if (!savedNumber) return;
+    setMessage(`Generating ${mode === 'PART_A' ? 'Part-A ' : 'Full '}E-Way Bill via Whitebooks...`);
     try {
-      const result = await erpApi.generateEwayBill(invoiceHeader.number, mode);
+      const result = await erpApi.generateEwayBill(savedNumber, mode);
       if (result.ewayBillNo) {
-        setInvoiceHeader({...invoiceHeader, ewayBillNo: result.ewayBillNo});
+        setInvoiceHeader(prev => ({ ...prev, ewayBillNo: result.ewayBillNo }));
         setMessage(`Success! E-Way Bill Generated: ${result.ewayBillNo}`);
       }
     } catch (error) {

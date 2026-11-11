@@ -58,6 +58,26 @@ export const useStore = create(persist((set, get) => ({
     get().calculateTotals();
   },
 
+  applyProductRates: (products, customRates = {}) => {
+    if (!products || products.length === 0) return;
+    set((state) => {
+      let changed = false;
+      const newRows = state.rows.map(row => {
+        if (!row.productId) return row;
+        const p = products.find(prod => prod.id === row.productId);
+        if (!p) return row;
+        const baseRate = parseFloat(p.rate) || 0;
+        const rate = customRates[row.productId] !== undefined ? customRates[row.productId] : baseRate;
+        const amount = parseFloat(((parseFloat(row.qty) || 0) * rate).toFixed(2)) || 0;
+        if (row.rate === rate && row.amount === amount) return row;
+        changed = true;
+        return { ...row, rate, amount };
+      });
+      return changed ? { rows: newRows } : state;
+    });
+    get().calculateTotals();
+  },
+
   clearCart: () => {
     set({
       rows: [{ id: Date.now(), product: '', hsn: '', qty: 1, rate: 0, tax: 18, amount: 0 }],

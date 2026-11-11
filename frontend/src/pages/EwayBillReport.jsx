@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { erpApi } from '../api/erpApi';
 
 export default function EwayBillReport() {
   const [reportData, setReportData] = useState(null);
@@ -10,19 +11,10 @@ export default function EwayBillReport() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/ewaybill/reports/recent?days=${days}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch from government portal");
-      }
-      
+      const data = await erpApi.getRecentEwayBills(days);
       setReportData(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.error || err.message || "Failed to fetch from government portal");
     }
     setLoading(false);
   };

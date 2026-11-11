@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { erpApi } from '../api/erpApi';
 
 export default function CustomerDropdown({ customers, selectedCustomerId, newCustomerData, onSelect, onNewCustomer, label = "SELECT CUSTOMER" }) {
@@ -13,6 +13,8 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
   const [newName, setNewName] = useState('');
   const [newMobile, setNewMobile] = useState('');
   const [newCity, setNewCity] = useState('');
+  const [newIdNumber, setNewIdNumber] = useState('');
+  const [newPincode, setNewPincode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
@@ -31,8 +33,9 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
       const data = await erpApi.verifyGSTIN(newGstin.toUpperCase());
       setNewName(data.tradeName || data.legalName);
       setNewCity(data.city || '');
+      if (data.pincode) setNewPincode(data.pincode);
     } catch (err) {
-      Alert.alert('Error', err);
+      Alert.alert('Error', err.toString());
     } finally {
       setIsVerifying(false);
     }
@@ -40,10 +43,20 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
 
   const handleSaveNewCustomer = () => {
     if (newCustomerType === 'GST' && newGstin.length !== 15) {
-      Alert.alert('Required', 'Please fetch a valid GSTIN first');
+      Alert.alert('Required', 'Please enter a valid 15-character GSTIN');
       return;
     }
-    if (!newName) {
+    if (newCustomerType === 'UNREGISTERED') {
+      if (!newIdNumber.trim()) {
+        Alert.alert('Required', 'Please provide Aadhaar / PAN Number for Unregistered customer');
+        return;
+      }
+      if (!newPincode.trim()) {
+        Alert.alert('Required', 'Please provide Pincode for Unregistered customer');
+        return;
+      }
+    }
+    if (!newName.trim()) {
       Alert.alert('Required', 'Customer Name is required');
       return;
     }
@@ -51,9 +64,11 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
     onNewCustomer({
       type: newCustomerType,
       gstin: newCustomerType === 'GST' ? newGstin.toUpperCase() : '',
-      name: newName,
-      mobile: newMobile,
-      city: newCity
+      name: newName.trim(),
+      mobile: newMobile.trim(),
+      city: newCity.trim(),
+      id_number: newCustomerType === 'UNREGISTERED' ? newIdNumber.trim().toUpperCase() : '',
+      pincode: newPincode.trim()
     });
     
     setModalVisible(false);
@@ -66,6 +81,8 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
     setNewName('');
     setNewMobile('');
     setNewCity('');
+    setNewIdNumber('');
+    setNewPincode('');
   };
 
   return (
@@ -165,7 +182,7 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
               // =======================================
               // ADD NEW CUSTOMER VIEW
               // =======================================
-              <View style={styles.newCustomerContainer}>
+              <ScrollView style={styles.newCustomerContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.toggleContainer}>
                   <TouchableOpacity 
                     style={[styles.toggleBtn, newCustomerType === 'GST' && styles.toggleBtnActive]}
@@ -235,14 +252,39 @@ export default function CustomerDropdown({ customers, selectedCustomerId, newCus
                     onChangeText={setNewCity}
                   />
                 </View>
-                
-                <View style={{flex: 1}} />
+
+                {newCustomerType === 'UNREGISTERED' && (
+                  <>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Aadhaar / PAN *</Text>
+                      <TextInput 
+                        style={[styles.input, {textTransform: 'uppercase'}]}
+                        placeholder="Aadhaar or PAN"
+                        value={newIdNumber}
+                        onChangeText={setNewIdNumber}
+                        autoCapitalize="characters"
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Pincode *</Text>
+                      <TextInput 
+                        style={styles.input}
+                        placeholder="6-digit Pincode"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        value={newPincode}
+                        onChangeText={setNewPincode}
+                      />
+                    </View>
+                  </>
+                )}
 
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSaveNewCustomer}>
                   <Text style={styles.saveBtnText}>Save & Use Lead</Text>
                 </TouchableOpacity>
 
-              </View>
+              </ScrollView>
             )}
           </KeyboardAvoidingView>
         </SafeAreaView>

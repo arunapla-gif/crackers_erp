@@ -15,6 +15,7 @@ export default function SalesOrderScreen() {
   const [cart, setCart] = useState({});
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [newCustomerData, setNewCustomerData] = useState(null);
+  const [customRates, setCustomRates] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -81,6 +82,29 @@ export default function SalesOrderScreen() {
     }
   };
 
+  useEffect(() => {
+    const fetchCustomPrices = async () => {
+      if (!selectedCustomerId || newCustomerData) {
+        setCustomRates({});
+        return;
+      }
+      try {
+        const prices = await erpApi.getCustomerPrices(selectedCustomerId);
+        const pricesMap = {};
+        prices.forEach(p => { pricesMap[p.productId] = parseFloat(p.rate); });
+        setCustomRates(pricesMap);
+      } catch (err) {
+        console.warn('Failed to fetch customer prices:', err.message);
+      }
+    };
+    fetchCustomPrices();
+  }, [selectedCustomerId, newCustomerData]);
+
+  const getProductRate = (product) => {
+    if (!product) return 0;
+    return customRates[product.id] !== undefined ? customRates[product.id] : parseFloat(product.rate || 0);
+  };
+
   const updateQuantity = (productId, qtyString) => {
     const qty = parseInt(qtyString) || 0;
     setCart(prev => {
@@ -101,7 +125,7 @@ export default function SalesOrderScreen() {
       const product = products.find(p => p.id === id);
       if (product) {
         const boxesPerCase = product.boxesPerCase || 1;
-        subtotal += (cart[id] * parseFloat(product.rate) * boxesPerCase); 
+        subtotal += (cart[id] * getProductRate(product) * boxesPerCase); 
       }
     });
     return subtotal;
@@ -115,11 +139,15 @@ export default function SalesOrderScreen() {
     const cartItems = Object.keys(cart).map(idStr => {
       const id = parseInt(idStr);
       const product = products.find(p => p.id === id);
+      const rate = getProductRate(product);
+      const boxesPerCase = product?.boxesPerCase || 1;
+      const qty = cart[id];
       return {
         productId: id,
         product: product.name,
-        qty: cart[id],
-        rate: parseFloat(product.rate)
+        qty,
+        rate,
+        total: parseFloat((qty * boxesPerCase * rate).toFixed(2))
       };
     });
 
@@ -170,7 +198,7 @@ export default function SalesOrderScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>New Order</Text>
-            <Text style={styles.headerRep}>{user?.name}</Text>
+            <Text style={styles.headerRep}>{user?.username || 'Rep'}</Text>
           </View>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
             <Text style={styles.logoutBtnText}>Logout</Text>
@@ -209,7 +237,7 @@ export default function SalesOrderScreen() {
             <View style={styles.productRow}>
               <View style={styles.productInfo}>
                 <Text style={styles.productName}>{item.name}</Text>
-                <Text style={styles.productRate}>₹{parseFloat(item.rate).toLocaleString()}</Text>
+                <Text style={styles.productRate}>₹{getProductRate(item).toLocaleString()}</Text>
               </View>
               <TextInput
                 style={styles.qtyInput}

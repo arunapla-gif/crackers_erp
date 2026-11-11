@@ -186,6 +186,16 @@ export const erpApi = {
     }
   },
 
+  getRecentEwayBills: async (days = 7) => {
+    try {
+      const response = await api.get(`/ewaybill/reports/recent`, { params: { days } });
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching e-way bill reports", error);
+      throw error;
+    }
+  },
+
   // Transporter APIs
   getTransporters: async () => {
     try {

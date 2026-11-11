@@ -37,10 +37,25 @@ export default function PendingOrdersScreen({ navigation }) {
     fetchPendingOrders();
   };
 
+  const getLeadData = (order) => {
+    if (!order?.newCustomerData) return null;
+    if (typeof order.newCustomerData === 'string') {
+      try { return JSON.parse(order.newCustomerData); } catch { return null; }
+    }
+    return order.newCustomerData;
+  };
+
+  const getCustomerDisplayName = (order) => {
+    const leadData = getLeadData(order);
+    return order.customer?.name || leadData?.name || 'Unknown Customer';
+  };
+
   const handleApprove = (order) => {
+    const isNewLead = !order.customerId && !!order.newCustomerData;
+    const displayName = getCustomerDisplayName(order);
     Alert.alert(
       'Approve Order',
-      `Are you sure you want to approve the order for ${order.customerName}?`,
+      `Are you sure you want to approve the order for ${displayName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -48,15 +63,14 @@ export default function PendingOrdersScreen({ navigation }) {
           style: 'default',
           onPress: async () => {
             try {
-              // Standard web-app logic for approval: approve customer first, then update status
-              if (order.status === 'PENDING_CUSTOMER_APPROVAL') {
+              if (isNewLead) {
                 await erpApi.approveSalesOrderCustomer(order.id);
               }
               await erpApi.updateSalesOrderStatus(order.id, 'APPROVED');
               Alert.alert('Success', 'Order Approved!');
               fetchPendingOrders();
             } catch (err) {
-              Alert.alert('Error', 'Failed to approve order');
+              Alert.alert('Error', err.response?.data?.error || 'Failed to approve order');
             }
           }
         }
@@ -65,9 +79,10 @@ export default function PendingOrdersScreen({ navigation }) {
   };
 
   const handleReject = (order) => {
+    const displayName = getCustomerDisplayName(order);
     Alert.alert(
       'Reject Order',
-      `Are you sure you want to reject the order for ${order.customerName}?`,
+      `Are you sure you want to reject the order for ${displayName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -78,7 +93,7 @@ export default function PendingOrdersScreen({ navigation }) {
               await erpApi.updateSalesOrderStatus(order.id, 'REJECTED');
               fetchPendingOrders();
             } catch (err) {
-              Alert.alert('Error', 'Failed to reject order');
+              Alert.alert('Error', err.response?.data?.error || 'Failed to reject order');
             }
           }
         }
@@ -114,19 +129,22 @@ export default function PendingOrdersScreen({ navigation }) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f59e0b" />
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const isNewLead = !item.customerId && !!item.newCustomerData;
+          const displayName = getCustomerDisplayName(item);
+          return (
           <View style={styles.orderCard}>
             <View style={styles.cardHeader}>
               <View>
-                <Text style={styles.customerName}>{item.customerName || item.newCustomerName}</Text>
+                <Text style={styles.customerName}>{displayName}</Text>
                 <Text style={styles.orderMeta}>
                   {new Date(item.createdAt).toLocaleDateString()} • By {item.rep?.username || 'Unknown Rep'}
                 </Text>
               </View>
-              <Text style={styles.orderTotal}>₹{parseFloat(item.subtotal).toLocaleString()}</Text>
+              <Text style={styles.orderTotal}>₹{parseFloat(item.subtotal || 0).toLocaleString()}</Text>
             </View>
 
-            {item.status === 'PENDING_CUSTOMER_APPROVAL' && (
+            {isNewLead && (
               <View style={styles.warningBadge}>
                 <Text style={styles.warningText}>⚠️ New Customer Requires Approval</Text>
               </View>
@@ -141,7 +159,8 @@ export default function PendingOrdersScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </View>
-        )}
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>🎉</Text>

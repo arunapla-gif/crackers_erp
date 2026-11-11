@@ -17,6 +17,8 @@ const MODULES = [
   { id: 'production', label: 'Production' },
   { id: 'materials', label: 'Materials' },
   { id: 'machines', label: 'Machines' },
+  { id: 'employees', label: 'Employees & Advances' },
+  { id: 'payroll', label: 'Payroll' },
   { id: 'reports', label: 'Reports' }
 ];
 
@@ -199,6 +201,7 @@ export default function UserMaster() {
             <label className="block text-[12px] font-[800] text-[#334155] mb-[3px]">Role</label>
             <select name="role" value={formData.role} onChange={handleChange} disabled={formData.username === 'admin'} className="w-full min-h-[43px] px-[12px] py-[11px] bg-white/96 border border-slate-300 rounded-[14px] text-[14px] font-bold focus:outline-none focus:border-rose-500 focus:ring-[4px] focus:ring-rose-500/15">
               <option value="STAFF">STAFF</option>
+              <option value="SUPERVISOR">FACTORY SUPERVISOR (Android)</option>
               <option value="REP">SALES REP</option>
               <option value="ADMIN">ADMIN (Full Access)</option>
             </select>
@@ -253,6 +256,16 @@ export default function UserMaster() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {formData.role === 'SUPERVISOR' && (
+          <div className="mt-4 border border-amber-200 bg-amber-50/70 rounded-[18px] p-4 mb-6">
+            <h3 className="text-[12px] font-black text-amber-800 uppercase tracking-wide">Factory Supervisor Access Policy</h3>
+            <p className="text-[12px] font-bold text-amber-700 mt-1">
+              Can manage Daily Production entries, Employees &amp; Advances, and view Approved Factory Orders (box quantities only).
+              All rupee wage rates, piece rates, salaries, Payroll, and customer prices are strictly hidden on the server.
+            </p>
           </div>
         )}
 
