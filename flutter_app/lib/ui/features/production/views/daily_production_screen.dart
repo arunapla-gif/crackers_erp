@@ -938,7 +938,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                             ),
                           ),
                           Text(
-                            '${emp.roleGroup} • ${emp.paymentType}',
+                            emp.isTemporary
+                                ? '${emp.roleGroup} • ${emp.paymentType} • TEMP'
+                                : '${emp.roleGroup} • ${emp.paymentType}',
                             style: const TextStyle(
                               fontSize: 12,
                               color: ErpTheme.slate500,
@@ -1291,9 +1293,11 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                       ),
                                     ),
                                     Text(
-                                      emp.unit != null
-                                          ? '${emp.paymentType} • ${emp.unit}'
-                                          : emp.paymentType,
+                                      [
+                                        emp.paymentType,
+                                        if (emp.isTemporary) 'TEMP',
+                                        if (emp.unit != null) emp.unit!,
+                                      ].join(' • '),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(

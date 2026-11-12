@@ -41,6 +41,19 @@ class EmployeeRepository {
     return Employee.fromJson(raw);
   }
 
+  Future<Employee> convertToRegular(
+    int id, {
+    String? paymentType,
+    double? salary,
+  }) async {
+    final raw = await _apiClient.convertEmployeeToRegular(
+      id,
+      paymentType: paymentType,
+      salary: salary,
+    );
+    return Employee.fromJson(raw);
+  }
+
   Future<void> deleteEmployee(int id) async {
     await _apiClient.deleteEmployee(id);
   }

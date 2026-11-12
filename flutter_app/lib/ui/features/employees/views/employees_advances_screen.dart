@@ -53,6 +53,11 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
     return user != null && !user.isSupervisor;
   }
 
+  bool get _canConvertToRegular {
+    final user = widget.authViewModel.currentUser;
+    return user != null && user.isAdmin;
+  }
+
   bool get _canDeleteEmployee {
     final user = widget.authViewModel.currentUser;
     return user != null && !user.isSupervisor && user.canDelete('employees');
@@ -79,31 +84,6 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
   }
 
   Future<void> _openEmployeeForm({Employee? existing}) async {
-    final canManageRates = _canManageRates;
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final mobileCtrl = TextEditingController(text: existing?.mobile ?? '');
-    final roleCtrl = TextEditingController(text: existing?.role ?? '');
-    final unitCtrl = TextEditingController(text: existing?.unit ?? '');
-    final salaryCtrl = TextEditingController(
-      text: existing?.salary != null && existing!.salary! > 0
-          ? existing.salary!.toStringAsFixed(
-              existing.salary! == existing.salary!.roundToDouble() ? 0 : 2,
-            )
-          : '',
-    );
-    var paymentType = existing?.paymentType ?? 'Contractual';
-    var status = existing?.status ?? 'Active';
-
-    const rolePresets = [
-      'Rolling',
-      'Filling',
-      'Packing',
-      'Bundle Maker',
-      'Dispatch',
-      'Helper',
-    ];
-
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -111,242 +91,13 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                16,
-                20,
-                MediaQuery.of(ctx).viewInsets.bottom + 20,
-              ),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        existing == null
-                            ? (canManageRates
-                                  ? 'Add Employee'
-                                  : 'Add Factory Worker')
-                            : (canManageRates
-                                  ? 'Edit Employee'
-                                  : 'Edit Worker'),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: ErpTheme.slate900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        canManageRates
-                            ? 'Configure role, work type, and salary or contractual piece rate.'
-                            : 'Wage rates & monthly salaries remain hidden and managed by Admin.',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: ErpTheme.slate500,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: nameCtrl,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Worker Full Name *',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                        validator: (val) => (val == null || val.trim().isEmpty)
-                            ? 'Worker name is required'
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: mobileCtrl,
-                        keyboardType: TextInputType.phone,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(12),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'Mobile Number (Optional)',
-                          prefixIcon: Icon(Icons.phone_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: roleCtrl,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Department / Role (e.g. Rolling, Packing)',
-                          prefixIcon: Icon(Icons.work_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: rolePresets
-                            .map(
-                              (preset) => ActionChip(
-                                label: Text(preset),
-                                onPressed: () => setSheetState(
-                                  () => roleCtrl.text = preset,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: paymentType,
-                              decoration: const InputDecoration(
-                                labelText: 'Work Type',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'Contractual',
-                                  child: Text('Contractual'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Monthly',
-                                  child: Text('Monthly'),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setSheetState(() => paymentType = val);
-                                }
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              initialValue: status,
-                              decoration: const InputDecoration(
-                                labelText: 'Status',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'Active',
-                                  child: Text('Active'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Inactive',
-                                  child: Text('Inactive'),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  setSheetState(() => status = val);
-                                }
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (canManageRates) ...[
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: salaryCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d{0,2}'),
-                            ),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: paymentType == 'Contractual'
-                                ? 'Piece Rate (₹)'
-                                : 'Basic Salary (₹)',
-                            prefixIcon: const Icon(
-                              Icons.currency_rupee_rounded,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: unitCtrl,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Unit / Shed (Optional, e.g. Unit 1)',
-                          prefixIcon: Icon(Icons.location_on_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.of(ctx).pop(false),
-                              child: const Text('Cancel'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: ErpTheme.hrIndigo,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () async {
-                                if (!(formKey.currentState?.validate() ??
-                                    false)) {
-                                  return;
-                                }
-                                final ok = await widget.viewModel.saveEmployee(
-                                  id: existing?.id,
-                                  name: nameCtrl.text,
-                                  mobile: mobileCtrl.text,
-                                  role: roleCtrl.text,
-                                  paymentType: paymentType,
-                                  unit: unitCtrl.text,
-                                  status: status,
-                                  salary: canManageRates
-                                      ? (double.tryParse(
-                                              salaryCtrl.text.trim(),
-                                            ) ??
-                                            0)
-                                      : null,
-                                  includeSalary: canManageRates,
-                                );
-                                if (ok && ctx.mounted) {
-                                  Navigator.of(ctx).pop(true);
-                                }
-                              },
-                              child: Text(
-                                existing == null ? 'Create Worker' : 'Update',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => _EmployeeFormSheet(
+        existing: existing,
+        canManageRates: _canManageRates,
+        canConvertToRegular: _canConvertToRegular,
+        viewModel: widget.viewModel,
+      ),
     );
-
-    nameCtrl.dispose();
-    mobileCtrl.dispose();
-    roleCtrl.dispose();
-    unitCtrl.dispose();
-    salaryCtrl.dispose();
 
     if (saved == true && mounted && widget.viewModel.statusMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -409,6 +160,41 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      if (employee.isTemporary) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: ErpTheme.productionAmberSoft,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: ErpTheme.productionAmber.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                size: 18,
+                                color: ErpTheme.productionAmber,
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Temporary worker — verify recovery plan before issuing advance.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: ErpTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -591,6 +377,30 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
     descCtrl.dispose();
 
     if (ok == true && mounted && widget.viewModel.statusMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.statusMessage!),
+          backgroundColor: ErpTheme.ordersEmerald,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmConvertToRegular(Employee emp) async {
+    if (!_canConvertToRegular || !emp.isTemporary) return;
+
+    final converted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ConvertRegularDialog(
+        employee: emp,
+        viewModel: widget.viewModel,
+        inrFormat: _inrFormat,
+      ),
+    );
+
+    if (converted == true &&
+        mounted &&
+        widget.viewModel.statusMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.viewModel.statusMessage!),
@@ -907,6 +717,12 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                 icon: Icons.handyman_rounded,
               ),
               ErpStatTile(
+                label: 'Temporary',
+                value: '${vm.temporaryActiveCount}',
+                accentColor: ErpTheme.productionAmber,
+                icon: Icons.hourglass_top_rounded,
+              ),
+              ErpStatTile(
                 label: 'Advance Balance',
                 value: '₹${_inrFormat.format(vm.totalAdvanceOutstanding)}',
                 accentColor: ErpTheme.dangerRose,
@@ -950,6 +766,18 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                       label: Text(t),
                       selected: vm.paymentTypeFilter == t,
                       onSelected: (_) => vm.setPaymentTypeFilter(t),
+                    ),
+                  ),
+                ),
+                ...['Regular', 'Temporary'].map(
+                  (cat) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(cat),
+                      selected: vm.employmentTypeFilter == cat,
+                      onSelected: (selected) => vm.setEmploymentTypeFilter(
+                        selected ? cat : 'All',
+                      ),
                     ),
                   ),
                 ),
@@ -1033,6 +861,16 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                                             ? ErpTheme.ordersEmerald
                                             : ErpTheme.slate500,
                                       ),
+                                      if (emp.isTemporary) ...[
+                                        const SizedBox(width: 6),
+                                        const ErpBadge(
+                                          label: 'TEMP',
+                                          backgroundColor:
+                                              ErpTheme.productionAmberSoft,
+                                          foregroundColor:
+                                              ErpTheme.productionAmber,
+                                        ),
+                                      ],
                                     ],
                                   ),
                                   const SizedBox(height: 4),
@@ -1040,6 +878,7 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                                     [
                                       emp.roleGroup,
                                       emp.paymentType,
+                                      emp.employmentType,
                                       if (emp.unit != null) emp.unit!,
                                       if (emp.mobile != null) emp.mobile!,
                                     ].join(' • '),
@@ -1142,6 +981,21 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                               ),
                               label: const Text('Ledger'),
                             ),
+                            if (emp.isTemporary && _canConvertToRegular)
+                              OutlinedButton.icon(
+                                onPressed: () => _confirmConvertToRegular(emp),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: ErpTheme.ordersEmerald,
+                                  side: const BorderSide(
+                                    color: ErpTheme.ordersEmerald,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.verified_user_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text('Make Regular'),
+                              ),
                             if (widget.authViewModel.currentUser == null ||
                                 widget.authViewModel.currentUser!.canEdit(
                                   'employees',
@@ -1280,6 +1134,452 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class _EmployeeFormSheet extends StatefulWidget {
+  const _EmployeeFormSheet({
+    required this.existing,
+    required this.canManageRates,
+    required this.canConvertToRegular,
+    required this.viewModel,
+  });
+
+  final Employee? existing;
+  final bool canManageRates;
+  final bool canConvertToRegular;
+  final EmployeesAdvancesViewModel viewModel;
+
+  @override
+  State<_EmployeeFormSheet> createState() => _EmployeeFormSheetState();
+}
+
+class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
+  static const _rolePresets = [
+    'Rolling',
+    'Filling',
+    'Packing',
+    'Bundle Maker',
+    'Dispatch',
+    'Helper',
+  ];
+
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _mobileCtrl;
+  late final TextEditingController _roleCtrl;
+  late final TextEditingController _unitCtrl;
+  late final TextEditingController _salaryCtrl;
+
+  String? _paymentType;
+  String? _employmentType;
+  late String _status;
+
+  bool get _canEditEmploymentType =>
+      widget.existing == null ||
+      !widget.existing!.isTemporary ||
+      widget.canConvertToRegular;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    _nameCtrl = TextEditingController(text: existing?.name ?? '');
+    _mobileCtrl = TextEditingController(text: existing?.mobile ?? '');
+    _roleCtrl = TextEditingController(text: existing?.role ?? '');
+    _unitCtrl = TextEditingController(text: existing?.unit ?? '');
+    _salaryCtrl = TextEditingController(
+      text: existing?.salary != null && existing!.salary! > 0
+          ? existing.salary!.toStringAsFixed(
+              existing.salary! == existing.salary!.roundToDouble() ? 0 : 2,
+            )
+          : '',
+    );
+    _paymentType = existing?.paymentType;
+    _employmentType = existing?.employmentType;
+    _status = existing?.status ?? 'Active';
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _mobileCtrl.dispose();
+    _roleCtrl.dispose();
+    _unitCtrl.dispose();
+    _salaryCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = widget.existing;
+    final canManageRates = widget.canManageRates;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                existing == null
+                    ? (canManageRates ? 'Add Employee' : 'Add Factory Worker')
+                    : (canManageRates ? 'Edit Employee' : 'Edit Worker'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: ErpTheme.slate900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                canManageRates
+                    ? 'Configure role, work type, and salary or contractual piece rate.'
+                    : 'Wage rates & monthly salaries remain hidden and managed by Admin.',
+                style: const TextStyle(fontSize: 12, color: ErpTheme.slate500),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Worker Full Name *',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+                validator: (val) => (val == null || val.trim().isEmpty)
+                    ? 'Worker name is required'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _mobileCtrl,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(12),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Mobile Number (Optional)',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _roleCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Department / Role (e.g. Rolling, Packing)',
+                  prefixIcon: Icon(Icons.work_outline),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _rolePresets
+                    .map(
+                      (preset) => ActionChip(
+                        label: Text(preset),
+                        onPressed: () =>
+                            setState(() => _roleCtrl.text = preset),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _paymentType,
+                      hint: const Text('Select'),
+                      decoration: const InputDecoration(
+                        labelText: 'Work Type *',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Contractual',
+                          child: Text('Contractual'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Monthly',
+                          child: Text('Monthly'),
+                        ),
+                      ],
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Select work type'
+                          : null,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _paymentType = val);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _employmentType,
+                      hint: const Text('Select'),
+                      decoration: const InputDecoration(
+                        labelText: 'Worker Category *',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Regular',
+                          child: Text('Regular'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Temporary',
+                          child: Text('Temporary'),
+                        ),
+                      ],
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Select Regular or Temporary'
+                          : null,
+                      onChanged: _canEditEmploymentType
+                          ? (val) {
+                              if (val != null) {
+                                setState(() => _employmentType = val);
+                              }
+                            }
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+              if (!_canEditEmploymentType) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Only Admin can convert a Temporary worker to Regular.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: ErpTheme.productionAmber,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: const [
+                  DropdownMenuItem(value: 'Active', child: Text('Active')),
+                  DropdownMenuItem(value: 'Inactive', child: Text('Inactive')),
+                ],
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _status = val);
+                  }
+                },
+              ),
+              if (canManageRates) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _salaryCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d*\.?\d{0,2}'),
+                    ),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: _paymentType == 'Contractual'
+                        ? 'Piece Rate (₹)'
+                        : (_paymentType == 'Monthly'
+                              ? 'Basic Salary (₹)'
+                              : 'Salary / Piece Rate (₹)'),
+                    prefixIcon: const Icon(Icons.currency_rupee_rounded),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _unitCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Unit / Shed (Optional, e.g. Unit 1)',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: ErpTheme.hrIndigo,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        if (!(_formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        final ok = await widget.viewModel.saveEmployee(
+                          id: existing?.id,
+                          name: _nameCtrl.text,
+                          mobile: _mobileCtrl.text,
+                          role: _roleCtrl.text,
+                          paymentType: _paymentType!,
+                          employmentType: _employmentType!,
+                          unit: _unitCtrl.text,
+                          status: _status,
+                          salary: canManageRates
+                              ? (double.tryParse(_salaryCtrl.text.trim()) ?? 0)
+                              : null,
+                          includeSalary: canManageRates,
+                        );
+                        if (ok && context.mounted) {
+                          Navigator.of(context).pop(true);
+                        }
+                      },
+                      child: Text(
+                        existing == null ? 'Create Worker' : 'Update',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConvertRegularDialog extends StatefulWidget {
+  const _ConvertRegularDialog({
+    required this.employee,
+    required this.viewModel,
+    required this.inrFormat,
+  });
+
+  final Employee employee;
+  final EmployeesAdvancesViewModel viewModel;
+  final NumberFormat inrFormat;
+
+  @override
+  State<_ConvertRegularDialog> createState() => _ConvertRegularDialogState();
+}
+
+class _ConvertRegularDialogState extends State<_ConvertRegularDialog> {
+  late String _nextPaymentType;
+  late final TextEditingController _salaryCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final emp = widget.employee;
+    _nextPaymentType = emp.paymentType;
+    _salaryCtrl = TextEditingController(
+      text: emp.salary != null && emp.salary! > 0
+          ? emp.salary!.toStringAsFixed(
+              emp.salary! == emp.salary!.roundToDouble() ? 0 : 2,
+            )
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _salaryCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final emp = widget.employee;
+    return AlertDialog(
+      title: const Text('Convert to Regular Worker'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Move "${emp.name}" from Temporary to Regular? All past production logs, payroll records, and ₹${widget.inrFormat.format(emp.advanceBalance)} advance balance remain intact.',
+              style: const TextStyle(fontSize: 13, color: ErpTheme.slate700),
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: _nextPaymentType,
+              decoration: const InputDecoration(labelText: 'Work Type'),
+              items: const [
+                DropdownMenuItem(
+                  value: 'Contractual',
+                  child: Text('Contractual'),
+                ),
+                DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _nextPaymentType = val);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _salaryCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
+              decoration: InputDecoration(
+                labelText: _nextPaymentType == 'Contractual'
+                    ? 'Piece Rate (₹)'
+                    : 'Basic Salary (₹)',
+                prefixIcon: const Icon(Icons.currency_rupee_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: ErpTheme.ordersEmerald,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () async {
+            final parsedSalary = double.tryParse(_salaryCtrl.text.trim());
+            final ok = await widget.viewModel.convertToRegular(
+              employee: emp,
+              paymentType: _nextPaymentType,
+              salary: parsedSalary,
+            );
+            if (ok && context.mounted) {
+              Navigator.of(context).pop(true);
+            }
+          },
+          icon: const Icon(Icons.verified_user_outlined, size: 18),
+          label: const Text('Confirm Regular'),
+        ),
+      ],
     );
   }
 }

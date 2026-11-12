@@ -146,3 +146,4 @@ class AndroidMethodChannelAppUpdaterService implements AppUpdaterService {
     return ApkInstallResult.started;
   }
 }
+

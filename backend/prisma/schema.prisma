@@ -345,9 +345,11 @@ model Employee {
   name      String
   mobile    String?
   role      String?
-  salary      Decimal  @default(0.00) @db.Decimal(10, 2)
-  paymentType String   @default("Monthly")
-  unit        String?
+  salary         Decimal   @default(0.00) @db.Decimal(10, 2)
+  paymentType    String    @default("Monthly")
+  employmentType String    @default("Regular")
+  regularizedAt  DateTime?
+  unit           String?
   status      String   @default("Active")
   advanceBalance Decimal @default(0.00) @db.Decimal(12, 2)
   payrolls  Payroll[]

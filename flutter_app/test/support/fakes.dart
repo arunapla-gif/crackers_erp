@@ -266,6 +266,7 @@ class FakeApiClient implements ApiClient {
       'mobile': '9876543210',
       'role': 'Rolling',
       'paymentType': 'Contractual',
+      'employmentType': 'Regular',
       'unit': 'Unit 1',
       'status': 'Active',
       'advanceBalance': '500.00',
@@ -277,6 +278,7 @@ class FakeApiClient implements ApiClient {
       'mobile': '9876500001',
       'role': 'Packing',
       'paymentType': 'Contractual',
+      'employmentType': 'Regular',
       'unit': 'Unit 2',
       'status': 'Active',
       'advanceBalance': '0.00',
@@ -288,6 +290,7 @@ class FakeApiClient implements ApiClient {
       'mobile': '9876500002',
       'role': 'Supervisor Asst',
       'paymentType': 'Monthly',
+      'employmentType': 'Regular',
       'unit': 'Unit 1',
       'status': 'Active',
       'advanceBalance': '1000.00',
@@ -623,12 +626,37 @@ class FakeApiClient implements ApiClient {
 
     final created = <String, dynamic>{
       'id': employeesData.length + 50,
+      'employmentType': 'Regular',
       ...payload,
       'advanceBalance': '0.00',
       'salary': payload['salary'],
     };
     employeesData.add(created);
     return created;
+  }
+
+  @override
+  Future<Map<String, dynamic>> convertEmployeeToRegular(
+    int id, {
+    String? paymentType,
+    double? salary,
+  }) async {
+    if (roleToLogin != 'ADMIN') {
+      throw const ApiException(
+        'Only Admin can convert a Temporary worker to Regular.',
+        statusCode: 403,
+      );
+    }
+    final idx = employeesData.indexWhere((e) => e['id'] == id);
+    final updated = <String, dynamic>{
+      ...employeesData[idx],
+      'employmentType': 'Regular',
+      'regularizedAt': '2026-11-12T09:30:00.000Z',
+      'paymentType': ?paymentType,
+      'salary': ?salary,
+    };
+    employeesData[idx] = updated;
+    return updated;
   }
 
   @override

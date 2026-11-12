@@ -82,6 +82,11 @@ abstract class ApiClient {
   // Employees & Advances & Payroll
   Future<List<dynamic>> getEmployees();
   Future<Map<String, dynamic>> saveEmployee(Map<String, dynamic> payload);
+  Future<Map<String, dynamic>> convertEmployeeToRegular(
+    int id, {
+    String? paymentType,
+    double? salary,
+  });
   Future<void> deleteEmployee(int id);
   Future<List<dynamic>> getRecentAdvances({int limit = 50});
   Future<List<dynamic>> getEmployeeAdvances(int employeeId);
@@ -680,6 +685,23 @@ class HttpApiClient implements ApiClient {
   @override
   Future<Map<String, dynamic>> saveEmployee(Map<String, dynamic> payload) async {
     final res = await _send(method: 'POST', path: '/employees', body: payload);
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> convertEmployeeToRegular(
+    int id, {
+    String? paymentType,
+    double? salary,
+  }) async {
+    final body = <String, dynamic>{};
+    if (paymentType != null) body['paymentType'] = paymentType;
+    if (salary != null) body['salary'] = salary;
+    final res = await _send(
+      method: 'POST',
+      path: '/employees/$id/make-regular',
+      body: body,
+    );
     return _asMap(res);
   }
 

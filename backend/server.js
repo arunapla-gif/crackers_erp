@@ -1108,8 +1108,22 @@ app.get('/api/employees', async (req, res) => {
   }
 });
 
+const normalizePaymentType = (val) => {
+  const lower = String(val || '').trim().toLowerCase();
+  if (lower === 'contractual') return 'Contractual';
+  if (lower === 'monthly') return 'Monthly';
+  return null;
+};
+
+const normalizeEmploymentType = (val) => {
+  const lower = String(val || '').trim().toLowerCase();
+  if (lower === 'regular') return 'Regular';
+  if (lower === 'temporary' || lower === 'temp') return 'Temporary';
+  return null;
+};
+
 app.post('/api/employees', async (req, res) => {
-  const { id, name, mobile, role, salary, paymentType, unit, status } = req.body;
+  const { id, name, mobile, role, salary, paymentType, employmentType, unit, status } = req.body;
   const currentStatus = status || 'Active';
   try {
     const allowed = await canAccessModule(req, 'employees', id ? 'edit' : 'add');
@@ -1119,39 +1133,118 @@ app.post('/api/employees', async (req, res) => {
       return res.status(400).json({ error: 'Employee name is required.' });
     }
 
+    const cleanPaymentType = paymentType === undefined
+      ? null
+      : normalizePaymentType(paymentType);
+    if (paymentType !== undefined && !cleanPaymentType) {
+      return res.status(400).json({ error: 'Work type must be Contractual or Monthly.' });
+    }
+
+    const cleanEmploymentType = employmentType === undefined
+      ? null
+      : normalizeEmploymentType(employmentType);
+    if (employmentType !== undefined && !cleanEmploymentType) {
+      return res.status(400).json({ error: 'Worker category must be Regular or Temporary.' });
+    }
+
     if (id) {
+      const empId = parseInt(id);
+      const existing = await prisma.employee.findUnique({ where: { id: empId } });
+      if (!existing) {
+        return res.status(404).json({ error: 'Employee not found.' });
+      }
+
+      const nextEmploymentType = cleanEmploymentType || existing.employmentType || 'Regular';
+      if (existing.employmentType === 'Temporary' && nextEmploymentType === 'Regular' && !isAdminUser(req)) {
+        return res.status(403).json({ error: 'Only Admin can convert a Temporary worker to Regular.' });
+      }
+
       const updateData = {
         name: String(name).trim(),
         mobile: mobile || null,
         role: role || null,
-        paymentType: paymentType || 'Monthly',
+        paymentType: cleanPaymentType || existing.paymentType || 'Monthly',
+        employmentType: nextEmploymentType,
         unit: unit || null,
         status: currentStatus
       };
+      if (existing.employmentType === 'Temporary' && nextEmploymentType === 'Regular') {
+        updateData.regularizedAt = existing.regularizedAt || new Date();
+      }
       // Preserve Admin-managed salary when edited by Supervisor
       if (!isSupervisorUser(req) && salary !== undefined && salary !== null && salary !== '') {
         updateData.salary = parseFloat(salary || 0);
       }
 
       const employee = await prisma.employee.update({
-        where: { id: parseInt(id) },
+        where: { id: empId },
         data: updateData
       });
       return res.json(sanitizeEmployeeForRole(employee, req));
     } else {
+      const initialEmploymentType = cleanEmploymentType || 'Regular';
       const employee = await prisma.employee.create({
         data: {
           name: String(name).trim(),
           mobile: mobile || null,
           role: role || null,
           salary: isSupervisorUser(req) ? 0 : parseFloat(salary || 0),
-          paymentType: paymentType || 'Monthly',
+          paymentType: cleanPaymentType || 'Monthly',
+          employmentType: initialEmploymentType,
+          regularizedAt: initialEmploymentType === 'Regular' ? new Date() : null,
           unit: unit || null,
           status: currentStatus
         }
       });
       return res.json(sanitizeEmployeeForRole(employee, req));
     }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/employees/:id/make-regular', async (req, res) => {
+  try {
+    if (!isAdminUser(req)) {
+      return res.status(403).json({ error: 'Only Admin can convert a Temporary worker to Regular.' });
+    }
+    const empId = parseInt(req.params.id);
+    if (!Number.isFinite(empId)) {
+      return res.status(400).json({ error: 'Invalid employee ID.' });
+    }
+
+    const existing = await prisma.employee.findUnique({ where: { id: empId } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const { paymentType, salary } = req.body || {};
+    const updateData = {
+      employmentType: 'Regular',
+      regularizedAt: existing.regularizedAt || new Date(),
+    };
+
+    if (paymentType !== undefined) {
+      const cleanPaymentType = normalizePaymentType(paymentType);
+      if (!cleanPaymentType) {
+        return res.status(400).json({ error: 'Work type must be Contractual or Monthly.' });
+      }
+      updateData.paymentType = cleanPaymentType;
+    }
+
+    if (salary !== undefined && salary !== null && salary !== '') {
+      const parsedSalary = parseFloat(salary);
+      if (!Number.isFinite(parsedSalary) || parsedSalary < 0) {
+        return res.status(400).json({ error: 'Salary/rate must be a valid non-negative number.' });
+      }
+      updateData.salary = parsedSalary;
+    }
+
+    const updated = await prisma.employee.update({
+      where: { id: empId },
+      data: updateData,
+    });
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

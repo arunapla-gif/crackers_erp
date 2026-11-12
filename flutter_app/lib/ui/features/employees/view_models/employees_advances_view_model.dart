@@ -22,6 +22,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
   String _searchQuery = '';
   String _roleFilter = 'All';
   String _paymentTypeFilter = 'All'; // All | Contractual | Monthly
+  String _employmentTypeFilter = 'All'; // All | Regular | Temporary
   bool _activeOnly = true;
 
   bool _isLoading = false;
@@ -36,6 +37,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   String get roleFilter => _roleFilter;
   String get paymentTypeFilter => _paymentTypeFilter;
+  String get employmentTypeFilter => _employmentTypeFilter;
   bool get activeOnly => _activeOnly;
 
   bool get isLoading => _isLoading;
@@ -60,6 +62,11 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
           emp.paymentType.toLowerCase() != _paymentTypeFilter.toLowerCase()) {
         return false;
       }
+      if (_employmentTypeFilter != 'All' &&
+          emp.employmentType.toLowerCase() !=
+              _employmentTypeFilter.toLowerCase()) {
+        return false;
+      }
       if (q.isEmpty) return true;
       return emp.name.toLowerCase().contains(q) ||
           (emp.mobile ?? '').toLowerCase().contains(q) ||
@@ -71,6 +78,10 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
   int get activeWorkersCount => _employees.where((e) => e.isActive).length;
   int get contractualActiveCount =>
       _employees.where((e) => e.isActive && e.isContractual).length;
+  int get temporaryActiveCount =>
+      _employees.where((e) => e.isActive && e.isTemporary).length;
+  int get regularActiveCount =>
+      _employees.where((e) => e.isActive && e.isRegular).length;
   double get totalAdvanceOutstanding =>
       _employees.fold(0.0, (sum, e) => sum + e.advanceBalance);
 
@@ -115,6 +126,11 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     _safeNotify();
   }
 
+  void setEmploymentTypeFilter(String type) {
+    _employmentTypeFilter = type;
+    _safeNotify();
+  }
+
   void setActiveOnly(bool value) {
     _activeOnly = value;
     _safeNotify();
@@ -126,6 +142,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     String? mobile,
     String? role,
     required String paymentType,
+    String employmentType = 'Regular',
     String? unit,
     required String status,
     double? salary,
@@ -150,6 +167,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
         mobile: parseOptionalString(mobile),
         role: parseOptionalString(role),
         paymentType: paymentType,
+        employmentType: employmentType,
         unit: parseOptionalString(unit),
         status: status,
         advanceBalance: 0,
@@ -187,6 +205,48 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> convertToRegular({
+    required Employee employee,
+    String? paymentType,
+    double? salary,
+  }) async {
+    _isSaving = true;
+    _errorMessage = null;
+    _statusMessage = null;
+    _safeNotify();
+
+    try {
+      final updated = await _employeeRepository.convertToRegular(
+        employee.id,
+        paymentType: paymentType,
+        salary: salary,
+      );
+
+      final updatedList = List<Employee>.from(_employees);
+      final idx = updatedList.indexWhere((e) => e.id == updated.id);
+      if (idx >= 0) {
+        updatedList[idx] = updated;
+      } else {
+        updatedList.add(updated);
+      }
+      updatedList.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
+      _employees = updatedList;
+      _statusMessage = 'Converted "${updated.name}" to Regular worker.';
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (_) {
+      _errorMessage = 'Failed to convert worker to Regular.';
+      return false;
+    } finally {
+      _isSaving = false;
+      _safeNotify();
+    }
+  }
+
   Future<bool> toggleEmployeeStatus(
     Employee employee, {
     bool includeSalary = false,
@@ -198,6 +258,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
       mobile: employee.mobile,
       role: employee.role,
       paymentType: employee.paymentType,
+      employmentType: employee.employmentType,
       unit: employee.unit,
       status: nextStatus,
       salary: employee.salary,
@@ -309,6 +370,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     _searchQuery = '';
     _roleFilter = 'All';
     _paymentTypeFilter = 'All';
+    _employmentTypeFilter = 'All';
     _activeOnly = true;
     _isLoading = false;
     _isSaving = false;

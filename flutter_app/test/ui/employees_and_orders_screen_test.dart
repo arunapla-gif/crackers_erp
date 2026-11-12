@@ -91,4 +91,101 @@ void main() {
       expect(find.text('12cm Electric Box'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'Creating employee requires explicit Work Type & Category; only Admin converts Temp to Regular',
+    (WidgetTester tester) async {
+      final api = FakeApiClient()
+        ..roleToLogin = 'SUPERVISOR'
+        ..employeesData.add({
+          'id': 30,
+          'name': 'Season Worker Raj',
+          'mobile': '9842100088',
+          'role': 'Helper',
+          'paymentType': 'Contractual',
+          'employmentType': 'Temporary',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '100.00',
+          'salary': null,
+        });
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final empVm = EmployeesAdvancesViewModel(
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(empVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: EmployeesAdvancesScreen(
+            viewModel: empVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Supervisor sees TEMP badge but NOT Make Regular button
+      await tester.scrollUntilVisible(
+        find.text('Season Worker Raj'),
+        250.0,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('TEMP'), findsOneWidget);
+      expect(find.text('Make Regular'), findsNothing);
+
+      // Opening Add Worker has NO default selection for Work Type / Worker Category
+      await tester.tap(find.text('Add Worker'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Worker Full Name *'),
+        'New Seasonal Hand',
+      );
+      await tester.ensureVisible(find.text('Create Worker'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create Worker'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Select work type'));
+      expect(find.text('Select work type'), findsOneWidget);
+      await tester.ensureVisible(find.text('Select Regular or Temporary'));
+      expect(find.text('Select Regular or Temporary'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Now login as ADMIN and verify Make Regular button works
+      await authVm.logout();
+      api.roleToLogin = 'ADMIN';
+      await authVm.login(username: 'admin', pin: '1234');
+      await empVm.loadAll();
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Season Worker Raj'),
+        250.0,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Make Regular'), findsOneWidget);
+
+      await tester.tap(find.text('Make Regular'));
+      await tester.pumpAndSettle();
+      expect(find.text('Convert to Regular Worker'), findsOneWidget);
+
+      await tester.tap(find.text('Confirm Regular'));
+      await tester.pumpAndSettle();
+
+      final updated = empVm.employees.firstWhere((e) => e.id == 30);
+      expect(updated.isRegular, isTrue);
+      expect(find.text('Make Regular'), findsNothing);
+    },
+  );
 }

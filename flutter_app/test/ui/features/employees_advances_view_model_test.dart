@@ -76,6 +76,46 @@ void main() {
       expect(updatedSelvi.advanceBalance, equals(750.0));
       expect(vm.advancesForEmployee(12).first.amount, equals(750.0));
     });
+
+    test('supports Temporary category filtering and Admin conversion', () async {
+      api
+        ..roleToLogin = 'ADMIN'
+        ..employeesData.add({
+          'id': 20,
+          'name': 'Karthik Temp',
+          'mobile': '9842100099',
+          'role': 'Packing',
+          'paymentType': 'Contractual',
+          'employmentType': 'Temporary',
+          'unit': 'Unit 2',
+          'status': 'Active',
+          'advanceBalance': '200.00',
+          'salary': 18,
+        });
+
+      await vm.loadAll();
+      expect(vm.temporaryActiveCount, equals(1));
+      expect(vm.regularActiveCount, equals(3));
+
+      vm.setEmploymentTypeFilter('Temporary');
+      expect(vm.filteredEmployees.length, equals(1));
+      expect(vm.filteredEmployees.first.name, equals('Karthik Temp'));
+      expect(vm.filteredEmployees.first.isTemporary, isTrue);
+
+      final converted = await vm.convertToRegular(
+        employee: vm.filteredEmployees.first,
+        paymentType: 'Monthly',
+        salary: 14000,
+      );
+      expect(converted, isTrue);
+
+      final refreshed = vm.employees.firstWhere((e) => e.id == 20);
+      expect(refreshed.isTemporary, isFalse);
+      expect(refreshed.employmentType, equals('Regular'));
+      expect(refreshed.paymentType, equals('Monthly'));
+      expect(refreshed.salary, equals(14000.0));
+      expect(refreshed.advanceBalance, equals(200.0));
+    });
   });
 }
 

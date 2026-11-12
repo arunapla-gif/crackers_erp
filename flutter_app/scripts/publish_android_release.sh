@@ -85,3 +85,4 @@ echo "Publishing version metadata to Railway service '$RAILWAY_SERVICE'..."
   "APP_UPDATE_MANDATORY=$MANDATORY")
 
 echo "Published APK v${VERSION_NAME}+${VERSION_CODE} cleanly."
+

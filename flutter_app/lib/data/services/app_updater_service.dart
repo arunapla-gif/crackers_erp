@@ -89,3 +89,4 @@ Future<AppUpdateInfo> fetchUpdateMetadata(
     }
   }
 }
+
