@@ -87,6 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: ErpTheme.slate100,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -101,90 +102,77 @@ class _LoginScreenState extends State<LoginScreen> {
                       vm.apiBaseUrl != AppConfig.defaultApiBaseUrl;
 
                   return Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      side: const BorderSide(color: ErpTheme.slate200),
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(28),
                       child: Form(
                         key: _formKey,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
+                            Column(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(12),
+                                  width: 64,
+                                  height: 64,
                                   decoration: BoxDecoration(
-                                    color: ErpTheme.productionAmberSoft,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Icon(
-                                    Icons.local_fire_department_rounded,
-                                    size: 28,
-                                    color: ErpTheme.productionAmber,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Crackers ERP',
-                                        style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          color: ErpTheme.slate900,
-                                          letterSpacing: -0.5,
-                                        ),
-                                      ),
-                                      SizedBox(height: 2),
-                                      Text(
-                                        'Factory Supervisor App',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: ErpTheme.slate500,
-                                        ),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        ErpTheme.salesBlue,
+                                        ErpTheme.salesBlueDark,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(18),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: ErpTheme.salesBlue
+                                            .withValues(alpha: 0.25),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 8),
                                       ),
                                     ],
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    'ERP',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.5,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Crackers ERP',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: ErpTheme.slate900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Billing, Inventory, Payroll & Factory Portal',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: ErpTheme.slate500,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: ErpTheme.slate50,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: ErpTheme.slate200),
-                              ),
-                              child: const Row(
-                                children: [
-                                  Icon(
-                                    Icons.verified_user_outlined,
-                                    size: 16,
-                                    color: ErpTheme.productionAmber,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Daily Production, Workers, Cash Advances & Factory Packing Orders',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: ErpTheme.slate700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 22),
                             if (vm.errorMessage != null) ...[
                               ErpErrorBanner(
                                 message: vm.errorMessage!,
@@ -220,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                               onFieldSubmitted: (_) => _submit(),
                               decoration: InputDecoration(
-                                labelText: 'PIN',
+                                labelText: 'Secure PIN',
                                 prefixIcon: const Icon(Icons.pin_outlined),
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -240,12 +228,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 22),
                             FilledButton.icon(
                               onPressed: vm.isSubmitting ? null : _submit,
                               style: FilledButton.styleFrom(
-                                backgroundColor: ErpTheme.productionAmber,
+                                backgroundColor: ErpTheme.salesBlueDark,
                                 foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
                               ),
                               icon: vm.isSubmitting
                                   ? const SizedBox(
@@ -258,9 +249,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                     )
                                   : const Icon(Icons.login_rounded),
                               label: Text(
-                                vm.isSubmitting
-                                    ? 'Signing In...'
-                                    : 'Sign In to Factory Portal',
+                                vm.isSubmitting ? 'Signing In...' : 'Sign In',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -281,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Icons.dns_outlined,
                                       size: 14,
                                       color: isCustomServer
-                                          ? ErpTheme.productionAmber
+                                          ? ErpTheme.salesBlue
                                           : ErpTheme.slate500,
                                     ),
                                     const SizedBox(width: 6),
@@ -296,7 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                           color: isCustomServer
-                                              ? ErpTheme.productionAmber
+                                              ? ErpTheme.salesBlue
                                               : ErpTheme.slate500,
                                         ),
                                       ),

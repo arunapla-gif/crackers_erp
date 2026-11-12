@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -10,6 +12,31 @@ const prisma = new PrismaClient();
 
 app.use(cors());
 app.use(express.json());
+
+const webRoot = path.join(__dirname, 'public');
+const indexHtmlPath = path.join(webRoot, 'index.html');
+const hasWebBundle = fs.existsSync(indexHtmlPath);
+
+if (hasWebBundle) {
+  app.use(express.static(webRoot, {
+    setHeaders: (res, filePath) => {
+      const name = path.basename(filePath);
+      if (
+        name === 'index.html' ||
+        name === 'flutter_bootstrap.js' ||
+        name === 'flutter_service_worker.js' ||
+        name === 'version.json'
+      ) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+      if (filePath.endsWith('.mjs')) {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      } else if (filePath.endsWith('.wasm')) {
+        res.setHeader('Content-Type', 'application/wasm');
+      }
+    }
+  }));
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'crackers-erp-super-secret-key-2026';
 
@@ -169,8 +196,8 @@ const sanitizeProductionForRole = (record, req) => {
   };
 };
 
-// Apply authentication to all routes below this point
-app.use(authenticateToken);
+// Apply authentication to all /api routes below this point
+app.use('/api', authenticateToken);
 
 // Current Authenticated User Profile
 app.get('/api/me', async (req, res) => {
@@ -2236,6 +2263,26 @@ app.post('/api/sales-orders/:id/status', requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Unmatched API requests return JSON 404 rather than SPA HTML
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found.' });
+});
+
+// Serve Flutter Web SPA for all non-API GET/HEAD routes
+if (hasWebBundle) {
+  const missingAssetExt = /\.(js|mjs|css|wasm|json|map|png|jpg|jpeg|gif|svg|ico|webp|ttf|otf|woff|woff2)$/i;
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    if (missingAssetExt.test(req.path)) {
+      return res.status(404).end();
+    }
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.sendFile(indexHtmlPath);
+  });
+}
 
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {

@@ -10,6 +10,7 @@ class Employee {
     this.unit,
     required this.status,
     required this.advanceBalance,
+    this.salary,
   });
 
   final int id;
@@ -20,10 +21,12 @@ class Employee {
   final String? unit;
   final String status; // 'Active' | 'Inactive'
   final double advanceBalance;
+  final double? salary;
 
   bool get isActive => status.toLowerCase() != 'inactive';
   bool get isContractual => paymentType.toLowerCase() == 'contractual';
-  String get roleGroup => (role == null || role!.trim().isEmpty) ? 'Unassigned' : role!.trim();
+  String get roleGroup =>
+      (role == null || role!.trim().isEmpty) ? 'Unassigned' : role!.trim();
 
   Employee copyWith({
     int? id,
@@ -34,6 +37,7 @@ class Employee {
     String? unit,
     String? status,
     double? advanceBalance,
+    double? salary,
   }) {
     return Employee(
       id: id ?? this.id,
@@ -44,10 +48,12 @@ class Employee {
       unit: unit ?? this.unit,
       status: status ?? this.status,
       advanceBalance: advanceBalance ?? this.advanceBalance,
+      salary: salary ?? this.salary,
     );
   }
 
   factory Employee.fromJson(Map<String, dynamic> json) {
+    final rawSalary = json['salary'];
     return Employee(
       id: parseInt(json['id']),
       name: (json['name'] ?? '').toString().trim(),
@@ -57,9 +63,11 @@ class Employee {
       unit: parseOptionalString(json['unit']),
       status: (json['status'] ?? 'Active').toString(),
       advanceBalance: parseDouble(json['advanceBalance']),
+      salary: rawSalary == null ? null : parseDouble(rawSalary),
     );
   }
 
+  /// Rate-free payload strictly preserving Supervisor privacy.
   Map<String, dynamic> toSupervisorPayload() {
     return {
       if (id > 0) 'id': id,
@@ -71,5 +79,18 @@ class Employee {
       'status': status,
     };
   }
-}
 
+  /// Full payload used by Admin/HR Staff when setting salaries/piece rates.
+  Map<String, dynamic> toAdminPayload() {
+    return {
+      if (id > 0) 'id': id,
+      'name': name,
+      'mobile': mobile,
+      'role': role,
+      'salary': salary ?? 0,
+      'paymentType': paymentType,
+      'unit': unit,
+      'status': status,
+    };
+  }
+}

@@ -33,7 +33,7 @@ class AuthViewModel extends ChangeNotifier {
   void initialize() {
     _apiBaseUrl = _authRepository.getApiBaseUrl();
     final cached = _authRepository.loadCachedSession();
-    if (cached != null && cached.user.canAccessSupervisorApp) {
+    if (cached != null && cached.user.canAccessErp) {
       _session = cached;
     } else if (cached != null) {
       unawaited(_authRepository.logout());
@@ -51,10 +51,10 @@ class AuthViewModel extends ChangeNotifier {
     try {
       final freshUser = await _authRepository.verifySession();
       if (freshUser != null && !_disposed && _session != null) {
-        if (!freshUser.canAccessSupervisorApp) {
+        if (!freshUser.canAccessErp) {
           await logout(
             message:
-                'Your account no longer has access to the Supervisor app.',
+                'Your account is inactive or no longer has access to Crackers ERP.',
           );
           return;
         }

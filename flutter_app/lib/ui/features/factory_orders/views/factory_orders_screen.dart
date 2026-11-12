@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/domain/models/factory_order.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
+import 'package:crackers_erp/ui/core/erp_crud_widgets.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/factory_orders/view_models/factory_orders_view_model.dart';
@@ -54,12 +55,18 @@ class _FactoryOrdersScreenState extends State<FactoryOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final user = widget.authViewModel.currentUser;
+    final isEmbedded = ErpShellScope.isEmbeddedShell(context);
+
     if (user != null && !user.canViewFactoryOrders) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Factory Orders'),
-          actions: [AccountAppBarAction(authViewModel: widget.authViewModel)],
-        ),
+        appBar: isEmbedded
+            ? null
+            : AppBar(
+                title: const Text('Factory Orders'),
+                actions: [
+                  AccountAppBarAction(authViewModel: widget.authViewModel),
+                ],
+              ),
         body: const ErpEmptyState(
           icon: Icons.lock_outline,
           title: 'Factory Orders Restricted',
@@ -75,17 +82,19 @@ class _FactoryOrdersScreenState extends State<FactoryOrdersScreen> {
         final filtered = vm.filteredOrders;
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Approved Factory Orders'),
-            actions: [
-              IconButton(
-                tooltip: 'Refresh',
-                onPressed: vm.isLoading ? null : vm.loadOrders,
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-              AccountAppBarAction(authViewModel: widget.authViewModel),
-            ],
-          ),
+          appBar: isEmbedded
+              ? null
+              : AppBar(
+                  title: const Text('Approved Factory Orders'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Refresh',
+                      onPressed: vm.isLoading ? null : vm.loadOrders,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    AccountAppBarAction(authViewModel: widget.authViewModel),
+                  ],
+                ),
           body: Column(
             children: [
               if (vm.errorMessage != null)
@@ -104,6 +113,23 @@ class _FactoryOrdersScreenState extends State<FactoryOrdersScreen> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                           children: [
+                            if (isEmbedded) ...[
+                              ErpSectionHeaderBar(
+                                title: 'Approved Factory Orders',
+                                subtitle:
+                                    'Packing quantities only for warehouse & dispatch.',
+                                accentColor: ErpTheme.ordersEmerald,
+                                actions: [
+                                  IconButton(
+                                    tooltip: 'Refresh',
+                                    onPressed:
+                                        vm.isLoading ? null : vm.loadOrders,
+                                    icon: const Icon(Icons.refresh_rounded),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             Wrap(
                               spacing: 10,
                               runSpacing: 10,

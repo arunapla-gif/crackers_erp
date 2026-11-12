@@ -51,9 +51,9 @@ class AuthRepository {
     }
 
     final user = UserAccount.fromJson(userRaw);
-    if (!user.canAccessSupervisorApp) {
+    if (!user.canAccessErp) {
       throw ApiException(
-        'User "${user.username}" (${user.role}) does not have Supervisor or Factory Production permissions.',
+        'User "${user.username}" (${user.role}) is inactive or does not have access to Crackers ERP.',
         statusCode: 403,
       );
     }

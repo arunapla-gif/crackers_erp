@@ -10,7 +10,7 @@ import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/domain/models/json_helpers.dart';
 import 'package:crackers_erp/domain/models/wip_product.dart';
 
-enum ProductionEntryMode { byItem, byWorker }
+enum ProductionEntryMode { byItem, byWorker, matrix }
 
 class DailyProductionViewModel extends ChangeNotifier {
   DailyProductionViewModel({
@@ -92,6 +92,16 @@ class DailyProductionViewModel extends ChangeNotifier {
           emp.roleGroup.toLowerCase().contains(q) ||
           (emp.unit ?? '').toLowerCase().contains(q);
     }).toList();
+  }
+
+  Map<String, List<Employee>> get filteredWorkersByRole {
+    final grouped = SplayTreeMap<String, List<Employee>>(
+      (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+    );
+    for (final emp in filteredWorkers) {
+      grouped.putIfAbsent(emp.roleGroup, () => <Employee>[]).add(emp);
+    }
+    return grouped;
   }
 
   int get totalPiecesEntered {
@@ -296,6 +306,13 @@ class DailyProductionViewModel extends ChangeNotifier {
     _rebuildActiveItems();
     await _productionRepository.clearDraft(selectedIsoDate);
     _statusMessage = 'Unsaved draft discarded.';
+    _safeNotify();
+  }
+
+  void clearDayEntries() {
+    _draftByEmp = <int, Map<String, int>>{};
+    _statusMessage = 'Cleared quantities for $selectedIsoDate.';
+    _persistDraftSnapshot();
     _safeNotify();
   }
 

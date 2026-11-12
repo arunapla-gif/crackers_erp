@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/domain/models/daily_production.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
+import 'package:crackers_erp/ui/core/erp_crud_widgets.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
@@ -329,15 +331,36 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     }
   }
 
+  Future<void> _confirmClearMatrix() async {
+    final confirm = await showErpConfirmDialog(
+      context: context,
+      title: 'Clear Matrix Quantities?',
+      message:
+          'Reset all unsaved piece quantities entered for ${widget.viewModel.selectedIsoDate}?',
+      confirmLabel: 'Clear Grid',
+      destructive: true,
+    );
+    if (confirm && mounted) {
+      widget.viewModel.clearDayEntries();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = widget.authViewModel.currentUser;
+    final isEmbedded = ErpShellScope.isEmbeddedShell(context);
+    final canUseMatrix = user != null && !user.isSupervisor;
+
     if (user != null && !user.canViewProduction) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Daily Production'),
-          actions: [AccountAppBarAction(authViewModel: widget.authViewModel)],
-        ),
+        appBar: isEmbedded
+            ? null
+            : AppBar(
+                title: const Text('Daily Production'),
+                actions: [
+                  AccountAppBarAction(authViewModel: widget.authViewModel),
+                ],
+              ),
         body: const ErpEmptyState(
           icon: Icons.lock_outline,
           title: 'Production Access Not Enabled',
@@ -351,23 +374,48 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
+        final effectiveMode = !canUseMatrix &&
+                vm.entryMode == ProductionEntryMode.matrix
+            ? ProductionEntryMode.byItem
+            : vm.entryMode;
+
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Daily Production'),
-            actions: [
-              IconButton(
-                tooltip: 'Refresh',
-                onPressed: vm.isLoading ? null : vm.refreshAll,
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-              AccountAppBarAction(
-                authViewModel: widget.authViewModel,
-                hasUnsavedProduction: vm.hasUnsavedChanges,
-              ),
-            ],
-          ),
+          appBar: isEmbedded
+              ? null
+              : AppBar(
+                  title: const Text('Daily Production'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Refresh',
+                      onPressed: vm.isLoading ? null : vm.refreshAll,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    AccountAppBarAction(
+                      authViewModel: widget.authViewModel,
+                      hasUnsavedProduction: vm.hasUnsavedChanges,
+                    ),
+                  ],
+                ),
           body: Column(
             children: [
+              if (isEmbedded)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+                  child: ErpSectionHeaderBar(
+                    title: 'Daily Production',
+                    subtitle: canUseMatrix
+                        ? 'Log daily WIP quantities by Item, Worker, or Role Matrix.'
+                        : 'Log daily WIP quantities by Item or Worker.',
+                    accentColor: ErpTheme.productionAmber,
+                    actions: [
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: vm.isLoading ? null : vm.refreshAll,
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
+                    ],
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                 child: Row(
@@ -412,7 +460,11 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                     ? const Center(child: CircularProgressIndicator())
                     : _showHistoryTab
                     ? _buildHistoryList(vm)
-                    : _buildEntryWorkspace(vm),
+                    : _buildEntryWorkspace(
+                        vm,
+                        canUseMatrix: canUseMatrix,
+                        effectiveMode: effectiveMode,
+                      ),
               ),
             ],
           ),
@@ -487,7 +539,11 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     );
   }
 
-  Widget _buildEntryWorkspace(DailyProductionViewModel vm) {
+  Widget _buildEntryWorkspace(
+    DailyProductionViewModel vm, {
+    required bool canUseMatrix,
+    required ProductionEntryMode effectiveMode,
+  }) {
     final now = DateTime.now();
     final todayNormalized = DateTime(now.year, now.month, now.day);
     final selectedNormalized = DateTime(
@@ -639,19 +695,25 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
             alignment: WrapAlignment.spaceBetween,
             children: [
               SegmentedButton<ProductionEntryMode>(
-                segments: const [
-                  ButtonSegment(
+                segments: [
+                  const ButtonSegment(
                     value: ProductionEntryMode.byItem,
                     icon: Icon(Icons.view_list_rounded, size: 16),
                     label: Text('By Item'),
                   ),
-                  ButtonSegment(
+                  const ButtonSegment(
                     value: ProductionEntryMode.byWorker,
                     icon: Icon(Icons.person_search_rounded, size: 16),
                     label: Text('By Worker'),
                   ),
+                  if (canUseMatrix)
+                    const ButtonSegment(
+                      value: ProductionEntryMode.matrix,
+                      icon: Icon(Icons.grid_on_rounded, size: 16),
+                      label: Text('Matrix'),
+                    ),
                 ],
-                selected: {vm.entryMode},
+                selected: {effectiveMode},
                 onSelectionChanged: (sel) => vm.setEntryMode(sel.first),
               ),
               OutlinedButton.icon(
@@ -712,7 +774,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
               subtitle:
                   'Add Contractual workers in the Workers & Advances tab or clear filters.',
             )
-          else if (vm.entryMode == ProductionEntryMode.byItem)
+          else if (effectiveMode == ProductionEntryMode.matrix)
+            ..._buildMatrixWorkspace(vm)
+          else if (effectiveMode == ProductionEntryMode.byItem)
             ..._buildByItemCards(vm)
           else
             ..._buildByWorkerCards(vm),
@@ -971,6 +1035,436 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     }).toList();
   }
 
+  List<Widget> _buildMatrixWorkspace(DailyProductionViewModel vm) {
+    final items = vm.activeItemNames;
+    if (items.isEmpty) {
+      return [
+        ErpEmptyState(
+          icon: Icons.grid_off_rounded,
+          title: 'No WIP Columns Selected',
+          subtitle:
+              'Tap Pick / Pin WIP to choose product columns for the production matrix.',
+          actionLabel: 'Pick WIP Items',
+          onAction: () => _openWipItemPicker(),
+        ),
+      ];
+    }
+
+    final groupedRoles = vm.filteredWorkersByRole;
+    const workerColWidth = 196.0;
+    const itemColWidth = 148.0;
+    const totalColWidth = 96.0;
+    final tableWidth =
+        workerColWidth + (itemColWidth * items.length) + totalColWidth;
+
+    return [
+      Card(
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                color: ErpTheme.slate50,
+                border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
+              ),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    'Role-Grouped Matrix • ${vm.filteredWorkers.length} workers • ${items.length} WIP columns',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: ErpTheme.slate700,
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: vm.isSaving || vm.totalPiecesEntered == 0
+                            ? null
+                            : _confirmClearMatrix,
+                        icon: const Icon(Icons.clear_all_rounded, size: 17),
+                        label: const Text('Clear Grid'),
+                      ),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: ErpTheme.productionAmber,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: vm.isSaving ? null : _handleSave,
+                        icon: const Icon(Icons.save_rounded, size: 17),
+                        label: Text(vm.isSaving ? 'Saving...' : 'Save Matrix'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: tableWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Matrix Column Headers
+                    Container(
+                      color: ErpTheme.slate100,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: workerColWidth,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: ErpTheme.slate200),
+                                bottom: BorderSide(color: ErpTheme.slate200),
+                              ),
+                            ),
+                            child: const Text(
+                              'WORKERS BY ROLE',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: ErpTheme.slate700,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                          ...items.map((itemName) {
+                            final product = vm.findWipProductByName(itemName);
+                            final colTotal = vm.getItemTotalQuantity(itemName);
+                            final canRemove = colTotal == 0 && items.length > 1;
+                            return Container(
+                              width: itemColWidth,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  right: BorderSide(color: ErpTheme.slate200),
+                                  bottom: BorderSide(color: ErpTheme.slate200),
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          itemName,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            color: ErpTheme.hrIndigo,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                                      ),
+                                      if (canRemove)
+                                        InkWell(
+                                          onTap: () =>
+                                              vm.removeActiveItem(itemName),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(2),
+                                            child: Icon(
+                                              Icons.close_rounded,
+                                              size: 14,
+                                              color: ErpTheme.dangerRose,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    product?.unit ?? 'Pcs',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: ErpTheme.slate500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          Container(
+                            width: totalColWidth,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 12,
+                            ),
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(color: ErpTheme.slate200),
+                              ),
+                            ),
+                            child: const Text(
+                              'WORKER\nTOTAL',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: ErpTheme.slate700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Role Groups + Worker Rows
+                    for (final roleEntry in groupedRoles.entries) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: ErpTheme.slate200,
+                          border: Border(
+                            bottom: BorderSide(color: ErpTheme.slate200),
+                          ),
+                        ),
+                        child: Text(
+                          '${roleEntry.key.toUpperCase()} (${roleEntry.value.length})',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: ErpTheme.slate900,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ),
+                      ...roleEntry.value.map((emp) {
+                        final empTotal = vm.getWorkerTotalQuantity(emp.id);
+                        return Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            border: Border(
+                              bottom: BorderSide(color: ErpTheme.slate200),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: workerColWidth,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    right: BorderSide(color: ErpTheme.slate200),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      emp.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                        color: ErpTheme.slate900,
+                                      ),
+                                    ),
+                                    Text(
+                                      emp.unit != null
+                                          ? '${emp.paymentType} • ${emp.unit}'
+                                          : emp.paymentType,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: ErpTheme.slate500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...items.map(
+                                (itemName) => Container(
+                                  width: itemColWidth,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                  decoration: const BoxDecoration(
+                                    border: Border(
+                                      right: BorderSide(
+                                        color: ErpTheme.slate200,
+                                      ),
+                                    ),
+                                  ),
+                                  child: _MatrixQtyCell(
+                                    key: ValueKey('matrix_${emp.id}_$itemName'),
+                                    quantity: vm.getQuantity(emp.id, itemName),
+                                    onChanged: (q) =>
+                                        vm.setQuantity(emp.id, itemName, q),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: totalColWidth,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 10,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '$empTotal',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    color: empTotal > 0
+                                        ? ErpTheme.ordersEmerald
+                                        : ErpTheme.slate500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                    // Column Totals Footer
+                    Container(
+                      decoration: BoxDecoration(
+                        color: ErpTheme.productionAmberSoft,
+                        border: Border(
+                          top: BorderSide(
+                            color: ErpTheme.productionAmber.withValues(
+                              alpha: 0.6,
+                            ),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: workerColWidth,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                right: BorderSide(color: ErpTheme.slate200),
+                              ),
+                            ),
+                            child: const Text(
+                              'TOTAL PIECES',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                                color: ErpTheme.slate900,
+                              ),
+                            ),
+                          ),
+                          ...items.map((itemName) {
+                            final colTotal = vm.getItemTotalQuantity(itemName);
+                            return Container(
+                              width: itemColWidth,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 10,
+                              ),
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  right: BorderSide(color: ErpTheme.slate200),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    NumberFormat('#,##,##0', 'en_IN').format(
+                                      colTotal,
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: ErpTheme.productionAmber,
+                                    ),
+                                  ),
+                                  const Text(
+                                    'TOTAL PCS',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: ErpTheme.slate700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          Container(
+                            width: totalColWidth,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 10,
+                            ),
+                            alignment: Alignment.center,
+                            child: Column(
+                              children: [
+                                Text(
+                                  NumberFormat('#,##,##0', 'en_IN').format(
+                                    vm.totalPiecesEntered,
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: ErpTheme.slate900,
+                                  ),
+                                ),
+                                const Text(
+                                  'GRAND',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: ErpTheme.slate700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   Widget _buildHistoryList(DailyProductionViewModel vm) {
     if (vm.recentHistory.isEmpty) {
       return RefreshIndicator(
@@ -1168,6 +1662,101 @@ class _WorkerQtyRow extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _MatrixQtyCell extends StatefulWidget {
+  const _MatrixQtyCell({
+    required this.quantity,
+    required this.onChanged,
+    super.key,
+  });
+
+  final int quantity;
+  final ValueChanged<int> onChanged;
+
+  @override
+  State<_MatrixQtyCell> createState() => _MatrixQtyCellState();
+}
+
+class _MatrixQtyCellState extends State<_MatrixQtyCell> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+      text: widget.quantity > 0 ? '${widget.quantity}' : '',
+    );
+    _focus = FocusNode()..addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MatrixQtyCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.quantity != widget.quantity) {
+      final currentParsed = int.tryParse(_ctrl.text.trim()) ?? 0;
+      if (!_focus.hasFocus || currentParsed != widget.quantity) {
+        final next = widget.quantity > 0 ? '${widget.quantity}' : '';
+        if (_ctrl.text != next) {
+          _ctrl.value = TextEditingValue(
+            text: next,
+            selection: TextSelection.collapsed(offset: next.length),
+          );
+        }
+      }
+    }
+  }
+
+  void _handleFocusChange() {
+    if (!_focus.hasFocus) {
+      final parsed = int.tryParse(_ctrl.text.trim()) ?? 0;
+      final normalized = parsed > 0 ? '$parsed' : '';
+      if (_ctrl.text != normalized) {
+        _ctrl.text = normalized;
+      }
+      if (parsed != widget.quantity) {
+        widget.onChanged(parsed);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_handleFocusChange);
+    _focus.dispose();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _ctrl,
+      focusNode: _focus,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(6),
+      ],
+      style: TextStyle(
+        fontWeight: FontWeight.w800,
+        fontSize: 14,
+        color: widget.quantity > 0 ? ErpTheme.hrIndigo : ErpTheme.slate700,
+      ),
+      decoration: InputDecoration(
+        hintText: '0',
+        hintStyle: const TextStyle(color: ErpTheme.slate500),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+        fillColor: widget.quantity > 0
+            ? ErpTheme.hrIndigoSoft.withValues(alpha: 0.45)
+            : ErpTheme.slate50,
+      ),
+      onChanged: (raw) => widget.onChanged(int.tryParse(raw.trim()) ?? 0),
     );
   }
 }

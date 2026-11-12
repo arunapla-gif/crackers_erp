@@ -24,6 +24,12 @@ abstract class LocalStorageService {
     Map<int, Map<String, int>> entriesByEmployee,
   );
   Future<void> clearProductionDraft(String isoDate);
+
+  Map<String, dynamic>? getBillingCartJson();
+  Future<void> saveBillingCartJson(Map<String, dynamic> cartJson);
+  Map<String, dynamic>? getBillingHeaderJson();
+  Future<void> saveBillingHeaderJson(Map<String, dynamic> headerJson);
+  Future<void> clearBillingDraft();
 }
 
 class SharedPrefsLocalStorageService implements LocalStorageService {
@@ -34,6 +40,8 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
   static const String _apiUrlKey = 'custom_api_url';
   static const String _pinnedItemsKey = 'pinned_wip_items';
   static const String _draftPrefix = 'prod_draft_';
+  static const String _billingCartKey = 'crackers_erp_billing_cart';
+  static const String _billingHeaderKey = 'crackers_erp_billing_header';
 
   final SharedPreferences _prefs;
 
@@ -121,7 +129,8 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
         if (empId == null || itemMap is! Map<String, dynamic>) return;
         final itemsForEmp = <String, int>{};
         itemMap.forEach((itemName, qtyRaw) {
-          final qty = qtyRaw is num ? qtyRaw.toInt() : int.tryParse('$qtyRaw') ?? 0;
+          final qty =
+              qtyRaw is num ? qtyRaw.toInt() : int.tryParse('$qtyRaw') ?? 0;
           if (qty > 0 && itemName.trim().isNotEmpty) {
             itemsForEmp[itemName] = qty;
           }
@@ -173,6 +182,44 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
     await _prefs.remove('$_draftPrefix$isoDate');
   }
 
+  @override
+  Map<String, dynamic>? getBillingCartJson() {
+    final raw = _prefs.getString(_billingCartKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
+  }
+
+  @override
+  Future<void> saveBillingCartJson(Map<String, dynamic> cartJson) async {
+    await _prefs.setString(_billingCartKey, jsonEncode(cartJson));
+  }
+
+  @override
+  Map<String, dynamic>? getBillingHeaderJson() {
+    final raw = _prefs.getString(_billingHeaderKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return null;
+  }
+
+  @override
+  Future<void> saveBillingHeaderJson(Map<String, dynamic> headerJson) async {
+    await _prefs.setString(_billingHeaderKey, jsonEncode(headerJson));
+  }
+
+  @override
+  Future<void> clearBillingDraft() async {
+    await _prefs.remove(_billingCartKey);
+    await _prefs.remove(_billingHeaderKey);
+  }
+
   static String normalizeApiBaseUrl(String raw) {
     var cleaned = raw.trim();
     if (cleaned.isEmpty) return '';
@@ -186,4 +233,3 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
     return cleaned;
   }
 }
-

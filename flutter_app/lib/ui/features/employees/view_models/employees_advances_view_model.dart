@@ -128,6 +128,8 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     required String paymentType,
     String? unit,
     required String status,
+    double? salary,
+    bool includeSalary = false,
   }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) {
@@ -142,18 +144,21 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     _safeNotify();
 
     try {
-      final saved = await _employeeRepository.saveEmployee(
-        Employee(
-          id: id ?? 0,
-          name: trimmedName,
-          mobile: parseOptionalString(mobile),
-          role: parseOptionalString(role),
-          paymentType: paymentType,
-          unit: parseOptionalString(unit),
-          status: status,
-          advanceBalance: 0,
-        ),
+      final emp = Employee(
+        id: id ?? 0,
+        name: trimmedName,
+        mobile: parseOptionalString(mobile),
+        role: parseOptionalString(role),
+        paymentType: paymentType,
+        unit: parseOptionalString(unit),
+        status: status,
+        advanceBalance: 0,
+        salary: includeSalary ? (salary ?? 0) : null,
       );
+
+      final saved = includeSalary
+          ? await _employeeRepository.saveEmployeeAdmin(emp)
+          : await _employeeRepository.saveEmployee(emp);
 
       final updatedList = List<Employee>.from(_employees);
       final idx = updatedList.indexWhere((e) => e.id == saved.id);
@@ -182,7 +187,10 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> toggleEmployeeStatus(Employee employee) {
+  Future<bool> toggleEmployeeStatus(
+    Employee employee, {
+    bool includeSalary = false,
+  }) {
     final nextStatus = employee.isActive ? 'Inactive' : 'Active';
     return saveEmployee(
       id: employee.id,
@@ -192,7 +200,33 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
       paymentType: employee.paymentType,
       unit: employee.unit,
       status: nextStatus,
+      salary: employee.salary,
+      includeSalary: includeSalary,
     );
+  }
+
+  Future<bool> deleteEmployee(Employee employee) async {
+    _isSaving = true;
+    _errorMessage = null;
+    _statusMessage = null;
+    _safeNotify();
+
+    try {
+      await _employeeRepository.deleteEmployee(employee.id);
+      _employees = _employees.where((e) => e.id != employee.id).toList();
+      _advancesByEmployee.remove(employee.id);
+      _statusMessage = 'Deleted employee "${employee.name}".';
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (_) {
+      _errorMessage = 'Failed to delete employee.';
+      return false;
+    } finally {
+      _isSaving = false;
+      _safeNotify();
+    }
   }
 
   Future<void> loadEmployeeAdvances(int employeeId) async {

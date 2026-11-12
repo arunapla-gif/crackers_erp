@@ -6,6 +6,7 @@ import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/domain/models/json_helpers.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
+import 'package:crackers_erp/ui/core/erp_crud_widgets.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/employees/view_models/employees_advances_view_model.dart';
@@ -47,12 +48,50 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
     super.dispose();
   }
 
+  bool get _canManageRates {
+    final user = widget.authViewModel.currentUser;
+    return user != null && !user.isSupervisor;
+  }
+
+  bool get _canDeleteEmployee {
+    final user = widget.authViewModel.currentUser;
+    return user != null && !user.isSupervisor && user.canDelete('employees');
+  }
+
+  Future<void> _confirmDeleteEmployee(Employee emp) async {
+    final confirmed = await showErpConfirmDialog(
+      context: context,
+      title: 'Delete Employee?',
+      message: 'Remove "${emp.name}" permanently? Employees with existing history may need to be marked Inactive instead.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    final ok = await widget.viewModel.deleteEmployee(emp);
+    if (ok && mounted && widget.viewModel.statusMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.statusMessage!),
+          backgroundColor: ErpTheme.ordersEmerald,
+        ),
+      );
+    }
+  }
+
   Future<void> _openEmployeeForm({Employee? existing}) async {
+    final canManageRates = _canManageRates;
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final mobileCtrl = TextEditingController(text: existing?.mobile ?? '');
     final roleCtrl = TextEditingController(text: existing?.role ?? '');
     final unitCtrl = TextEditingController(text: existing?.unit ?? '');
+    final salaryCtrl = TextEditingController(
+      text: existing?.salary != null && existing!.salary! > 0
+          ? existing.salary!.toStringAsFixed(
+              existing.salary! == existing.salary!.roundToDouble() ? 0 : 2,
+            )
+          : '',
+    );
     var paymentType = existing?.paymentType ?? 'Contractual';
     var status = existing?.status ?? 'Active';
 
@@ -90,7 +129,13 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        existing == null ? 'Add Factory Worker' : 'Edit Worker',
+                        existing == null
+                            ? (canManageRates
+                                  ? 'Add Employee'
+                                  : 'Add Factory Worker')
+                            : (canManageRates
+                                  ? 'Edit Employee'
+                                  : 'Edit Worker'),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -98,9 +143,11 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Wage rates & monthly salaries remain hidden and managed by Admin.',
-                        style: TextStyle(
+                      Text(
+                        canManageRates
+                            ? 'Configure role, work type, and salary or contractual piece rate.'
+                            : 'Wage rates & monthly salaries remain hidden and managed by Admin.',
+                        style: const TextStyle(
                           fontSize: 12,
                           color: ErpTheme.slate500,
                         ),
@@ -206,6 +253,28 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                           ),
                         ],
                       ),
+                      if (canManageRates) ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: salaryCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d*\.?\d{0,2}'),
+                            ),
+                          ],
+                          decoration: InputDecoration(
+                            labelText: paymentType == 'Contractual'
+                                ? 'Piece Rate (₹)'
+                                : 'Basic Salary (₹)',
+                            prefixIcon: const Icon(
+                              Icons.currency_rupee_rounded,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: unitCtrl,
@@ -244,6 +313,13 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                                   paymentType: paymentType,
                                   unit: unitCtrl.text,
                                   status: status,
+                                  salary: canManageRates
+                                      ? (double.tryParse(
+                                              salaryCtrl.text.trim(),
+                                            ) ??
+                                            0)
+                                      : null,
+                                  includeSalary: canManageRates,
                                 );
                                 if (ok && ctx.mounted) {
                                   Navigator.of(ctx).pop(true);
@@ -270,6 +346,7 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
     mobileCtrl.dispose();
     roleCtrl.dispose();
     unitCtrl.dispose();
+    salaryCtrl.dispose();
 
     if (saved == true && mounted && widget.viewModel.statusMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -677,12 +754,20 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
   @override
   Widget build(BuildContext context) {
     final user = widget.authViewModel.currentUser;
+    final isEmbedded = ErpShellScope.isEmbeddedShell(context);
+    final canManageRates = _canManageRates;
+    final canAddEmployee = user == null || user.canAdd('employees');
+
     if (user != null && !user.canViewEmployees) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Workers & Advances'),
-          actions: [AccountAppBarAction(authViewModel: widget.authViewModel)],
-        ),
+        appBar: isEmbedded
+            ? null
+            : AppBar(
+                title: const Text('Workers & Advances'),
+                actions: [
+                  AccountAppBarAction(authViewModel: widget.authViewModel),
+                ],
+              ),
         body: const ErpEmptyState(
           icon: Icons.lock_outline,
           title: 'Workers & Advances Restricted',
@@ -697,41 +782,63 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
       builder: (context, _) {
         final vm = widget.viewModel;
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Workers & Advances'),
-            actions: [
-              IconButton(
-                tooltip: 'Refresh',
-                onPressed: vm.isLoading ? null : vm.loadAll,
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-              AccountAppBarAction(authViewModel: widget.authViewModel),
-            ],
-          ),
-          floatingActionButton: _showRecentAdvancesTab
+          appBar: isEmbedded
+              ? null
+              : AppBar(
+                  title: const Text('Workers & Advances'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Refresh',
+                      onPressed: vm.isLoading ? null : vm.loadAll,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    AccountAppBarAction(authViewModel: widget.authViewModel),
+                  ],
+                ),
+          floatingActionButton: _showRecentAdvancesTab || !canAddEmployee
               ? null
               : FloatingActionButton.extended(
                   onPressed: () => _openEmployeeForm(),
                   backgroundColor: ErpTheme.hrIndigo,
                   foregroundColor: Colors.white,
                   icon: const Icon(Icons.person_add_alt_1_rounded),
-                  label: const Text('Add Worker'),
+                  label: Text(canManageRates ? 'Add Employee' : 'Add Worker'),
                 ),
           body: Column(
             children: [
+              if (isEmbedded)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+                  child: ErpSectionHeaderBar(
+                    title: canManageRates
+                        ? 'Employee Master & Advances'
+                        : 'Workers & Advances',
+                    subtitle: canManageRates
+                        ? 'Manage employee salaries, piece rates, and advance ledgers.'
+                        : 'Manage factory workers and track cash advances.',
+                    accentColor: ErpTheme.hrIndigo,
+                    actions: [
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: vm.isLoading ? null : vm.loadAll,
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
+                    ],
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                 child: Row(
                   children: [
                     Expanded(
                       child: SegmentedButton<bool>(
-                        segments: const [
+                        segments: [
                           ButtonSegment<bool>(
                             value: false,
-                            icon: Icon(Icons.groups_rounded, size: 18),
-                            label: Text('Workers'),
+                            icon: const Icon(Icons.groups_rounded, size: 18),
+                            label: Text(canManageRates ? 'Employees' : 'Workers'),
                           ),
-                          ButtonSegment<bool>(
+                          const ButtonSegment<bool>(
                             value: true,
                             icon: Icon(
                               Icons.account_balance_wallet_rounded,
@@ -957,26 +1064,59 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: ErpTheme.slate200),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Column(
                             children: [
-                              const Text(
-                                'Advance Balance',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: ErpTheme.slate700,
+                              if (_canManageRates) ...[
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      emp.isContractual
+                                          ? 'Piece Rate'
+                                          : 'Basic Salary',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: ErpTheme.slate700,
+                                      ),
+                                    ),
+                                    Text(
+                                      '₹${_inrFormat.format(emp.salary ?? 0)}'
+                                      '${emp.isContractual && emp.unit != null ? ' / ${emp.unit}' : ''}',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: ErpTheme.hrIndigo,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              Text(
-                                '₹${_inrFormat.format(emp.advanceBalance)}',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                  color: emp.advanceBalance > 0
-                                      ? ErpTheme.dangerRose
-                                      : ErpTheme.slate700,
-                                ),
+                                const Divider(height: 12),
+                              ],
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Advance Balance',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: ErpTheme.slate700,
+                                    ),
+                                  ),
+                                  Text(
+                                    '₹${_inrFormat.format(emp.advanceBalance)}',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: emp.advanceBalance > 0
+                                          ? ErpTheme.dangerRose
+                                          : ErpTheme.slate700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -996,28 +1136,52 @@ class _EmployeesAdvancesScreenState extends State<EmployeesAdvancesScreen> {
                             ),
                             OutlinedButton.icon(
                               onPressed: () => _openWorkerLedgerSheet(emp),
-                              icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                              icon: const Icon(
+                                Icons.receipt_long_outlined,
+                                size: 16,
+                              ),
                               label: const Text('Ledger'),
                             ),
-                            IconButton(
-                              tooltip: 'Edit worker',
-                              onPressed: () => _openEmployeeForm(existing: emp),
-                              icon: const Icon(Icons.edit_outlined),
-                            ),
-                            IconButton(
-                              tooltip: emp.isActive
-                                  ? 'Mark Inactive'
-                                  : 'Mark Active',
-                              onPressed: () => vm.toggleEmployeeStatus(emp),
-                              icon: Icon(
-                                emp.isActive
-                                    ? Icons.person_off_outlined
-                                    : Icons.how_to_reg_outlined,
-                                color: emp.isActive
-                                    ? ErpTheme.slate500
-                                    : ErpTheme.ordersEmerald,
+                            if (widget.authViewModel.currentUser == null ||
+                                widget.authViewModel.currentUser!.canEdit(
+                                  'employees',
+                                ))
+                              IconButton(
+                                tooltip: 'Edit worker',
+                                onPressed: () =>
+                                    _openEmployeeForm(existing: emp),
+                                icon: const Icon(Icons.edit_outlined),
                               ),
-                            ),
+                            if (widget.authViewModel.currentUser == null ||
+                                widget.authViewModel.currentUser!.canEdit(
+                                  'employees',
+                                ))
+                              IconButton(
+                                tooltip: emp.isActive
+                                    ? 'Mark Inactive'
+                                    : 'Mark Active',
+                                onPressed: () => vm.toggleEmployeeStatus(
+                                  emp,
+                                  includeSalary: _canManageRates,
+                                ),
+                                icon: Icon(
+                                  emp.isActive
+                                      ? Icons.person_off_outlined
+                                      : Icons.how_to_reg_outlined,
+                                  color: emp.isActive
+                                      ? ErpTheme.slate500
+                                      : ErpTheme.ordersEmerald,
+                                ),
+                              ),
+                            if (_canDeleteEmployee)
+                              IconButton(
+                                tooltip: 'Delete employee',
+                                onPressed: () => _confirmDeleteEmployee(emp),
+                                icon: const Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: ErpTheme.dangerRose,
+                                ),
+                              ),
                           ],
                         ),
                       ],

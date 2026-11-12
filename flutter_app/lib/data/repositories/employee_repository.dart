@@ -36,6 +36,15 @@ class EmployeeRepository {
     return Employee.fromJson(raw);
   }
 
+  Future<Employee> saveEmployeeAdmin(Employee employee) async {
+    final raw = await _apiClient.saveEmployee(employee.toAdminPayload());
+    return Employee.fromJson(raw);
+  }
+
+  Future<void> deleteEmployee(int id) async {
+    await _apiClient.deleteEmployee(id);
+  }
+
   Future<List<EmployeeAdvance>> fetchRecentAdvances({int limit = 80}) async {
     final raw = await _apiClient.getRecentAdvances(limit: limit);
     if (raw.length < 60) return _parseAdvances(raw);
