@@ -115,9 +115,17 @@ function createPresignedGetUrl({
     ]);
   }
 
-  queryParams.sort((a, b) =>
-    encodeRfc3986(a[0]).localeCompare(encodeRfc3986(b[0])),
-  );
+  queryParams.sort((a, b) => {
+    const ka = encodeRfc3986(a[0]);
+    const kb = encodeRfc3986(b[0]);
+    if (ka < kb) return -1;
+    if (ka > kb) return 1;
+    const va = encodeRfc3986(a[1]);
+    const vb = encodeRfc3986(b[1]);
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+  });
 
   const canonicalQuery = queryParams
     .map(([k, v]) => `${encodeRfc3986(k)}=${encodeRfc3986(v)}`)
@@ -260,3 +268,4 @@ module.exports = {
   createPresignedGetUrl,
   putObjectStream,
 };
+
