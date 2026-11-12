@@ -8,6 +8,7 @@ class InMemoryLocalStorageService implements LocalStorageService {
   Map<String, dynamic>? _userJson;
   String _apiUrl = AppConfig.defaultApiBaseUrl;
   List<String> _pinnedItems = <String>[];
+  String? _entryMode;
   final Map<String, Map<int, Map<String, int>>> _drafts =
       <String, Map<int, Map<String, int>>>{};
   Map<String, dynamic>? _billingCartJson;
@@ -57,6 +58,14 @@ class InMemoryLocalStorageService implements LocalStorageService {
   @override
   Future<void> savePinnedWipItems(List<String> items) async {
     _pinnedItems = List<String>.from(items);
+  }
+
+  @override
+  String? getProductionEntryMode() => _entryMode;
+
+  @override
+  Future<void> saveProductionEntryMode(String mode) async {
+    _entryMode = mode;
   }
 
   @override

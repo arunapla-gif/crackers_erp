@@ -18,6 +18,9 @@ abstract class LocalStorageService {
   List<String> getPinnedWipItems();
   Future<void> savePinnedWipItems(List<String> items);
 
+  String? getProductionEntryMode();
+  Future<void> saveProductionEntryMode(String mode);
+
   Map<int, Map<String, int>>? getProductionDraft(String isoDate);
   Future<void> saveProductionDraft(
     String isoDate,
@@ -39,6 +42,7 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
   static const String _userKey = 'erp_user';
   static const String _apiUrlKey = 'custom_api_url';
   static const String _pinnedItemsKey = 'pinned_wip_items';
+  static const String _entryModeKey = 'prod_entry_mode';
   static const String _draftPrefix = 'prod_draft_';
   static const String _billingCartKey = 'crackers_erp_billing_cart';
   static const String _billingHeaderKey = 'crackers_erp_billing_header';
@@ -111,6 +115,14 @@ class SharedPrefsLocalStorageService implements LocalStorageService {
   @override
   Future<void> savePinnedWipItems(List<String> items) async {
     await _prefs.setStringList(_pinnedItemsKey, items);
+  }
+
+  @override
+  String? getProductionEntryMode() => _prefs.getString(_entryModeKey);
+
+  @override
+  Future<void> saveProductionEntryMode(String mode) async {
+    await _prefs.setString(_entryModeKey, mode);
   }
 
   @override

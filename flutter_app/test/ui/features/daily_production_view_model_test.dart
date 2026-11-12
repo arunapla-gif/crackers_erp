@@ -84,6 +84,25 @@ void main() {
       expect(vm.recentHistory, isEmpty);
       expect(vm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(0));
     });
+
+    test('persists preferred entry mode across reloads', () async {
+      await vm.loadInitialData();
+      expect(vm.entryMode, equals(ProductionEntryMode.byItem));
+
+      vm.setEntryMode(ProductionEntryMode.matrix);
+      expect(storage.getProductionEntryMode(), equals('matrix'));
+
+      final reloadedVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(reloadedVm.dispose);
+      await reloadedVm.loadInitialData();
+      expect(reloadedVm.entryMode, equals(ProductionEntryMode.matrix));
+    });
   });
 }
 

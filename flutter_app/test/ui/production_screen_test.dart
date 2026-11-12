@@ -50,6 +50,8 @@ void main() {
       expect(find.textContaining('₹'), findsNothing);
 
       // Tap quick +10 stepper on the first worker row
+      await tester.ensureVisible(find.text('+10').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('+10').first);
       await tester.pump();
 
@@ -62,6 +64,92 @@ void main() {
 
       expect(find.text('Unsaved Local Changes'), findsNothing);
       expect(api.productionsData.length, equals(1));
+    },
+  );
+
+  testWidgets(
+    'Supervisor can use Matrix on Android phone viewport with Focus Grid, quick qty, and zero rupees',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Supervisor sees Matrix option and can switch to it
+      expect(find.text('Matrix'), findsOneWidget);
+      await tester.ensureVisible(find.text('Matrix'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Matrix'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+      expect(find.text('Save Matrix'), findsOneWidget);
+      expect(find.textContaining('₹'), findsNothing);
+
+      // Focus first cell (Packing -> emp 12), use +10, Next -> emp 11 (+25), Next -> Col 2 emp 12 (+50)
+      final cellFinder = find.byKey(
+        const ValueKey('matrix_12_12cm Electric Sparklers (WIP)'),
+      );
+      await tester.ensureVisible(cellFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(cellFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.text('+10'), findsOneWidget);
+      await tester.tap(find.text('+10'));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(10));
+
+      await tester.tap(find.text('Next ↓'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+25'));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(25));
+
+      await tester.tap(find.text('Next ↓'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+50'));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, 'Ground Chakkar Big (WIP)'), equals(50));
+
+      // Enter and exit Focus Grid mode cleanly
+      await tester.ensureVisible(find.text('Focus Grid'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Focus Grid'));
+      await tester.pumpAndSettle();
+      expect(find.text('Exit Focus'), findsOneWidget);
+
+      await tester.tap(find.text('Save Matrix'));
+      await tester.pumpAndSettle();
+      expect(api.productionsData.length, equals(2));
     },
   );
 }

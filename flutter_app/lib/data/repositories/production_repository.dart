@@ -77,6 +77,11 @@ class ProductionRepository {
   Future<void> savePinnedItems(List<String> items) =>
       _storage.savePinnedWipItems(items);
 
+  String? loadEntryMode() => _storage.getProductionEntryMode();
+
+  Future<void> saveEntryMode(String mode) =>
+      _storage.saveProductionEntryMode(mode);
+
   Map<int, Map<String, int>>? loadDraft(String isoDate) =>
       _storage.getProductionDraft(isoDate);
 

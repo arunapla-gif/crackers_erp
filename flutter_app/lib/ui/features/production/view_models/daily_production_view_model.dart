@@ -170,6 +170,15 @@ class DailyProductionViewModel extends ChangeNotifier {
 
     try {
       _pinnedItemNames = _productionRepository.loadPinnedItems();
+      final savedModeName = _productionRepository.loadEntryMode();
+      if (savedModeName != null) {
+        for (final mode in ProductionEntryMode.values) {
+          if (mode.name == savedModeName) {
+            _entryMode = mode;
+            break;
+          }
+        }
+      }
 
       final results = await Future.wait<dynamic>([
         _productionRepository.fetchWipProducts(),
@@ -228,6 +237,7 @@ class DailyProductionViewModel extends ChangeNotifier {
   void setEntryMode(ProductionEntryMode mode) {
     if (_entryMode == mode) return;
     _entryMode = mode;
+    _productionRepository.saveEntryMode(mode.name);
     _safeNotify();
   }
 
