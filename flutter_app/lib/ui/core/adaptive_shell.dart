@@ -5,6 +5,7 @@ import '../../core/theme/erp_theme.dart';
 import '../../domain/models/user_session.dart';
 import '../features/auth/view_models/auth_view_model.dart';
 import '../features/production/view_models/daily_production_view_model.dart';
+import 'app_update_dialog.dart';
 
 class ErpShellScope extends InheritedWidget {
   const ErpShellScope({
@@ -280,7 +281,7 @@ ErpRouteMeta resolveRouteMeta(
   );
 }
 
-class ErpShellScaffold extends StatelessWidget {
+class ErpShellScaffold extends StatefulWidget {
   const ErpShellScaffold({
     required this.location,
     required this.child,
@@ -301,43 +302,60 @@ class ErpShellScaffold extends StatelessWidget {
   final void Function(String docType)? onSelectDocType;
 
   @override
+  State<ErpShellScaffold> createState() => _ErpShellScaffoldState();
+}
+
+class _ErpShellScaffoldState extends State<ErpShellScaffold> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppUpdateScope.maybeOf(context)?.maybeCheckOnStartup(context);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([authViewModel, productionViewModel]),
+      listenable: Listenable.merge([
+        widget.authViewModel,
+        widget.productionViewModel,
+      ]),
       builder: (context, _) {
-        final user = authViewModel.currentUser;
-        if (user == null) return child;
+        final user = widget.authViewModel.currentUser;
+        if (user == null) return widget.child;
 
         if (user.isSupervisor) {
           return _SupervisorShellScaffold(
-            location: location,
-            authViewModel: authViewModel,
-            productionViewModel: productionViewModel,
-            child: child,
+            location: widget.location,
+            authViewModel: widget.authViewModel,
+            productionViewModel: widget.productionViewModel,
+            child: widget.child,
           );
         }
 
         if (user.isRep) {
           return _RepShellScaffold(
-            authViewModel: authViewModel,
-            child: child,
+            authViewModel: widget.authViewModel,
+            child: widget.child,
           );
         }
 
         // Dashboard landing screen renders fullscreen without sticky Header.
-        if (location == '/') {
-          return child;
+        if (widget.location == '/') {
+          return widget.child;
         }
 
         return _ErpAdminStaffShell(
-          location: location,
+          location: widget.location,
           user: user,
-          authViewModel: authViewModel,
-          productionViewModel: productionViewModel,
-          activeDocType: activeDocType,
-          activeDocNumber: activeDocNumber,
-          onSelectDocType: onSelectDocType,
-          child: child,
+          authViewModel: widget.authViewModel,
+          productionViewModel: widget.productionViewModel,
+          activeDocType: widget.activeDocType,
+          activeDocNumber: widget.activeDocNumber,
+          onSelectDocType: widget.onSelectDocType,
+          child: widget.child,
         );
       },
     );
@@ -467,11 +485,28 @@ class _SupervisorShellScaffold extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 16),
-                        child: IconButton(
-                          onPressed: () => _confirmLogout(context),
-                          tooltip: 'Sign Out',
-                          icon: const Icon(Icons.logout_rounded),
-                          color: ErpTheme.dangerRose,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (AppUpdateScope.maybeOf(
+                                  context,
+                                )?.isSupportedPlatform ==
+                                true)
+                              IconButton(
+                                onPressed: () => AppUpdateScope.maybeOf(
+                                  context,
+                                )?.checkManually(context),
+                                tooltip: 'Check for Updates',
+                                icon: const Icon(Icons.system_update_rounded),
+                                color: ErpTheme.salesBlueDark,
+                              ),
+                            IconButton(
+                              onPressed: () => _confirmLogout(context),
+                              tooltip: 'Sign Out',
+                              icon: const Icon(Icons.logout_rounded),
+                              color: ErpTheme.dangerRose,
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -1283,10 +1318,17 @@ class AccountAppBarAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = authViewModel.currentUser;
     if (user == null) return const SizedBox.shrink();
+    final updateController = AppUpdateScope.maybeOf(context);
+    final canUpdate = updateController?.isSupportedPlatform == true;
+    final installedVersion = updateController?.installedVersion;
 
     return PopupMenuButton<String>(
       tooltip: 'Account & Server',
       onSelected: (value) async {
+        if (value == 'check_update') {
+          await updateController?.checkManually(context);
+          return;
+        }
         if (value == 'logout') {
           if (hasUnsavedProduction) {
             final confirm = await showDialog<bool>(
@@ -1333,6 +1375,11 @@ class AccountAppBarAction extends StatelessWidget {
                 'Role: ${user.role}',
                 style: const TextStyle(fontSize: 12, color: ErpTheme.slate500),
               ),
+              if (installedVersion != null)
+                Text(
+                  'App ${installedVersion.label}',
+                  style: const TextStyle(fontSize: 11, color: ErpTheme.slate500),
+                ),
               const SizedBox(height: 4),
               Text(
                 authViewModel.apiBaseUrl,
@@ -1342,6 +1389,29 @@ class AccountAppBarAction extends StatelessWidget {
           ),
         ),
         const PopupMenuDivider(),
+        if (canUpdate) ...[
+          const PopupMenuItem<String>(
+            value: 'check_update',
+            child: Row(
+              children: [
+                Icon(
+                  Icons.system_update_rounded,
+                  size: 18,
+                  color: ErpTheme.salesBlueDark,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Check for Updates',
+                  style: TextStyle(
+                    color: ErpTheme.slate900,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+        ],
         const PopupMenuItem<String>(
           value: 'logout',
           child: Row(

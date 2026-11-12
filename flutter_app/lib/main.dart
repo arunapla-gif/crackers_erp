@@ -15,7 +15,9 @@ import 'data/repositories/payroll_repository.dart';
 import 'data/repositories/production_repository.dart';
 import 'data/repositories/sales_order_repository.dart';
 import 'data/services/api_client.dart';
+import 'data/services/app_updater_service.dart';
 import 'data/services/local_storage_service.dart';
+import 'ui/core/app_update_dialog.dart';
 import 'ui/features/admin/view_models/company_profile_view_model.dart';
 import 'ui/features/admin/view_models/eway_bill_report_view_model.dart';
 import 'ui/features/admin/view_models/user_master_view_model.dart';
@@ -220,21 +222,39 @@ Future<void> main() async {
     legacyViewModel: legacyViewModel,
   );
 
-  runApp(CrackersErpApp(appRouter: appRouter));
+  final appUpdateController = AppUpdateController(
+    updaterService: createPlatformAppUpdaterService(),
+    apiBaseUrlProvider: storage.getApiBaseUrl,
+  );
+
+  runApp(
+    CrackersErpApp(
+      appRouter: appRouter,
+      appUpdateController: appUpdateController,
+    ),
+  );
 }
 
 class CrackersErpApp extends StatelessWidget {
-  const CrackersErpApp({required this.appRouter, super.key});
+  const CrackersErpApp({
+    required this.appRouter,
+    required this.appUpdateController,
+    super.key,
+  });
 
   final AppRouter appRouter;
+  final AppUpdateController appUpdateController;
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Crackers Billing ERP',
-      debugShowCheckedModeBanner: false,
-      theme: ErpTheme.buildLightTheme(),
-      routerConfig: appRouter.router,
+    return AppUpdateScope(
+      controller: appUpdateController,
+      child: MaterialApp.router(
+        title: 'Crackers Billing ERP',
+        debugShowCheckedModeBanner: false,
+        theme: ErpTheme.buildLightTheme(),
+        routerConfig: appRouter.router,
+      ),
     );
   }
 }

@@ -7,3 +7,6 @@ ARUN SOFTWARE/
 *.mdb
 *.pdf
 crackers_erp_*.html
+key.properties
+*.jks
+*.keystore

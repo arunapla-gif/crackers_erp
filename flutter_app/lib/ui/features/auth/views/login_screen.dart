@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:crackers_erp/core/config/app_config.dart';
 import 'package:crackers_erp/core/theme/erp_theme.dart';
+import 'package:crackers_erp/ui/core/app_update_dialog.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 
@@ -20,6 +21,15 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _pinController = TextEditingController();
   bool _obscurePin = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppUpdateScope.maybeOf(context)?.maybeCheckOnStartup(context);
+    });
+  }
 
   @override
   void dispose() {
@@ -298,6 +308,48 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            if (AppUpdateScope.maybeOf(
+                                  context,
+                                )?.isSupportedPlatform ==
+                                true) ...[
+                              const SizedBox(height: 6),
+                              ListenableBuilder(
+                                listenable: AppUpdateScope.maybeOf(context)!,
+                                builder: (context, _) {
+                                  final updater = AppUpdateScope.maybeOf(
+                                    context,
+                                  )!;
+                                  final ver = updater.installedVersion;
+                                  return TextButton.icon(
+                                    onPressed:
+                                        vm.isSubmitting || updater.isChecking
+                                        ? null
+                                        : () => updater.checkManually(context),
+                                    icon: updater.isChecking
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.system_update_rounded,
+                                            size: 15,
+                                          ),
+                                    label: Text(
+                                      ver != null
+                                          ? 'App v${ver.versionName} • Check Updates'
+                                          : 'Check for App Updates',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ],
                         ),
                       ),

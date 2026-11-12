@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/domain/models/user_session.dart';
+import 'package:crackers_erp/ui/core/app_update_dialog.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -181,19 +182,48 @@ class DashboardScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                          OutlinedButton.icon(
-                            onPressed: () => authViewModel.logout(),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: ErpTheme.dangerRose,
-                              backgroundColor: Colors.white,
-                              side: BorderSide(
-                                color: ErpTheme.dangerRose
-                                    .withValues(alpha: 0.25),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (AppUpdateScope.maybeOf(
+                                    context,
+                                  )?.isSupportedPlatform ==
+                                  true) ...[
+                                OutlinedButton.icon(
+                                  onPressed: () => AppUpdateScope.maybeOf(
+                                    context,
+                                  )?.checkManually(context),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: ErpTheme.salesBlueDark,
+                                    backgroundColor: Colors.white,
+                                    side: const BorderSide(
+                                      color: ErpTheme.slate200,
+                                    ),
+                                    shape: const StadiumBorder(),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.system_update_rounded,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Updates'),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              OutlinedButton.icon(
+                                onPressed: () => authViewModel.logout(),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: ErpTheme.dangerRose,
+                                  backgroundColor: Colors.white,
+                                  side: BorderSide(
+                                    color: ErpTheme.dangerRose
+                                        .withValues(alpha: 0.25),
+                                  ),
+                                  shape: const StadiumBorder(),
+                                ),
+                                icon: const Icon(Icons.logout_rounded, size: 16),
+                                label: const Text('Logout'),
                               ),
-                              shape: const StadiumBorder(),
-                            ),
-                            icon: const Icon(Icons.logout_rounded, size: 16),
-                            label: const Text('Logout'),
+                            ],
                           ),
                         ],
                       ),

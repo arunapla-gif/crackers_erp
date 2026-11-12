@@ -6,6 +6,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const { createPresignedGetUrl } = require('./s3_signer');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -104,6 +105,92 @@ app.post('/api/login', async (req, res) => {
 // Health check endpoint for cron jobs (Render keep-alive)
 app.get('/api/ping', (req, res) => {
   res.status(200).send('pong');
+});
+
+function getAppReleaseConfig() {
+  const bucketEndpoint = process.env.AWS_ENDPOINT_URL || '';
+  const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || '';
+  const region = process.env.AWS_DEFAULT_REGION || 'auto';
+  const urlStyle = process.env.AWS_S3_URL_STYLE || 'virtual-host';
+
+  const hasBucketConfig = Boolean(
+    bucketEndpoint && bucketName && accessKeyId && secretAccessKey,
+  );
+  const apkKey = (process.env.APP_APK_KEY || '').trim();
+  const directApkUrl = (process.env.APP_APK_URL || '').trim();
+  const parsedCode = parseInt(process.env.APP_LATEST_VERSION_CODE || '1', 10);
+
+  return {
+    versionCode: Number.isFinite(parsedCode) && parsedCode > 0 ? parsedCode : 1,
+    versionName: (process.env.APP_LATEST_VERSION_NAME || '1.0.0').trim(),
+    mandatory:
+      String(process.env.APP_UPDATE_MANDATORY || 'false').toLowerCase() ===
+      'true',
+    releaseNotes: (process.env.APP_UPDATE_NOTES || '').trim(),
+    apkKey,
+    directApkUrl,
+    downloadAvailable: Boolean(directApkUrl || (apkKey && hasBucketConfig)),
+    bucket: hasBucketConfig
+      ? {
+          endpoint: bucketEndpoint,
+          bucketName,
+          region,
+          accessKeyId,
+          secretAccessKey,
+          urlStyle,
+        }
+      : null,
+  };
+}
+
+function getRequestOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https')
+    .split(',')[0]
+    .trim();
+  const host = req.get('host');
+  return `${proto}://${host}`;
+}
+
+app.get('/api/app/version', (req, res) => {
+  const cfg = getAppReleaseConfig();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    versionCode: cfg.versionCode,
+    versionName: cfg.versionName,
+    mandatory: cfg.mandatory,
+    releaseNotes: cfg.releaseNotes,
+    downloadAvailable: cfg.downloadAvailable,
+    downloadUrl: cfg.downloadAvailable
+      ? `${getRequestOrigin(req)}/api/app/download`
+      : null,
+  });
+});
+
+app.get('/api/app/download', (req, res) => {
+  const cfg = getAppReleaseConfig();
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (cfg.apkKey && cfg.bucket) {
+    try {
+      const signedUrl = createPresignedGetUrl({
+        ...cfg.bucket,
+        key: cfg.apkKey,
+        expiresSeconds: 600,
+        downloadFilename: `crackers-erp-${cfg.versionName}.apk`,
+      });
+      return res.redirect(302, signedUrl);
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  if (cfg.directApkUrl) {
+    return res.redirect(302, cfg.directApkUrl);
+  }
+
+  return res.status(404).json({ error: 'No APK release published yet.' });
 });
 
 // --- SECURITY MIDDLEWARE ---
