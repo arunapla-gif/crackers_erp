@@ -85,12 +85,12 @@ void main() {
       expect(vm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(0));
     });
 
-    test('persists preferred entry mode across reloads', () async {
+    test('persists preferred entry mode across reloads (defaults to matrix)', () async {
       await vm.loadInitialData();
-      expect(vm.entryMode, equals(ProductionEntryMode.byItem));
+      expect(vm.entryMode, equals(ProductionEntryMode.matrix));
 
-      vm.setEntryMode(ProductionEntryMode.matrix);
-      expect(storage.getProductionEntryMode(), equals('matrix'));
+      vm.setEntryMode(ProductionEntryMode.byWorker);
+      expect(storage.getProductionEntryMode(), equals('byWorker'));
 
       final reloadedVm = DailyProductionViewModel(
         productionRepository: ProductionRepository(
@@ -101,7 +101,7 @@ void main() {
       );
       addTearDown(reloadedVm.dispose);
       await reloadedVm.loadInitialData();
-      expect(reloadedVm.entryMode, equals(ProductionEntryMode.matrix));
+      expect(reloadedVm.entryMode, equals(ProductionEntryMode.byWorker));
     });
 
     test('worker search matches in English, Tamil, and bilingual formats', () async {

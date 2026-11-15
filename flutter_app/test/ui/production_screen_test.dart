@@ -33,6 +33,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -94,6 +95,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -188,6 +190,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -306,6 +309,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -447,6 +451,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -576,6 +581,7 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
+      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       final repaintKey = GlobalKey();
 
@@ -629,7 +635,13 @@ void main() {
       expect(find.text('கார்த்தி அப்பா'), findsNothing);
 
       // 5. Test Category Filter to Valayam Contract (Vasanth)
-      await tester.tap(find.widgetWithText(FilterChip, 'Valayam Contract • வளையம் ஒப்பந்தம் (1)'));
+      final valayamChip = find.widgetWithText(
+        FilterChip,
+        'Valayam Contract • வளையம் ஒப்பந்தம் (1)',
+      );
+      await tester.ensureVisible(valayamChip);
+      await tester.pumpAndSettle();
+      await tester.tap(valayamChip);
       await tester.pumpAndSettle();
 
       expect(find.text('வசந்த்'), findsWidgets);
@@ -651,7 +663,10 @@ void main() {
       expect(find.text('மணிமேகலை'), findsNothing);
 
       // 7. Reset back to All
-      await tester.tap(find.widgetWithText(FilterChip, 'All (17)'));
+      final allChip = find.widgetWithText(FilterChip, 'All (17)');
+      await tester.ensureVisible(allChip);
+      await tester.pumpAndSettle();
+      await tester.tap(allChip);
       await tester.pumpAndSettle();
 
       // 8. Capture rendered frame to PNG for visual inspection
@@ -666,6 +681,66 @@ void main() {
           }
         }
       });
+    },
+  );
+
+  testWidgets(
+    'Matrix defaults on screen and allows adding product column in 1-click across all workers',
+    (tester) async {
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // 1. Verify screen opens directly in Matrix mode by default
+      expect(prodVm.entryMode, equals(ProductionEntryMode.matrix));
+      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+
+      // 2. Verify React-style Quick Add Column button exists
+      expect(
+        find.byKey(const ValueKey('matrix-add-column-button')),
+        findsOneWidget,
+      );
+      expect(find.text('+ Add Column'), findsOneWidget);
+
+      // 3. Clear existing columns to test empty state and adding column
+      prodVm.clearActiveItems();
+      await tester.pumpAndSettle();
+      expect(find.text('No WIP Product Columns Added'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('matrix-empty-add-column-button')),
+        findsOneWidget,
+      );
+
+      // 4. Add product column via vm and verify it reappears
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
+      await tester.pumpAndSettle();
+      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+      expect(find.text('12cm Electric Sparklers (WIP)'), findsWidgets);
     },
   );
 }

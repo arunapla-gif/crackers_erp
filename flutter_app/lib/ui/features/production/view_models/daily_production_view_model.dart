@@ -23,7 +23,7 @@ class DailyProductionViewModel extends ChangeNotifier {
   final EmployeeRepository _employeeRepository;
 
   DateTime _selectedDate = DateTime.now();
-  ProductionEntryMode _entryMode = ProductionEntryMode.byItem;
+  ProductionEntryMode _entryMode = ProductionEntryMode.matrix;
   String _workerSearch = '';
   String _selectedRoleFilter = 'All';
   bool _includeMonthlyWorkers = false;
@@ -338,8 +338,19 @@ class DailyProductionViewModel extends ChangeNotifier {
     }
   }
 
-  void removeActiveItem(String itemName) {
+  void removeActiveItem(String itemName, {bool clearDraft = false}) {
     _activeItemNames.remove(itemName);
+    if (clearDraft) {
+      for (final empItems in _draftByEmp.values) {
+        empItems.remove(itemName);
+      }
+      _persistDraftSnapshot();
+    }
+    _safeNotify();
+  }
+
+  void clearActiveItems() {
+    _activeItemNames.clear();
     _safeNotify();
   }
 
@@ -465,7 +476,7 @@ class DailyProductionViewModel extends ChangeNotifier {
 
   void reset() {
     _selectedDate = DateTime.now();
-    _entryMode = ProductionEntryMode.byItem;
+    _entryMode = ProductionEntryMode.matrix;
     _workerSearch = '';
     _selectedRoleFilter = 'All';
     _includeMonthlyWorkers = false;

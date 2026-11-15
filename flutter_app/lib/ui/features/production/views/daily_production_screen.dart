@@ -834,37 +834,39 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                   : null,
             ),
           ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('Include Monthly'),
-                  selected: vm.includeMonthlyWorkers,
-                  onSelected: vm.toggleIncludeMonthlyWorkers,
-                ),
-                const SizedBox(width: 8),
-                ...vm.availableRoles.map(
-                  (role) {
-                    final count = vm.getWorkerCountForRole(role);
-                    final tamil = DailyProductionViewModel.getRoleTamilName(role);
-                    final label = role == 'All'
-                        ? 'All Workers ($count)'
-                        : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(label),
-                        selected: vm.selectedRoleFilter == role,
-                        onSelected: (_) => vm.setRoleFilter(role),
-                      ),
-                    );
-                  },
-                ),
-              ],
+          if (effectiveMode != ProductionEntryMode.matrix) ...[
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('Include Monthly'),
+                    selected: vm.includeMonthlyWorkers,
+                    onSelected: vm.toggleIncludeMonthlyWorkers,
+                  ),
+                  const SizedBox(width: 8),
+                  ...vm.availableRoles.map(
+                    (role) {
+                      final count = vm.getWorkerCountForRole(role);
+                      final tamil = DailyProductionViewModel.getRoleTamilName(role);
+                      final label = role == 'All'
+                          ? 'All Workers ($count)'
+                          : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(label),
+                          selected: vm.selectedRoleFilter == role,
+                          onSelected: (_) => vm.setRoleFilter(role),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 12),
           if (vm.filteredWorkers.isEmpty)
             const ErpEmptyState(
@@ -1755,6 +1757,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   final Map<String, ({int empId, String empName, String itemName})> _cellMeta =
       <String, ({int empId, String empName, String itemName})>{};
   String? _focusedKey;
+  String? _selectedWipProductToAdd;
 
   ({Color bg, Color border, Color text, IconData icon}) _getRoleStyle(
     String role,
@@ -1890,13 +1893,146 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     final vm = widget.viewModel;
     final items = vm.activeItemNames;
     if (items.isEmpty) {
-      return ErpEmptyState(
-        icon: Icons.grid_off_rounded,
-        title: 'No WIP Columns Selected',
-        subtitle:
-            'Tap Pick / Pin WIP to choose product columns for the production matrix.',
-        actionLabel: 'Pick WIP Items',
-        onAction: widget.onOpenWipPicker,
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: const BoxDecoration(
+                  color: ErpTheme.productionAmberSoft,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.view_column_rounded,
+                  size: 32,
+                  color: ErpTheme.productionAmber,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'No WIP Product Columns Added',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: ErpTheme.slate900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Select a WIP product below to add it as a column for all workers.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: ErpTheme.slate500,
+                ),
+              ),
+              const SizedBox(height: 18),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 42,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: ErpTheme.slate50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: ErpTheme.slate400),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: _selectedWipProductToAdd,
+                            hint: const Row(
+                              children: [
+                                Icon(
+                                  Icons.add_chart_rounded,
+                                  size: 16,
+                                  color: ErpTheme.productionAmber,
+                                ),
+                                SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Select Product...',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: ErpTheme.slate500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            items: vm.wipProducts.map((p) {
+                              return DropdownMenuItem<String>(
+                                value: p.name,
+                                child: Text(
+                                  p.name,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedWipProductToAdd = val);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      key: const ValueKey('matrix-empty-add-column-button'),
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                        backgroundColor: ErpTheme.productionAmber,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: _selectedWipProductToAdd == null
+                          ? null
+                          : () {
+                              vm.addActiveItem(_selectedWipProductToAdd!);
+                              setState(() => _selectedWipProductToAdd = null);
+                            },
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text(
+                        '+ Add Column',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: widget.onOpenWipPicker,
+                icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                label: const Text('Pick WIP Items'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -2029,7 +2165,31 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: vm.availableRoles.map((role) {
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    avatar: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      size: 14,
+                      color: ErpTheme.slate500,
+                    ),
+                    label: const Text('Include Monthly'),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: vm.includeMonthlyWorkers
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                      color: vm.includeMonthlyWorkers
+                          ? ErpTheme.slate900
+                          : ErpTheme.slate700,
+                    ),
+                    selected: vm.includeMonthlyWorkers,
+                    onSelected: vm.toggleIncludeMonthlyWorkers,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                ...vm.availableRoles.map((role) {
                 final count = vm.getWorkerCountForRole(role);
                 final tamil = DailyProductionViewModel.getRoleTamilName(role);
                 final isSelected = vm.selectedRoleFilter == role;
@@ -2069,10 +2229,11 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                     visualDensity: VisualDensity.compact,
                   ),
                 );
-              }).toList(),
-            ),
+              }),
+            ],
           ),
         ),
+      ),
         // Action toolbar
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2194,6 +2355,139 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             ],
           ),
         ),
+        // React-style Quick Add Product Column Bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: ErpTheme.slate50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: ErpTheme.slate400),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: _selectedWipProductToAdd,
+                      icon: const Icon(
+                        Icons.arrow_drop_down,
+                        color: ErpTheme.slate500,
+                      ),
+                      hint: const Row(
+                        children: [
+                          Icon(
+                            Icons.add_chart_rounded,
+                            size: 16,
+                            color: ErpTheme.productionAmber,
+                          ),
+                          SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Add Product Column (e.g. 10 KVR 48)...',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      items: vm.wipProducts.map((p) {
+                        final alreadyAdded = items.contains(p.name);
+                        return DropdownMenuItem<String>(
+                          value: p.name,
+                          enabled: !alreadyAdded,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  p.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: alreadyAdded
+                                        ? FontWeight.w500
+                                        : FontWeight.w700,
+                                    color: alreadyAdded
+                                        ? ErpTheme.slate400
+                                        : ErpTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              if (alreadyAdded)
+                                const Text(
+                                  'Added',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: ErpTheme.slate400,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _selectedWipProductToAdd = val);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                key: const ValueKey('matrix-add-column-button'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  backgroundColor: ErpTheme.productionAmber,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: _selectedWipProductToAdd == null ||
+                        items.contains(_selectedWipProductToAdd)
+                    ? null
+                    : () {
+                        vm.addActiveItem(_selectedWipProductToAdd!);
+                        setState(() => _selectedWipProductToAdd = null);
+                      },
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text(
+                  '+ Add Column',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Pick / Pin WIP Items',
+                onPressed: widget.onOpenWipPicker,
+                icon: const Icon(
+                  Icons.playlist_add_rounded,
+                  color: ErpTheme.slate500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -2298,7 +2592,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                     ...items.map((itemName) {
                       final product = vm.findWipProductByName(itemName);
                       final colTotal = vm.getItemTotalQuantity(itemName);
-                      final canRemove = colTotal == 0 && items.length > 1;
+                      final canRemove = items.length > 1;
                       return Container(
                         width: itemColWidth,
                         height: _headerHeight,
@@ -2333,7 +2627,43 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                                 ),
                                 if (canRemove)
                                   InkWell(
-                                    onTap: () => vm.removeActiveItem(itemName),
+                                    onTap: () async {
+                                      if (colTotal > 0) {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text('Remove Column?'),
+                                            content: Text(
+                                              'Remove "$itemName" column and clear all entered quantities ($colTotal ${product?.unit ?? 'Pcs'}) for this product?',
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.of(ctx).pop(false),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              FilledButton(
+                                                style: FilledButton.styleFrom(
+                                                  backgroundColor:
+                                                      ErpTheme.dangerRose,
+                                                ),
+                                                onPressed: () =>
+                                                    Navigator.of(ctx).pop(true),
+                                                child: const Text('Remove'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (confirm == true) {
+                                          vm.removeActiveItem(
+                                            itemName,
+                                            clearDraft: true,
+                                          );
+                                        }
+                                      } else {
+                                        vm.removeActiveItem(itemName);
+                                      }
+                                    },
                                     borderRadius: BorderRadius.circular(10),
                                     child: const Padding(
                                       padding: EdgeInsets.all(2),
