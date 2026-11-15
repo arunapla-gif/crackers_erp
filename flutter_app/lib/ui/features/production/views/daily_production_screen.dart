@@ -1960,14 +1960,15 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             nameDisplayMode: _nameDisplayMode,
           );
 
+          final screenHeight = MediaQuery.sizeOf(context).height;
+          final maxCardHeight =
+              (screenHeight * (widget.isFocusMode ? 0.70 : 0.62))
+                  .clamp(280.0, 680.0);
           final bodyWrapper = useBoundedExpand
               ? Expanded(child: matrixBody)
               : ConstrainedBox(
                   constraints: BoxConstraints(
-                    maxHeight:
-                        (MediaQuery.sizeOf(context).height *
-                                (widget.isFocusMode ? 0.56 : 0.48))
-                            .clamp(220.0, 440.0),
+                    maxHeight: maxCardHeight,
                   ),
                   child: matrixBody,
                 );

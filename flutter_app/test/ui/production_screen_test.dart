@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/data/repositories/auth_repository.dart';
 import 'package:crackers_erp/data/repositories/employee_repository.dart';
@@ -6,6 +8,7 @@ import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fakes.dart';
@@ -254,6 +257,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final api = FakeApiClient();
+      api.employeesData.clear();
       api.employeesData.addAll([
         {
           'id': 101,
@@ -380,6 +384,288 @@ void main() {
         find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம்'),
         findsWidgets,
       );
+    },
+  );
+
+  testWidgets(
+    'Matrix display layout: Category tabs, section headers, worker columns, quick entry, and role filtering',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final api = FakeApiClient();
+      api.employeesData.clear();
+      api.employeesData.addAll([
+        {
+          'id': 101,
+          'name': 'Abi (அபி)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Temporary',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 102,
+          'name': 'Muniyasamy (முனியசாமி)',
+          'role': 'Chemical',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 103,
+          'name': 'Vasanth (வசந்த்)',
+          'role': 'Valayam Contract',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+      ]);
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Switch to Matrix mode
+      final matrixSegment = find.text('Matrix');
+      await tester.ensureVisible(matrixSegment);
+      await tester.tap(matrixSegment);
+      await tester.pumpAndSettle();
+
+      // 1. Verify Category Tabs in Matrix toolbar
+      expect(find.widgetWithText(FilterChip, 'All (3)'), findsOneWidget);
+      expect(find.textContaining('Tape • டேப் (1)'), findsWidgets);
+      expect(find.textContaining('Chemical • கெமிக்கல் (1)'), findsWidgets);
+      expect(
+        find.textContaining('Valayam Contract • வளையம் ஒப்பந்தம் (1)'),
+        findsWidgets,
+      );
+
+      // 2. Verify Pinned Headers
+      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+      expect(find.text('WORKER\nTOTAL'), findsOneWidget);
+
+      // 3. Verify Category Section Headers
+      expect(find.textContaining('TAPE • டேப் (1)'), findsWidgets);
+      expect(find.textContaining('CHEMICAL • கெமிக்கல் (1)'), findsWidgets);
+      expect(
+        find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம் (1)'),
+        findsWidgets,
+      );
+
+      // 4. Verify Workers in their respective category sections
+      expect(find.text('அபி'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('வசந்த்'), findsWidgets);
+
+      // 5. Test Category Filtering: Tap 'Chemical • கெமிக்கல் (1)' tab
+      final chemTab =
+          find.widgetWithText(FilterChip, 'Chemical • கெமிக்கல் (1)').first;
+      await tester.tap(chemTab);
+      await tester.pumpAndSettle();
+
+      // Muniyasamy should be visible, others hidden
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('அபி'), findsNothing);
+      expect(find.text('வசந்த்'), findsNothing);
+
+      // 6. Tap 'Valayam Contract' tab
+      final valayamTab = find
+          .widgetWithText(
+            FilterChip,
+            'Valayam Contract • வளையம் ஒப்பந்தம் (1)',
+          )
+          .first;
+      await tester.tap(valayamTab);
+      await tester.pumpAndSettle();
+
+      // Vasanth should be visible, others hidden
+      expect(find.text('வசந்த்'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsNothing);
+      expect(find.text('அபி'), findsNothing);
+
+      // 7. Reset back to All
+      final allTab = find.widgetWithText(FilterChip, 'All (3)').first;
+      await tester.tap(allTab);
+      await tester.pumpAndSettle();
+
+      expect(find.text('அபி'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('வசந்த்'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'Verify live 17-worker factory dataset in Production Matrix with category tabs and screenshot capture',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final api = FakeApiClient();
+      api.employeesData.clear();
+      api.employeesData.addAll([
+        {'id': 3, 'name': 'Manimegalai (மணிமேகலை)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 4, 'name': 'Jothi (ஜோதி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 6, 'name': 'Bavitha (பவித்தா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 7, 'name': 'Seetha (சீதா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 8, 'name': 'Kaviya (காவியா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 15, 'name': 'Abi (அபி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 16, 'name': 'Rasammal (ராசம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 17, 'name': 'Kanakammal (கணகம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 18, 'name': 'Shree (ஸ்ரீ)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 19, 'name': 'Pandiyammal (பாண்டியம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 20, 'name': 'Iniya (இனியா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 21, 'name': 'Annalakshmi (அண்ணலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 22, 'name': 'Rasalakshmi (ராசலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 23, 'name': 'Sadaiyandi (சடையாண்டி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 24, 'name': 'Muniyasamy (முனியசாமி)', 'role': 'Chemical', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 25, 'name': 'Vasanth (வசந்த்)', 'role': 'Valayam Contract', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 26, 'name': 'Karthi Appa (கார்த்தி அப்பா)', 'role': 'Box Packing', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+      ]);
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      final repaintKey = GlobalKey();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: RepaintBoundary(
+            key: repaintKey,
+            child: DailyProductionScreen(
+              viewModel: prodVm,
+              authViewModel: authVm,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Switch to Matrix mode
+      final matrixSegment = find.text('Matrix');
+      await tester.ensureVisible(matrixSegment);
+      await tester.tap(matrixSegment);
+      await tester.pumpAndSettle();
+
+      // 1. Verify Category Tabs in Matrix toolbar
+      expect(find.widgetWithText(FilterChip, 'All (17)'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, 'Tape • டேப் (14)'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, 'Chemical • கெமிக்கல் (1)'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, 'Valayam Contract • வளையம் ஒப்பந்தம் (1)'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, 'Box Packing • பேக்கிங் (1)'), findsOneWidget);
+
+      // 2. Verify Category Section Headers in Matrix Body
+      expect(find.textContaining('TAPE • டேப் (14)'), findsWidgets);
+      expect(find.textContaining('CHEMICAL • கெமிக்கல் (1)'), findsWidgets);
+      expect(find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம் (1)'), findsWidgets);
+      expect(find.textContaining('BOX PACKING • பேக்கிங் (1)'), findsWidgets);
+
+      // 3. Verify Right Track Subtotal Banners
+      expect(find.textContaining('TAPE • டேப் (14 workers)'), findsWidgets);
+      expect(find.textContaining('CHEMICAL • கெமிக்கல் (1 workers)'), findsWidgets);
+      expect(find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம் (1 workers)'), findsWidgets);
+      expect(find.textContaining('BOX PACKING • பேக்கிங் (1 workers)'), findsWidgets);
+
+      // 4. Test Category Filter to Chemical (Muniyasamy)
+      await tester.tap(find.widgetWithText(FilterChip, 'Chemical • கெமிக்கல் (1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('மணிமேகலை'), findsNothing);
+      expect(find.text('வசந்த்'), findsNothing);
+      expect(find.text('கார்த்தி அப்பா'), findsNothing);
+
+      // 5. Test Category Filter to Valayam Contract (Vasanth)
+      await tester.tap(find.widgetWithText(FilterChip, 'Valayam Contract • வளையம் ஒப்பந்தம் (1)'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('வசந்த்'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsNothing);
+      expect(find.text('மணிமேகலை'), findsNothing);
+      expect(find.text('கார்த்தி அப்பா'), findsNothing);
+
+      // 6. Test Category Filter to Box Packing (Karthi Appa)
+      final boxPackingChip =
+          find.widgetWithText(FilterChip, 'Box Packing • பேக்கிங் (1)');
+      await tester.ensureVisible(boxPackingChip);
+      await tester.pumpAndSettle();
+      await tester.tap(boxPackingChip);
+      await tester.pumpAndSettle();
+
+      expect(find.text('கார்த்தி அப்பா'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsNothing);
+      expect(find.text('வசந்த்'), findsNothing);
+      expect(find.text('மணிமேகலை'), findsNothing);
+
+      // 7. Reset back to All
+      await tester.tap(find.widgetWithText(FilterChip, 'All (17)'));
+      await tester.pumpAndSettle();
+
+      // 8. Capture rendered frame to PNG for visual inspection
+      await tester.runAsync(() async {
+        final boundary = repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final image = await boundary.toImage(pixelRatio: 1.5);
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            File('/Users/arun_ap/.gemini/antigravity/brain/f7071202-34e1-4867-acdb-69999a14b709/matrix_display.png')
+                .writeAsBytesSync(byteData.buffer.asUint8List());
+          }
+        }
+      });
     },
   );
 }
