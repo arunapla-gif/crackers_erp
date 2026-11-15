@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:crackers_erp/core/theme/erp_theme.dart';
+import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/domain/models/json_helpers.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
@@ -1167,6 +1170,7 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
+  late final TextEditingController _tamilNameCtrl;
   late final TextEditingController _mobileCtrl;
   late final TextEditingController _roleCtrl;
   late final TextEditingController _unitCtrl;
@@ -1175,6 +1179,11 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
   String? _paymentType;
   String? _employmentType;
   late String _status;
+
+  bool _saveBilingual = true;
+  bool _userEditedTamil = false;
+  List<String> _tamilSuggestions = const [];
+  Timer? _debounceTimer;
 
   bool get _canEditEmploymentType =>
       widget.existing == null ||
@@ -1185,7 +1194,21 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
   void initState() {
     super.initState();
     final existing = widget.existing;
-    _nameCtrl = TextEditingController(text: existing?.name ?? '');
+    final parsed = existing != null
+        ? TamilTransliteration.parseBilingualName(existing.name)
+        : (english: '', tamil: '');
+
+    _nameCtrl =
+        TextEditingController(text: existing != null ? parsed.english : '');
+    final initialTamil = existing != null
+        ? (parsed.tamil.isNotEmpty
+            ? parsed.tamil
+            : TamilTransliteration.transliterate(parsed.english))
+        : '';
+    _tamilNameCtrl = TextEditingController(text: initialTamil);
+    _userEditedTamil = parsed.tamil.isNotEmpty;
+    _saveBilingual = true;
+
     _mobileCtrl = TextEditingController(text: existing?.mobile ?? '');
     _roleCtrl = TextEditingController(text: existing?.role ?? '');
     _unitCtrl = TextEditingController(text: existing?.unit ?? '');
@@ -1199,11 +1222,17 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
     _paymentType = existing?.paymentType;
     _employmentType = existing?.employmentType;
     _status = existing?.status ?? 'Active';
+
+    if (_nameCtrl.text.isNotEmpty) {
+      _tamilSuggestions = TamilTransliteration.getSuggestions(_nameCtrl.text);
+    }
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _nameCtrl.dispose();
+    _tamilNameCtrl.dispose();
     _mobileCtrl.dispose();
     _roleCtrl.dispose();
     _unitCtrl.dispose();
@@ -1211,10 +1240,57 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
     super.dispose();
   }
 
+  void _onEnglishNameChanged(String val) {
+    final clean = val.trim();
+    if (!_userEditedTamil) {
+      final transliterated = TamilTransliteration.transliterate(clean);
+      _tamilNameCtrl.text = transliterated;
+    }
+    setState(() {
+      _tamilSuggestions = TamilTransliteration.getSuggestions(clean);
+    });
+
+    _debounceTimer?.cancel();
+    if (clean.length >= 2) {
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+        final remote = await widget.viewModel.getTamilTransliterations(clean);
+        if (mounted && remote.isNotEmpty) {
+          setState(() {
+            _tamilSuggestions = <String>{
+              if (_tamilNameCtrl.text.isNotEmpty) _tamilNameCtrl.text,
+              ...remote,
+              ..._tamilSuggestions,
+            }.toList();
+          });
+        }
+      });
+    }
+  }
+
+  void _selectTamilSuggestion(String suggestion) {
+    setState(() {
+      _tamilNameCtrl.text = suggestion;
+      _userEditedTamil = true;
+    });
+  }
+
+  void _resetAutoTransliterate() {
+    setState(() {
+      _userEditedTamil = false;
+      _tamilNameCtrl.text = TamilTransliteration.transliterate(_nameCtrl.text);
+      _tamilSuggestions = TamilTransliteration.getSuggestions(_nameCtrl.text);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final existing = widget.existing;
     final canManageRates = widget.canManageRates;
+    final displayNamePreview = TamilTransliteration.formatBilingualName(
+      _nameCtrl.text,
+      _tamilNameCtrl.text,
+      bilingual: _saveBilingual,
+    );
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -1251,14 +1327,135 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
               TextFormField(
                 controller: _nameCtrl,
                 textCapitalization: TextCapitalization.words,
+                onChanged: _onEnglishNameChanged,
                 decoration: const InputDecoration(
                   labelText: 'Worker Full Name *',
+                  hintText: 'Type in English (e.g. Muthu, Kaliappan)',
                   prefixIcon: Icon(Icons.person_outline),
                 ),
                 validator: (val) => (val == null || val.trim().isEmpty)
                     ? 'Worker name is required'
                     : null,
               ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _tamilNameCtrl,
+                onChanged: (_) {
+                  setState(() => _userEditedTamil = true);
+                },
+                decoration: InputDecoration(
+                  labelText: 'Tamil Name (தமிழ் பெயர்)',
+                  hintText: 'e.g. முத்து, காளியப்பன், முருகன்',
+                  prefixIcon: const Icon(Icons.translate_rounded),
+                  suffixIcon: Tooltip(
+                    message: 'Auto-transliterate English to Tamil',
+                    child: IconButton(
+                      icon: const Icon(Icons.auto_fix_high_rounded),
+                      onPressed: _resetAutoTransliterate,
+                    ),
+                  ),
+                ),
+              ),
+              if (_tamilSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Text(
+                        'Tamil: ',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: ErpTheme.slate500,
+                        ),
+                      ),
+                    ),
+                    ..._tamilSuggestions.map(
+                      (sug) => ActionChip(
+                        label: Text(sug),
+                        avatar: _tamilNameCtrl.text.trim() == sug
+                            ? const Icon(Icons.check, size: 14)
+                            : null,
+                        onPressed: () => _selectTamilSuggestion(sug),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (displayNamePreview.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ErpTheme.hrIndigoSoft,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: ErpTheme.hrIndigo.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.badge_outlined,
+                            size: 16,
+                            color: ErpTheme.hrIndigo,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Save: $displayNamePreview',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.slate900,
+                              ),
+                            ),
+                          ),
+                          const ErpBadge(
+                            label: 'English + தமிழ்',
+                            backgroundColor: Colors.white,
+                            foregroundColor: ErpTheme.hrIndigo,
+                          ),
+                        ],
+                      ),
+                      if (_tamilNameCtrl.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Text(
+                              'Matrix View: ',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                            Text(
+                              _tamilNameCtrl.text.trim(),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.ordersEmerald,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               TextFormField(
                 controller: _mobileCtrl,
@@ -1433,9 +1630,15 @@ class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
                         if (!(_formKey.currentState?.validate() ?? false)) {
                           return;
                         }
+                        final finalName =
+                            TamilTransliteration.formatBilingualName(
+                              _nameCtrl.text,
+                              _tamilNameCtrl.text,
+                              bilingual: true,
+                            );
                         final ok = await widget.viewModel.saveEmployee(
                           id: existing?.id,
-                          name: _nameCtrl.text,
+                          name: finalName,
                           mobile: _mobileCtrl.text,
                           role: _roleCtrl.text,
                           paymentType: _paymentType!,

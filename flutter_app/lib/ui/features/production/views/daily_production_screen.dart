@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:crackers_erp/core/theme/erp_theme.dart';
+import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/domain/models/daily_production.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
@@ -1416,7 +1417,7 @@ class _ProductionMatrixCard extends StatefulWidget {
 class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   static const double _headerHeight = 58.0;
   static const double _roleHeaderHeight = 36.0;
-  static const double _workerRowHeight = 60.0;
+  static const double _workerRowHeight = 62.0;
   static const double _footerHeight = 52.0;
 
   final ScrollController _headerHScroll = ScrollController();
@@ -1426,6 +1427,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   bool _isSyncingH = false;
 
   final Set<String> _collapsedRoles = <String>{};
+  WorkerNameDisplayMode _nameDisplayMode = WorkerNameDisplayMode.tamil;
   final Map<String, FocusNode> _cellFocusNodes = <String, FocusNode>{};
   final Map<String, ({int empId, String empName, String itemName})> _cellMeta =
       <String, ({int empId, String empName, String itemName})>{};
@@ -1545,7 +1547,11 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
       for (final emp in visibleWorkers) {
         final key = _cellKey(emp.id, itemName);
         columnMajorKeys.add(key);
-        _cellMeta[key] = (empId: emp.id, empName: emp.name, itemName: itemName);
+        _cellMeta[key] = (
+          empId: emp.id,
+          empName: emp.formattedName(_nameDisplayMode),
+          itemName: itemName,
+        );
       }
     }
     final activeMeta = _focusedKey != null ? _cellMeta[_focusedKey] : null;
@@ -1584,6 +1590,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             totalColWidth: totalColWidth,
             rightTrackWidth: rightTrackWidth,
             inrFormat: inrFormat,
+            nameDisplayMode: _nameDisplayMode,
           );
 
           final bodyWrapper = useBoundedExpand
@@ -1665,6 +1672,51 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              SegmentedButton<WorkerNameDisplayMode>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                  ),
+                ),
+                segments: const [
+                  ButtonSegment(
+                    value: WorkerNameDisplayMode.tamil,
+                    label: Text(
+                      'தமிழ்',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  ButtonSegment(
+                    value: WorkerNameDisplayMode.english,
+                    label: Text(
+                      'Eng',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  ButtonSegment(
+                    value: WorkerNameDisplayMode.both,
+                    label: Text(
+                      'Both',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+                selected: {_nameDisplayMode},
+                onSelectionChanged: (sel) =>
+                    setState(() => _nameDisplayMode = sel.first),
+              ),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
@@ -1919,6 +1971,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     required double totalColWidth,
     required double rightTrackWidth,
     required NumberFormat inrFormat,
+    required WorkerNameDisplayMode nameDisplayMode,
   }) {
     return SingleChildScrollView(
       controller: _bodyVScroll,
@@ -1986,8 +2039,8 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                       return Container(
                         height: _workerRowHeight,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
                           color: empTotal > 0
@@ -2008,7 +2061,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              emp.name,
+                              emp.formattedName(nameDisplayMode),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -2020,6 +2073,14 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                             const SizedBox(height: 2),
                             Text(
                               [
+                                if (nameDisplayMode ==
+                                        WorkerNameDisplayMode.tamil &&
+                                    emp.englishName.isNotEmpty)
+                                  emp.englishName
+                                else if (nameDisplayMode ==
+                                        WorkerNameDisplayMode.english &&
+                                    emp.tamilName.isNotEmpty)
+                                  emp.tamilName,
                                 emp.paymentType,
                                 if (emp.isTemporary) 'TEMP',
                                 if (emp.unit != null) emp.unit!,

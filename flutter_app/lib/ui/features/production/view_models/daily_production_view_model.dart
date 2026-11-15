@@ -88,7 +88,7 @@ class DailyProductionViewModel extends ChangeNotifier {
         return false;
       }
       if (q.isEmpty) return true;
-      return emp.name.toLowerCase().contains(q) ||
+      return emp.matchesSearchQuery(_workerSearch) ||
           emp.roleGroup.toLowerCase().contains(q) ||
           (emp.unit ?? '').toLowerCase().contains(q);
     }).toList();

@@ -107,6 +107,27 @@ app.get('/api/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
+// Tamil transliteration candidate suggestions (Google Input Tools proxy with timeout)
+app.get('/api/transliterate/tamil', async (req, res) => {
+  const text = (req.query.text || '').trim();
+  if (!text) return res.json({ candidates: [] });
+  try {
+    const url = `https://inputtools.google.com/request?text=${encodeURIComponent(text)}&itc=ta-t-i0-und&num=5`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const resp = await fetch(url, { signal: timer.signal });
+    clearTimeout(timer);
+    if (!resp.ok) return res.json({ candidates: [] });
+    const data = await resp.json();
+    if (Array.isArray(data) && data[0] === 'SUCCESS' && data[1]?.[0]?.[1]) {
+      return res.json({ candidates: data[1][0][1] });
+    }
+    return res.json({ candidates: [] });
+  } catch (_) {
+    return res.json({ candidates: [] });
+  }
+});
+
 function getAppReleaseConfig() {
   const bucketEndpoint = process.env.AWS_ENDPOINT_URL || '';
   const bucketName = process.env.AWS_S3_BUCKET_NAME || '';
@@ -131,7 +152,12 @@ function getAppReleaseConfig() {
     releaseNotes: (process.env.APP_UPDATE_NOTES || '').trim(),
     apkKey,
     directApkUrl,
-    downloadAvailable: Boolean(directApkUrl || (apkKey && hasBucketConfig)),
+    downloadAvailable: Boolean(
+      directApkUrl ||
+      (apkKey && hasBucketConfig) ||
+      fs.existsSync(path.join(webRoot, 'Crackers-ERP-Supervisor.apk')) ||
+      fs.existsSync(path.join(__dirname, '..', 'Crackers-ERP-Supervisor.apk')),
+    ),
     bucket: hasBucketConfig
       ? {
           endpoint: bucketEndpoint,
@@ -188,6 +214,15 @@ app.get('/api/app/download', (req, res) => {
 
   if (cfg.directApkUrl) {
     return res.redirect(302, cfg.directApkUrl);
+  }
+
+  const pubApkPath = path.join(webRoot, 'Crackers-ERP-Supervisor.apk');
+  const rootApkPath = path.join(__dirname, '..', 'Crackers-ERP-Supervisor.apk');
+  const localApkPath = fs.existsSync(pubApkPath)
+    ? pubApkPath
+    : (fs.existsSync(rootApkPath) ? rootApkPath : null);
+  if (localApkPath) {
+    return res.download(localApkPath, `crackers-erp-${cfg.versionName}.apk`);
   }
 
   return res.status(404).json({ error: 'No APK release published yet.' });

@@ -58,6 +58,10 @@ class EmployeeRepository {
     await _apiClient.deleteEmployee(id);
   }
 
+  Future<List<String>> fetchTamilTransliterations(String text) async {
+    return _apiClient.getTamilTransliterations(text);
+  }
+
   Future<List<EmployeeAdvance>> fetchRecentAdvances({int limit = 80}) async {
     final raw = await _apiClient.getRecentAdvances(limit: limit);
     if (raw.length < 60) return _parseAdvances(raw);

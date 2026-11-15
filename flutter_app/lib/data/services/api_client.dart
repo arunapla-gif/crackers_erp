@@ -88,6 +88,7 @@ abstract class ApiClient {
     double? salary,
   });
   Future<void> deleteEmployee(int id);
+  Future<List<String>> getTamilTransliterations(String text);
   Future<List<dynamic>> getRecentAdvances({int limit = 50});
   Future<List<dynamic>> getEmployeeAdvances(int employeeId);
   Future<Map<String, dynamic>> giveAdvance({
@@ -708,6 +709,28 @@ class HttpApiClient implements ApiClient {
   @override
   Future<void> deleteEmployee(int id) async {
     await _send(method: 'DELETE', path: '/employees/$id');
+  }
+
+  @override
+  Future<List<String>> getTamilTransliterations(String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return const [];
+    try {
+      final res = await _send(
+        method: 'GET',
+        path: '/transliterate/tamil',
+        queryParameters: {'text': clean},
+      );
+      if (res is Map && res['candidates'] is List) {
+        return (res['candidates'] as List)
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+    } catch (_) {
+      // Graceful fallback to offline suggestions
+    }
+    return const [];
   }
 
   @override

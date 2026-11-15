@@ -1,3 +1,4 @@
+import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'json_helpers.dart';
 
 class Employee {
@@ -33,6 +34,39 @@ class Employee {
   bool get isRegular => !isTemporary;
   String get roleGroup =>
       (role == null || role!.trim().isEmpty) ? 'Unassigned' : role!.trim();
+
+  /// Parsed bilingual names: (english, tamil)
+  ({String english, String tamil}) get parsedNames =>
+      TamilTransliteration.parseBilingualName(name);
+
+  String get englishName => parsedNames.english;
+  String get tamilName => parsedNames.tamil;
+
+  /// Returns the Tamil name if present, otherwise falls back to English (or raw name).
+  String get displayTamilName {
+    final parsed = parsedNames;
+    return parsed.tamil.isNotEmpty
+        ? parsed.tamil
+        : (parsed.english.isNotEmpty ? parsed.english : name);
+  }
+
+  /// Returns the English name if present, otherwise falls back to Tamil (or raw name).
+  String get displayEnglishName {
+    final parsed = parsedNames;
+    return parsed.english.isNotEmpty
+        ? parsed.english
+        : (parsed.tamil.isNotEmpty ? parsed.tamil : name);
+  }
+
+  /// Formats the employee name for presentation based on [mode].
+  String formattedName(WorkerNameDisplayMode mode) {
+    return TamilTransliteration.formatForDisplay(name, mode: mode);
+  }
+
+  /// Matches query against English, Tamil, and transliterated queries.
+  bool matchesSearchQuery(String query) {
+    return TamilTransliteration.matchesWorkerName(name, query);
+  }
 
   Employee copyWith({
     int? id,

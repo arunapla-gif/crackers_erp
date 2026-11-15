@@ -29,6 +29,10 @@ void main() {
       addTearDown(empVm.dispose);
       addTearDown(authVm.dispose);
 
+      tester.view.physicalSize = const Size(800, 1100);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
@@ -121,6 +125,10 @@ void main() {
       addTearDown(empVm.dispose);
       addTearDown(authVm.dispose);
 
+      tester.view.physicalSize = const Size(800, 1100);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
@@ -148,17 +156,11 @@ void main() {
         find.widgetWithText(TextFormField, 'Worker Full Name *'),
         'New Seasonal Hand',
       );
-      await tester.ensureVisible(find.text('Create Worker'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Create Worker'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Select work type'));
       expect(find.text('Select work type'), findsOneWidget);
-      await tester.ensureVisible(find.text('Select Regular or Temporary'));
       expect(find.text('Select Regular or Temporary'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Cancel'));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 

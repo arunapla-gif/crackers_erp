@@ -116,6 +116,30 @@ void main() {
       expect(refreshed.salary, equals(14000.0));
       expect(refreshed.advanceBalance, equals(200.0));
     });
+
+    test('fetches Tamil transliterations and matches bilingual employee names in search', () async {
+      final suggestions = await vm.getTamilTransliterations('Muthu');
+      expect(suggestions, contains('முத்து'));
+
+      await vm.loadAll();
+      await vm.saveEmployee(
+        name: 'Muthu (முத்து)',
+        mobile: '9842199999',
+        role: 'Mixing',
+        paymentType: 'Contractual',
+        employmentType: 'Regular',
+        unit: 'Unit 1',
+        status: 'Active',
+      );
+
+      // Search by English substring
+      vm.setSearchQuery('muthu');
+      expect(vm.filteredEmployees.any((e) => e.name.contains('Muthu')), isTrue);
+
+      // Search by Tamil substring
+      vm.setSearchQuery('முத்து');
+      expect(vm.filteredEmployees.any((e) => e.name.contains('முத்து')), isTrue);
+    });
   });
 }
 

@@ -103,6 +103,35 @@ void main() {
       await reloadedVm.loadInitialData();
       expect(reloadedVm.entryMode, equals(ProductionEntryMode.matrix));
     });
+
+    test('worker search matches in English, Tamil, and bilingual formats', () async {
+      api.employeesData.add({
+        'id': 99,
+        'name': 'Muthu (முத்து)',
+        'role': 'Filling',
+        'paymentType': 'Contractual',
+        'status': 'Active',
+        'advanceBalance': '0.00',
+      });
+
+      await vm.loadInitialData();
+
+      // Search in lowercase English
+      vm.setWorkerSearch('muthu');
+      expect(vm.filteredWorkers.any((w) => w.id == 99), isTrue);
+
+      // Search in uppercase English
+      vm.setWorkerSearch('MUTHU');
+      expect(vm.filteredWorkers.any((w) => w.id == 99), isTrue);
+
+      // Search in Tamil script
+      vm.setWorkerSearch('முத்து');
+      expect(vm.filteredWorkers.any((w) => w.id == 99), isTrue);
+
+      // Unrelated search excludes worker
+      vm.setWorkerSearch('kaliappan');
+      expect(vm.filteredWorkers.any((w) => w.id == 99), isFalse);
+    });
   });
 }
 

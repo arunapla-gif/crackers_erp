@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/data/models/api_exceptions.dart';
 import 'package:crackers_erp/data/repositories/employee_repository.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
@@ -68,7 +69,7 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
         return false;
       }
       if (q.isEmpty) return true;
-      return emp.name.toLowerCase().contains(q) ||
+      return emp.matchesSearchQuery(_searchQuery) ||
           (emp.mobile ?? '').toLowerCase().contains(q) ||
           emp.roleGroup.toLowerCase().contains(q) ||
           (emp.unit ?? '').toLowerCase().contains(q);
@@ -134,6 +135,19 @@ class EmployeesAdvancesViewModel extends ChangeNotifier {
   void setActiveOnly(bool value) {
     _activeOnly = value;
     _safeNotify();
+  }
+
+  Future<List<String>> getTamilTransliterations(String text) async {
+    final clean = text.trim();
+    if (clean.isEmpty) return const [];
+    final local = TamilTransliteration.getSuggestions(clean);
+    try {
+      final remote = await _employeeRepository.fetchTamilTransliterations(clean);
+      if (remote.isNotEmpty) {
+        return <String>{...remote, ...local}.toList();
+      }
+    } catch (_) {}
+    return local;
   }
 
   Future<bool> saveEmployee({

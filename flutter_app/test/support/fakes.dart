@@ -1,4 +1,5 @@
 import 'package:crackers_erp/core/config/app_config.dart';
+import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/data/models/api_exceptions.dart';
 import 'package:crackers_erp/data/services/api_client.dart';
 import 'package:crackers_erp/data/services/local_storage_service.dart';
@@ -671,6 +672,11 @@ class FakeApiClient implements ApiClient {
   @override
   Future<void> deleteEmployee(int id) async {
     employeesData.removeWhere((e) => e['id'] == id);
+  }
+
+  @override
+  Future<List<String>> getTamilTransliterations(String text) async {
+    return TamilTransliteration.getSuggestions(text);
   }
 
   @override

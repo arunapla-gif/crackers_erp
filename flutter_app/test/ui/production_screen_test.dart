@@ -152,4 +152,94 @@ void main() {
       expect(api.productionsData.length, equals(2));
     },
   );
+
+  testWidgets(
+    'Matrix displays Tamil worker name by default, supports English search & toggle',
+    (WidgetTester tester) async {
+      final api = FakeApiClient();
+      api.employeesData.add({
+        'id': 77,
+        'name': 'Muthu (முத்து)',
+        'role': 'Packing',
+        'paymentType': 'Contractual',
+        'employmentType': 'Regular',
+        'unit': 'Unit 1',
+        'status': 'Active',
+        'advanceBalance': '0.00',
+        'salary': null,
+      });
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Matrix
+      await tester.ensureVisible(find.text('Matrix'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Matrix'));
+      await tester.pumpAndSettle();
+
+      // By default in Matrix, language toggle shows [தமிழ்] selected and displays 'முத்து'
+      expect(find.text('தமிழ்'), findsOneWidget);
+      expect(find.text('Eng'), findsOneWidget);
+      expect(find.text('Both'), findsOneWidget);
+      expect(find.text('முத்து'), findsWidgets);
+
+      // Search in English matches the worker
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
+        'muthu',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('முத்து'), findsWidgets);
+
+      // Search query not matching hides the worker
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
+        'unknown_worker_xyz',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('முத்து'), findsNothing);
+
+      // Clear search
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
+        '',
+      );
+      await tester.pumpAndSettle();
+
+      // Toggle to English: shows 'Muthu'
+      await tester.tap(find.text('Eng'));
+      await tester.pumpAndSettle();
+      expect(find.text('Muthu'), findsWidgets);
+
+      // Toggle to Both: shows 'Muthu (முத்து)'
+      await tester.tap(find.text('Both'));
+      await tester.pumpAndSettle();
+      expect(find.text('Muthu (முத்து)'), findsWidgets);
+    },
+  );
 }
