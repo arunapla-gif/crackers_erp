@@ -31,6 +31,8 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _showHistoryTab = false;
   bool _isMatrixFocusMode = false;
+  WorkerNameDisplayMode _nameDisplayMode = WorkerNameDisplayMode.tamil;
+  final Set<String> _collapsedItemRoles = <String>{};
 
   @override
   void initState() {
@@ -753,10 +755,63 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                   },
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: () => _openWipItemPicker(),
-                icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                label: const Text('Pick / Pin WIP'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (effectiveMode != ProductionEntryMode.matrix)
+                    SegmentedButton<WorkerNameDisplayMode>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: WidgetStatePropertyAll(
+                        EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      ),
+                    ),
+                    segments: const [
+                      ButtonSegment(
+                        value: WorkerNameDisplayMode.tamil,
+                        label: Text(
+                          'தமிழ்',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: WorkerNameDisplayMode.english,
+                        label: Text(
+                          'Eng',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: WorkerNameDisplayMode.both,
+                        label: Text(
+                          'Both',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                    selected: {_nameDisplayMode},
+                    onSelectionChanged: (sel) =>
+                        setState(() => _nameDisplayMode = sel.first),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _openWipItemPicker(),
+                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
+                    label: const Text('Pick / Pin WIP'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -791,14 +846,21 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 ),
                 const SizedBox(width: 8),
                 ...vm.availableRoles.map(
-                  (role) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(role),
-                      selected: vm.selectedRoleFilter == role,
-                      onSelected: (_) => vm.setRoleFilter(role),
-                    ),
-                  ),
+                  (role) {
+                    final count = vm.getWorkerCountForRole(role);
+                    final tamil = DailyProductionViewModel.getRoleTamilName(role);
+                    final label = role == 'All'
+                        ? 'All Workers ($count)'
+                        : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(label),
+                        selected: vm.selectedRoleFilter == role,
+                        onSelected: (_) => vm.setRoleFilter(role),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -822,6 +884,133 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     );
   }
 
+  Widget _buildRoleSectionHeader({
+    required String role,
+    required int count,
+    required int subtotal,
+    required String unit,
+    required bool isCollapsed,
+    required VoidCallback onToggleCollapse,
+  }) {
+    final cleanRole = role.trim().toLowerCase();
+    final isTape = cleanRole == 'tape';
+    final isChemical = cleanRole == 'chemical';
+    final isValayam = cleanRole == 'valayam contract' || cleanRole == 'valayam';
+
+    final IconData roleIcon;
+    final Color roleColor;
+    final Color roleBgColor;
+    final String roleTamil;
+
+    if (isTape) {
+      roleIcon = Icons.view_week_rounded;
+      roleColor = const Color(0xFF0F766E); // Teal 700
+      roleBgColor = const Color(0xFFCCFBF1); // Teal 100
+      roleTamil = 'டேப்';
+    } else if (isChemical) {
+      roleIcon = Icons.science_rounded;
+      roleColor = const Color(0xFFB45309); // Amber 700
+      roleBgColor = const Color(0xFFFEF3C7); // Amber 100
+      roleTamil = 'கெமிக்கல்';
+    } else if (isValayam) {
+      roleIcon = Icons.all_inclusive_rounded;
+      roleColor = const Color(0xFF4338CA); // Indigo 700
+      roleBgColor = const Color(0xFFE0E7FF); // Indigo 100
+      roleTamil = 'வளையம் ஒப்பந்தம்';
+    } else {
+      roleIcon = Icons.badge_outlined;
+      roleColor = ErpTheme.slate700;
+      roleBgColor = ErpTheme.slate100;
+      roleTamil = DailyProductionViewModel.getRoleTamilName(role);
+    }
+
+    return InkWell(
+      onTap: onToggleCollapse,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(top: 8, bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: roleBgColor.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: roleColor.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(roleIcon, size: 16, color: roleColor),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Row(
+                children: [
+                  Text(
+                    role.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                      color: roleColor,
+                    ),
+                  ),
+                  if (roleTamil.isNotEmpty) ...[
+                    const SizedBox(width: 5),
+                    Text(
+                      '• $roleTamil',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: roleColor.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: roleColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: roleColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (subtotal > 0)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: ErpBadge(
+                  label: '$subtotal $unit',
+                  backgroundColor: Colors.white,
+                  foregroundColor: roleColor,
+                ),
+              ),
+            Icon(
+              isCollapsed
+                  ? Icons.chevron_right_rounded
+                  : Icons.expand_more_rounded,
+              size: 16,
+              color: roleColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildByItemCards(DailyProductionViewModel vm) {
     if (vm.activeItemNames.isEmpty) {
       return [
@@ -836,13 +1025,14 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       ];
     }
 
+    final groupedRoles = vm.filteredWorkersByRole;
+
     return vm.activeItemNames.asMap().entries.map((entry) {
       final index = entry.key;
       final itemName = entry.value;
       final product = vm.findWipProductByName(itemName);
       final itemTotal = vm.getItemTotalQuantity(itemName);
       final isPinned = vm.pinnedItemNames.contains(itemName);
-      final workers = vm.filteredWorkers;
 
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -917,14 +1107,52 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
             ),
             children: [
               const Divider(height: 1, color: ErpTheme.slate200),
-              const SizedBox(height: 8),
-              ...workers.map(
-                (emp) => _WorkerQtyRow(
-                  employee: emp,
-                  quantity: vm.getQuantity(emp.id, itemName),
-                  onChanged: (q) => vm.setQuantity(emp.id, itemName, q),
+              const SizedBox(height: 4),
+              for (final roleEntry in groupedRoles.entries) ...[
+                Builder(
+                  builder: (context) {
+                    final roleCollapseKey = '$itemName::${roleEntry.key}';
+                    final isCollapsed =
+                        _collapsedItemRoles.contains(roleCollapseKey);
+                    final roleSubtotal = roleEntry.value.fold<int>(
+                      0,
+                      (sum, emp) => sum + vm.getQuantity(emp.id, itemName),
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildRoleSectionHeader(
+                          role: roleEntry.key,
+                          count: roleEntry.value.length,
+                          subtotal: roleSubtotal,
+                          unit: product?.unit ?? 'Pcs',
+                          isCollapsed: isCollapsed,
+                          onToggleCollapse: () {
+                            setState(() {
+                              if (isCollapsed) {
+                                _collapsedItemRoles.remove(roleCollapseKey);
+                              } else {
+                                _collapsedItemRoles.add(roleCollapseKey);
+                              }
+                            });
+                          },
+                        ),
+                        if (!isCollapsed)
+                          ...roleEntry.value.map(
+                            (emp) => _WorkerQtyRow(
+                              employee: emp,
+                              quantity: vm.getQuantity(emp.id, itemName),
+                              onChanged: (q) =>
+                                  vm.setQuantity(emp.id, itemName, q),
+                              nameDisplayMode: _nameDisplayMode,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -933,145 +1161,202 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
   }
 
   List<Widget> _buildByWorkerCards(DailyProductionViewModel vm) {
-    final workers = vm.filteredWorkers;
-    return workers.map((emp) {
-      final totalQty = vm.getWorkerTotalQuantity(emp.id);
-      final enteredMap = vm.getWorkerEntries(emp.id);
+    final groupedRoles = vm.filteredWorkersByRole;
+    final widgets = <Widget>[];
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: ErpTheme.hrIndigoSoft,
-                      child: Text(
-                        emp.name.isNotEmpty
-                            ? emp.name[0].toUpperCase()
-                            : 'W',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: ErpTheme.hrIndigo,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+    for (final roleEntry in groupedRoles.entries) {
+      final role = roleEntry.key;
+      final roleWorkers = roleEntry.value;
+      final roleTotal = roleWorkers.fold<int>(
+        0,
+        (sum, emp) => sum + vm.getWorkerTotalQuantity(emp.id),
+      );
+      final roleCollapseKey = 'worker_mode::$role';
+      final isCollapsed = _collapsedItemRoles.contains(roleCollapseKey);
+
+      widgets.add(
+        _buildRoleSectionHeader(
+          role: role,
+          count: roleWorkers.length,
+          subtotal: roleTotal,
+          unit: 'Pcs',
+          isCollapsed: isCollapsed,
+          onToggleCollapse: () {
+            setState(() {
+              if (isCollapsed) {
+                _collapsedItemRoles.remove(roleCollapseKey);
+              } else {
+                _collapsedItemRoles.add(roleCollapseKey);
+              }
+            });
+          },
+        ),
+      );
+
+      if (!isCollapsed) {
+        for (final emp in roleWorkers) {
+          final totalQty = vm.getWorkerTotalQuantity(emp.id);
+          final enteredMap = vm.getWorkerEntries(emp.id);
+          final primaryName = emp.formattedName(_nameDisplayMode);
+          final parsed = emp.parsedNames;
+          final subtitleParts = <String>[];
+          if (_nameDisplayMode == WorkerNameDisplayMode.tamil &&
+              parsed.english.isNotEmpty) {
+            subtitleParts.add(parsed.english);
+          } else if (_nameDisplayMode == WorkerNameDisplayMode.english &&
+              parsed.tamil.isNotEmpty) {
+            subtitleParts.add(parsed.tamil);
+          }
+          subtitleParts.add(emp.roleGroup);
+          subtitleParts.add(emp.paymentType);
+          if (emp.isTemporary) subtitleParts.add('TEMP');
+          if (emp.unit != null && emp.unit!.isNotEmpty) {
+            subtitleParts.add(emp.unit!);
+          }
+
+          widgets.add(
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Text(
-                            emp.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                              color: ErpTheme.slate900,
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: ErpTheme.hrIndigoSoft,
+                            child: Text(
+                              emp.name.isNotEmpty
+                                  ? emp.name[0].toUpperCase()
+                                  : 'W',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.hrIndigo,
+                              ),
                             ),
                           ),
-                          Text(
-                            emp.isTemporary
-                                ? '${emp.roleGroup} • ${emp.paymentType} • TEMP'
-                                : '${emp.roleGroup} • ${emp.paymentType}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: ErpTheme.slate500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    ErpBadge(
-                      label: '$totalQty Pcs',
-                      backgroundColor: totalQty > 0
-                          ? ErpTheme.productionAmberSoft
-                          : ErpTheme.slate100,
-                      foregroundColor: totalQty > 0
-                          ? ErpTheme.productionAmber
-                          : ErpTheme.slate700,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                if (enteredMap.isEmpty)
-                  const Text(
-                    'No WIP items logged yet for this worker.',
-                    style: TextStyle(fontSize: 12, color: ErpTheme.slate500),
-                  )
-                else
-                  ...enteredMap.entries.map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: LayoutBuilder(
-                        builder: (ctx, c) {
-                          final narrow = c.maxWidth < 360;
-                          if (narrow) {
-                            return Column(
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  e.key,
+                                  primaryName,
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                QuantityStepperField(
-                                  quantity: e.value,
-                                  onChanged: (q) =>
-                                      vm.setQuantity(emp.id, e.key, q),
-                                ),
-                              ],
-                            );
-                          }
-                          return Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  e.key,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
                                     color: ErpTheme.slate900,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              QuantityStepperField(
-                                quantity: e.value,
-                                onChanged: (q) =>
-                                    vm.setQuantity(emp.id, e.key, q),
-                              ),
-                            ],
-                          );
-                        },
+                                Text(
+                                  subtitleParts.join(' • '),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: emp.isTemporary
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    color: emp.isTemporary
+                                        ? ErpTheme.productionAmber
+                                        : ErpTheme.slate500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ErpBadge(
+                            label: '$totalQty Pcs',
+                            backgroundColor: totalQty > 0
+                                ? ErpTheme.productionAmberSoft
+                                : ErpTheme.slate100,
+                            foregroundColor: totalQty > 0
+                                ? ErpTheme.productionAmber
+                                : ErpTheme.slate700,
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => _openWipItemPicker(
-                      forEmployeeId: emp.id,
-                      workerName: emp.name,
-                    ),
-                    icon: const Icon(Icons.add_circle_outline, size: 18),
-                    label: const Text('Add WIP Item'),
+                      const SizedBox(height: 10),
+                      if (enteredMap.isEmpty)
+                        const Text(
+                          'No WIP items logged yet for this worker.',
+                          style: TextStyle(fontSize: 12, color: ErpTheme.slate500),
+                        )
+                      else
+                        ...enteredMap.entries.map(
+                          (e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: LayoutBuilder(
+                              builder: (ctx, c) {
+                                final narrow = c.maxWidth < 360;
+                                if (narrow) {
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        e.key,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      QuantityStepperField(
+                                        quantity: e.value,
+                                        onChanged: (q) =>
+                                            vm.setQuantity(emp.id, e.key, q),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        e.key,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          color: ErpTheme.slate900,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    QuantityStepperField(
+                                      quantity: e.value,
+                                      onChanged: (q) =>
+                                          vm.setQuantity(emp.id, e.key, q),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => _openWipItemPicker(
+                            forEmployeeId: emp.id,
+                            workerName: emp.name,
+                          ),
+                          icon: const Icon(Icons.add_circle_outline, size: 18),
+                          label: const Text('Add WIP Item'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      );
-    }).toList();
+          );
+        }
+      }
+    }
+    return widgets;
   }
 
   Widget _buildMatrixFocusWorkspace(DailyProductionViewModel vm) {
@@ -1124,12 +1409,17 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: vm.availableRoles.map((role) {
+                      final count = vm.getWorkerCountForRole(role);
+                      final tamil = DailyProductionViewModel.getRoleTamilName(role);
+                      final label = role == 'All'
+                          ? 'All ($count)'
+                          : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
                       return Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
                           label: Text(
-                            role,
-                            style: const TextStyle(fontSize: 12),
+                            label,
+                            style: const TextStyle(fontSize: 11),
                           ),
                           visualDensity: VisualDensity.compact,
                           selected: vm.selectedRoleFilter == role,
@@ -1167,6 +1457,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 : _ProductionMatrixCard(
                     viewModel: vm,
                     isFocusMode: true,
+                    nameDisplayMode: _nameDisplayMode,
+                    onNameDisplayModeChanged: (mode) =>
+                        setState(() => _nameDisplayMode = mode),
                     onToggleFocusMode: () =>
                         setState(() => _isMatrixFocusMode = false),
                     onOpenWipPicker: () => _openWipItemPicker(),
@@ -1184,6 +1477,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       _ProductionMatrixCard(
         viewModel: vm,
         isFocusMode: false,
+        nameDisplayMode: _nameDisplayMode,
+        onNameDisplayModeChanged: (mode) =>
+            setState(() => _nameDisplayMode = mode),
         onToggleFocusMode: () => setState(() => _isMatrixFocusMode = true),
         onOpenWipPicker: () => _openWipItemPicker(),
         onClearMatrix: _confirmClearMatrix,
@@ -1327,16 +1623,35 @@ class _WorkerQtyRow extends StatelessWidget {
     required this.employee,
     required this.quantity,
     required this.onChanged,
+    this.nameDisplayMode = WorkerNameDisplayMode.both,
   });
 
   final Employee employee;
   final int quantity;
   final ValueChanged<int> onChanged;
+  final WorkerNameDisplayMode nameDisplayMode;
 
   @override
   Widget build(BuildContext context) {
+    final parsed = employee.parsedNames;
+    final primaryName = employee.formattedName(nameDisplayMode);
+    final subtitleParts = <String>[];
+    if (nameDisplayMode == WorkerNameDisplayMode.tamil &&
+        parsed.english.isNotEmpty) {
+      subtitleParts.add(parsed.english);
+    } else if (nameDisplayMode == WorkerNameDisplayMode.english &&
+        parsed.tamil.isNotEmpty) {
+      subtitleParts.add(parsed.tamil);
+    }
+    subtitleParts.add(employee.roleGroup);
+    subtitleParts.add(employee.paymentType);
+    if (employee.isTemporary) subtitleParts.add('TEMP');
+    if (employee.unit != null && employee.unit!.isNotEmpty) {
+      subtitleParts.add(employee.unit!);
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final stacked = constraints.maxWidth < 370;
@@ -1344,20 +1659,24 @@ class _WorkerQtyRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                employee.name,
+                primaryName,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 14,
                   color: ErpTheme.slate900,
                 ),
               ),
+              const SizedBox(height: 1.5),
               Text(
-                employee.unit != null
-                    ? '${employee.roleGroup} • ${employee.unit}'
-                    : employee.roleGroup,
-                style: const TextStyle(
+                subtitleParts.join(' • '),
+                style: TextStyle(
                   fontSize: 11,
-                  color: ErpTheme.slate500,
+                  fontWeight: employee.isTemporary
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: employee.isTemporary
+                      ? ErpTheme.productionAmber
+                      : ErpTheme.slate500,
                 ),
               ),
             ],
@@ -1401,6 +1720,8 @@ class _ProductionMatrixCard extends StatefulWidget {
     required this.onOpenWipPicker,
     required this.onClearMatrix,
     required this.onSaveMatrix,
+    required this.nameDisplayMode,
+    required this.onNameDisplayModeChanged,
   });
 
   final DailyProductionViewModel viewModel;
@@ -1409,6 +1730,8 @@ class _ProductionMatrixCard extends StatefulWidget {
   final VoidCallback onOpenWipPicker;
   final VoidCallback onClearMatrix;
   final VoidCallback onSaveMatrix;
+  final WorkerNameDisplayMode nameDisplayMode;
+  final ValueChanged<WorkerNameDisplayMode> onNameDisplayModeChanged;
 
   @override
   State<_ProductionMatrixCard> createState() => _ProductionMatrixCardState();
@@ -1427,7 +1750,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   bool _isSyncingH = false;
 
   final Set<String> _collapsedRoles = <String>{};
-  WorkerNameDisplayMode _nameDisplayMode = WorkerNameDisplayMode.tamil;
+  WorkerNameDisplayMode get _nameDisplayMode => widget.nameDisplayMode;
   final Map<String, FocusNode> _cellFocusNodes = <String, FocusNode>{};
   final Map<String, ({int empId, String empName, String itemName})> _cellMeta =
       <String, ({int empId, String empName, String itemName})>{};
@@ -1715,7 +2038,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                 ],
                 selected: {_nameDisplayMode},
                 onSelectionChanged: (sel) =>
-                    setState(() => _nameDisplayMode = sel.first),
+                    widget.onNameDisplayModeChanged(sel.first),
               ),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
@@ -2017,16 +2340,26 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                           ),
                           const SizedBox(width: 4),
                           Expanded(
-                            child: Text(
-                              '${roleEntry.key.toUpperCase()} (${roleEntry.value.length})',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w900,
-                                color: ErpTheme.slate900,
-                                letterSpacing: 0.4,
-                              ),
+                            child: Builder(
+                              builder: (context) {
+                                final tamilRole =
+                                    DailyProductionViewModel.getRoleTamilName(
+                                  roleEntry.key,
+                                );
+                                return Text(
+                                  tamilRole.isNotEmpty
+                                      ? '${roleEntry.key.toUpperCase()} • $tamilRole (${roleEntry.value.length})'
+                                      : '${roleEntry.key.toUpperCase()} (${roleEntry.value.length})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: ErpTheme.slate900,
+                                    letterSpacing: 0.4,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],

@@ -74,16 +74,59 @@ class DailyProductionViewModel extends ChangeNotifier {
     return contractual.isNotEmpty ? contractual : active;
   }
 
+  /// Canonical factory roles in fixed sequence: Tape, Chemical, Valayam Contract.
+  static const List<String> canonicalFixedRoles = [
+    'Tape',
+    'Chemical',
+    'Valayam Contract',
+  ];
+
+  /// Strict comparator that prioritizes canonical factory roles, then sorts alphabetically.
+  static int compareRoles(String a, String b) {
+    if (a == b) return 0;
+    final cleanA = a.trim().toLowerCase();
+    final cleanB = b.trim().toLowerCase();
+    if (cleanA == cleanB) return a.compareTo(b);
+
+    final indexA = canonicalFixedRoles.indexWhere((r) => r.toLowerCase() == cleanA);
+    final indexB = canonicalFixedRoles.indexWhere((r) => r.toLowerCase() == cleanB);
+    if (indexA != -1 && indexB != -1) {
+      return indexA.compareTo(indexB);
+    }
+    if (indexA != -1) return -1;
+    if (indexB != -1) return 1;
+    return cleanA.compareTo(cleanB);
+  }
+
+  /// Maps factory roles to their Tamil designations for floor supervisors.
+  static String getRoleTamilName(String role) {
+    final clean = role.trim().toLowerCase();
+    if (clean == 'tape') return 'டேப்';
+    if (clean == 'chemical') return 'கெமிக்கல்';
+    if (clean == 'valayam contract' || clean == 'valayam') return 'வளையம் ஒப்பந்தம்';
+    if (clean == 'box packing' || clean == 'packing') return 'பேக்கிங்';
+    if (clean == 'rolling') return 'ரோலிங்';
+    if (clean == 'filling') return 'ஃபில்லிங்';
+    return '';
+  }
+
+  /// Headcount of active workers assigned to the given role (or all active if 'All').
+  int getWorkerCountForRole(String role) {
+    if (role == 'All') return activeWorkers.length;
+    return activeWorkers.where(
+      (e) => e.roleGroup.trim().toLowerCase() == role.trim().toLowerCase(),
+    ).length;
+  }
+
   List<String> get availableRoles {
-    final roles = SplayTreeSet<String>.from(
-      activeWorkers.map((e) => e.roleGroup),
-    );
-    return ['All', ...roles];
+    final activeRoles = activeWorkers.map((e) => e.roleGroup).toSet();
+    final sortedRoles = activeRoles.toList()..sort(compareRoles);
+    return ['All', ...sortedRoles];
   }
 
   List<Employee> get filteredWorkers {
     final q = _workerSearch.trim().toLowerCase();
-    return activeWorkers.where((emp) {
+    final list = activeWorkers.where((emp) {
       if (_selectedRoleFilter != 'All' && emp.roleGroup != _selectedRoleFilter) {
         return false;
       }
@@ -92,12 +135,17 @@ class DailyProductionViewModel extends ChangeNotifier {
           emp.roleGroup.toLowerCase().contains(q) ||
           (emp.unit ?? '').toLowerCase().contains(q);
     }).toList();
+
+    list.sort((a, b) {
+      final roleCmp = compareRoles(a.roleGroup, b.roleGroup);
+      if (roleCmp != 0) return roleCmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return list;
   }
 
   Map<String, List<Employee>> get filteredWorkersByRole {
-    final grouped = SplayTreeMap<String, List<Employee>>(
-      (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
-    );
+    final grouped = SplayTreeMap<String, List<Employee>>(compareRoles);
     for (final emp in filteredWorkers) {
       grouped.putIfAbsent(emp.roleGroup, () => <Employee>[]).add(emp);
     }

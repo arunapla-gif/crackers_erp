@@ -132,6 +132,76 @@ void main() {
       vm.setWorkerSearch('kaliappan');
       expect(vm.filteredWorkers.any((w) => w.id == 99), isFalse);
     });
+
+    test('prioritizes fixed Tape, Chemical, and Valayam Contract roles with Tamil mappings', () async {
+      api.employeesData.addAll([
+        {
+          'id': 101,
+          'name': 'Abi (அபி)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 102,
+          'name': 'Muniyasamy (முனியசாமி)',
+          'role': 'Chemical',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 103,
+          'name': 'Vasanth (வசந்த்)',
+          'role': 'Valayam Contract',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 104,
+          'name': 'Karthi Appa (கார்த்தி அப்பா)',
+          'role': 'Box Packing',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+      ]);
+
+      await vm.loadInitialData();
+
+      // Check Tamil role translations
+      expect(DailyProductionViewModel.getRoleTamilName('Tape'), equals('டேப்'));
+      expect(DailyProductionViewModel.getRoleTamilName('Chemical'), equals('கெமிக்கல்'));
+      expect(DailyProductionViewModel.getRoleTamilName('Valayam Contract'), equals('வளையம் ஒப்பந்தம்'));
+      expect(DailyProductionViewModel.getRoleTamilName('Box Packing'), equals('பேக்கிங்'));
+
+      // Check headcount calculation
+      expect(vm.getWorkerCountForRole('Tape'), equals(1));
+      expect(vm.getWorkerCountForRole('Chemical'), equals(1));
+      expect(vm.getWorkerCountForRole('Valayam Contract'), equals(1));
+      expect(vm.getWorkerCountForRole('Box Packing'), equals(1));
+
+      // Available roles order: All, Tape, Chemical, Valayam Contract, then others (Packing, Rolling, Box Packing)
+      final roles = vm.availableRoles;
+      expect(roles[0], equals('All'));
+      expect(roles[1], equals('Tape'));
+      expect(roles[2], equals('Chemical'));
+      expect(roles[3], equals('Valayam Contract'));
+
+      // Filtered workers by role maintains the fixed canonical sequence
+      final grouped = vm.filteredWorkersByRole;
+      final roleKeys = grouped.keys.toList();
+      expect(roleKeys[0], equals('Tape'));
+      expect(roleKeys[1], equals('Chemical'));
+      expect(roleKeys[2], equals('Valayam Contract'));
+
+      // Role filter isolates workers cleanly
+      vm.setRoleFilter('Chemical');
+      expect(vm.filteredWorkers.length, equals(1));
+      expect(vm.filteredWorkers.first.englishName, equals('Muniyasamy'));
+    });
   });
 }
 

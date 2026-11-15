@@ -1160,6 +1160,10 @@ class _EmployeeFormSheet extends StatefulWidget {
 
 class _EmployeeFormSheetState extends State<_EmployeeFormSheet> {
   static const _rolePresets = [
+    'Tape',
+    'Chemical',
+    'Valayam Contract',
+    'Box Packing',
     'Rolling',
     'Filling',
     'Packing',

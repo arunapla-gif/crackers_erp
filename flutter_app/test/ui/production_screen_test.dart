@@ -101,6 +101,7 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
       await tester.pumpAndSettle();
 
       // Supervisor sees Matrix option and can switch to it
@@ -194,6 +195,7 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
       await tester.pumpAndSettle();
 
       // Switch to Matrix
@@ -240,6 +242,144 @@ void main() {
       await tester.tap(find.text('Both'));
       await tester.pumpAndSettle();
       expect(find.text('Muthu (முத்து)'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'Daily Production Entry displays fixed Tape, Chemical, and Valayam Contract sections and filter chips',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.employeesData.addAll([
+        {
+          'id': 101,
+          'name': 'Abi (அபி)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 102,
+          'name': 'Muniyasamy (முனியசாமி)',
+          'role': 'Chemical',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 103,
+          'name': 'Vasanth (வசந்த்)',
+          'role': 'Valayam Contract',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'unit': 'Unit 1',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+      ]);
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Check fixed role chips with Tamil labels and counts
+      expect(find.textContaining('Tape • டேப்'), findsOneWidget);
+      expect(find.textContaining('Chemical • கெமிக்கல்'), findsOneWidget);
+      expect(
+        find.textContaining('Valayam Contract • வளையம் ஒப்பந்தம்'),
+        findsOneWidget,
+      );
+
+      // In By Item mode, under WIP item, check fixed role section headers
+      expect(find.text('TAPE'), findsWidgets);
+      expect(find.text('• டேப்'), findsWidgets);
+      expect(find.text('CHEMICAL'), findsWidgets);
+      expect(find.text('• கெமிக்கல்'), findsWidgets);
+      expect(find.text('VALAYAM CONTRACT'), findsWidgets);
+      expect(find.text('• வளையம் ஒப்பந்தம்'), findsWidgets);
+
+      // Check workers are displayed with Tamil names
+      expect(find.text('அபி'), findsWidgets);
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('வசந்த்'), findsWidgets);
+
+      // Tap Chemical chip: only Chemical worker Muniyasamy is displayed
+      final chemChip = find.textContaining('Chemical • கெமிக்கல்');
+      await tester.ensureVisible(chemChip);
+      await tester.pumpAndSettle();
+      await tester.tap(chemChip);
+      await tester.pumpAndSettle();
+
+      expect(find.text('முனியசாமி'), findsWidgets);
+      expect(find.text('அபி'), findsNothing);
+      expect(find.text('வசந்த்'), findsNothing);
+
+      // Reset to All Workers
+      final allChip = find.textContaining('All Workers');
+      await tester.ensureVisible(allChip);
+      await tester.pumpAndSettle();
+      await tester.tap(allChip);
+      await tester.pumpAndSettle();
+
+      // Switch to By Worker mode
+      final byWorkerSegment = find.text('By Worker');
+      await tester.ensureVisible(byWorkerSegment);
+      await tester.pumpAndSettle();
+      await tester.tap(byWorkerSegment);
+      await tester.pumpAndSettle();
+
+      // Check By Worker role headers
+      expect(find.text('TAPE'), findsWidgets);
+      expect(find.text('CHEMICAL'), findsWidgets);
+      expect(find.text('VALAYAM CONTRACT'), findsWidgets);
+
+      // Switch to Matrix mode
+      final matrixSegment = find.text('Matrix');
+      await tester.ensureVisible(matrixSegment);
+      await tester.pumpAndSettle();
+      await tester.tap(matrixSegment);
+      await tester.pumpAndSettle();
+
+      // Check Matrix frozen column headers include Tamil mappings
+      expect(find.textContaining('TAPE • டேப்'), findsOneWidget);
+      expect(find.textContaining('CHEMICAL • கெமிக்கல்'), findsOneWidget);
+      expect(
+        find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம்'),
+        findsOneWidget,
+      );
     },
   );
 }

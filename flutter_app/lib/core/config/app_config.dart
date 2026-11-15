@@ -6,6 +6,6 @@ class AppConfig {
     defaultValue: 'https://crackers-erp-api-production.up.railway.app/api',
   );
 
-  static const Duration requestTimeout = Duration(seconds: 20);
+  static const Duration requestTimeout = Duration(seconds: 35);
 }
 
