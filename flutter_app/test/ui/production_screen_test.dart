@@ -373,12 +373,12 @@ void main() {
       await tester.tap(matrixSegment);
       await tester.pumpAndSettle();
 
-      // Check Matrix frozen column headers include Tamil mappings
-      expect(find.textContaining('TAPE • டேப்'), findsOneWidget);
-      expect(find.textContaining('CHEMICAL • கெமிக்கல்'), findsOneWidget);
+      // Check Matrix headers include Tamil mappings and category sections
+      expect(find.textContaining('TAPE • டேப்'), findsWidgets);
+      expect(find.textContaining('CHEMICAL • கெமிக்கல்'), findsWidgets);
       expect(
         find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம்'),
-        findsOneWidget,
+        findsWidgets,
       );
     },
   );

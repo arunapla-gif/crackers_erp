@@ -33,10 +33,15 @@ async function main() {
 
   let creds = {};
   if (args['credentials-json']) {
-    const raw =
+    let raw =
       args['credentials-json'] === '-'
         ? readStdin()
         : fs.readFileSync(args['credentials-json'], 'utf8');
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      raw = raw.slice(firstBrace, lastBrace + 1);
+    }
     creds = JSON.parse(raw);
   }
 

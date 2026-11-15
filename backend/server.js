@@ -26,9 +26,15 @@ if (hasWebBundle) {
         name === 'index.html' ||
         name === 'flutter_bootstrap.js' ||
         name === 'flutter_service_worker.js' ||
-        name === 'version.json'
+        name === 'version.json' ||
+        name === 'main.dart.js' ||
+        name.endsWith('.js') ||
+        name.endsWith('.json') ||
+        name.endsWith('.html')
       ) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
       }
       if (filePath.endsWith('.mjs')) {
         res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
