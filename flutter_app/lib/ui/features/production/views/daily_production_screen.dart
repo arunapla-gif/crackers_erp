@@ -683,34 +683,6 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
             ),
           ],
           const SizedBox(height: 10),
-          // Stats strip (zero rupee numbers)
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              ErpStatTile(
-                label: 'Workers Logged',
-                value: '${vm.activeWorkersLoggedCount}',
-                accentColor: ErpTheme.hrIndigo,
-                icon: Icons.groups_rounded,
-              ),
-              ErpStatTile(
-                label: 'Total Pieces',
-                value: NumberFormat('#,##,##0', 'en_IN').format(
-                  vm.totalPiecesEntered,
-                ),
-                accentColor: ErpTheme.productionAmber,
-                icon: Icons.layers_rounded,
-              ),
-              ErpStatTile(
-                label: 'Active WIP Items',
-                value: '${vm.activeItemNames.length}',
-                accentColor: ErpTheme.ordersEmerald,
-                icon: Icons.category_rounded,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           // Entry mode + WIP Picker
           Wrap(
             spacing: 10,
