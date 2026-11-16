@@ -1712,16 +1712,11 @@ class _ProductionMatrixCard extends StatefulWidget {
 }
 
 class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
-  static const double _headerHeight = 58.0;
-  static const double _roleHeaderHeight = 38.0;
-  static const double _workerRowHeight = 62.0;
-  static const double _footerHeight = 52.0;
+  static const double _headerHeight = 56.0;
+  static const double _workerRowHeight = 58.0;
+  static const double _footerHeight = 46.0;
 
-  final ScrollController _headerHScroll = ScrollController();
-  final ScrollController _bodyHScroll = ScrollController();
-  final ScrollController _footerHScroll = ScrollController();
   final ScrollController _bodyVScroll = ScrollController();
-  bool _isSyncingH = false;
 
   final Set<String> _collapsedRoles = <String>{};
   WorkerNameDisplayMode get _nameDisplayMode => widget.nameDisplayMode;
@@ -1730,6 +1725,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
       <String, ({int empId, String empName, String itemName})>{};
   String? _focusedKey;
   String? _selectedWipProductToAdd;
+  final Map<String, String?> _selectedWipByRole = <String, String?>{};
 
   ({Color bg, Color border, Color text, IconData icon}) _getRoleStyle(
     String role,
@@ -1778,24 +1774,6 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   @override
   void initState() {
     super.initState();
-    _headerHScroll.addListener(() => _syncHScroll(_headerHScroll));
-    _bodyHScroll.addListener(() => _syncHScroll(_bodyHScroll));
-    _footerHScroll.addListener(() => _syncHScroll(_footerHScroll));
-  }
-
-  void _syncHScroll(ScrollController source) {
-    if (_isSyncingH || !source.hasClients) return;
-    _isSyncingH = true;
-    final offset = source.offset;
-    for (final target in [_headerHScroll, _bodyHScroll, _footerHScroll]) {
-      if (target != source && target.hasClients) {
-        final clamped = offset.clamp(0.0, target.position.maxScrollExtent);
-        if ((target.offset - clamped).abs() > 0.5) {
-          target.jumpTo(clamped);
-        }
-      }
-    }
-    _isSyncingH = false;
   }
 
   String _cellKey(int empId, String itemName) => '$empId::$itemName';
@@ -1834,12 +1812,14 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
         nextNode.requestFocus();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final ctx = nextNode.context;
-          if (ctx != null && ctx.mounted) {
-            Scrollable.ensureVisible(
-              ctx,
-              alignment: 0.35,
-              duration: const Duration(milliseconds: 140),
-            );
+          if (ctx != null && ctx.mounted && _bodyVScroll.hasClients) {
+            final ro = ctx.findRenderObject();
+            if (ro != null) {
+              _bodyVScroll.position.ensureVisible(
+                ro,
+                duration: const Duration(milliseconds: 140),
+              );
+            }
           }
         });
         return;
@@ -1850,9 +1830,6 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
 
   @override
   void dispose() {
-    _headerHScroll.dispose();
-    _bodyHScroll.dispose();
-    _footerHScroll.dispose();
     _bodyVScroll.dispose();
     for (final node in _cellFocusNodes.values) {
       node.dispose();
@@ -2020,13 +1997,16 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     final columnMajorKeys = <String>[];
     for (final itemName in items) {
       for (final emp in visibleWorkers) {
-        final key = _cellKey(emp.id, itemName);
-        columnMajorKeys.add(key);
-        _cellMeta[key] = (
-          empId: emp.id,
-          empName: emp.formattedName(_nameDisplayMode),
-          itemName: itemName,
-        );
+        final roleItems = vm.getActiveItemsForRole(emp.roleGroup);
+        if (roleItems.contains(itemName)) {
+          final key = _cellKey(emp.id, itemName);
+          columnMajorKeys.add(key);
+          _cellMeta[key] = (
+            empId: emp.id,
+            empName: emp.formattedName(_nameDisplayMode),
+            itemName: itemName,
+          );
+        }
       }
     }
     final activeMeta = _focusedKey != null ? _cellMeta[_focusedKey] : null;
@@ -2037,48 +2017,44 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isCompact = constraints.maxWidth < 600;
-          final workerColWidth = isCompact ? 132.0 : 188.0;
+          final workerColWidth = isCompact ? 132.0 : 176.0;
           final baseItemWidth = isCompact ? 98.0 : 136.0;
           final totalColWidth = isCompact ? 72.0 : 92.0;
-          final availableRightWidth = (constraints.maxWidth - workerColWidth)
-              .clamp(0.0, double.infinity);
-          final baseRightWidth = (baseItemWidth * items.length) + totalColWidth;
-          final itemColWidth =
-              items.isNotEmpty && baseRightWidth < availableRightWidth
-              ? baseItemWidth +
-                    ((availableRightWidth - baseRightWidth) / items.length)
-              : baseItemWidth;
-          final rightTrackWidth = (itemColWidth * items.length) + totalColWidth;
 
           final useBoundedExpand =
               widget.isFocusMode &&
               constraints.hasBoundedHeight &&
               constraints.maxHeight >= 260;
 
-          final matrixBody = _buildMatrixBody(
+          final stackedCards = _buildDepartmentStackedCards(
             vm: vm,
             groupedRoles: groupedRoles,
-            items: items,
             columnMajorKeys: columnMajorKeys,
             workerColWidth: workerColWidth,
-            itemColWidth: itemColWidth,
+            baseItemWidth: baseItemWidth,
             totalColWidth: totalColWidth,
-            rightTrackWidth: rightTrackWidth,
+            availableWidth: constraints.maxWidth,
             inrFormat: inrFormat,
             nameDisplayMode: _nameDisplayMode,
           );
 
+          final bodyScroll = SingleChildScrollView(
+            controller: _bodyVScroll,
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            child: stackedCards,
+          );
+
           final screenHeight = MediaQuery.sizeOf(context).height;
           final maxCardHeight =
-              (screenHeight * (widget.isFocusMode ? 0.70 : 0.62))
-                  .clamp(280.0, 680.0);
+              (screenHeight * (widget.isFocusMode ? 0.72 : 0.50))
+                  .clamp(260.0, 700.0);
           final bodyWrapper = useBoundedExpand
-              ? Expanded(child: matrixBody)
+              ? Expanded(child: bodyScroll)
               : ConstrainedBox(
                   constraints: BoxConstraints(
                     maxHeight: maxCardHeight,
                   ),
-                  child: matrixBody,
+                  child: bodyScroll,
                 );
 
           return Column(
@@ -2097,24 +2073,8 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                   itemName: activeMeta.itemName,
                   columnMajorKeys: columnMajorKeys,
                 ),
-              _buildPinnedHeader(
-                vm: vm,
-                items: items,
-                workerColWidth: workerColWidth,
-                itemColWidth: itemColWidth,
-                totalColWidth: totalColWidth,
-                rightTrackWidth: rightTrackWidth,
-              ),
               bodyWrapper,
-              _buildPinnedFooter(
-                vm: vm,
-                items: items,
-                workerColWidth: workerColWidth,
-                itemColWidth: itemColWidth,
-                totalColWidth: totalColWidth,
-                rightTrackWidth: rightTrackWidth,
-                inrFormat: inrFormat,
-              ),
+              _buildStickyBottomBar(vm, inrFormat),
             ],
           );
         },
@@ -2515,176 +2475,392 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     );
   }
 
-  Widget _buildPinnedHeader({
+  Widget _buildDepartmentStackedCards({
     required DailyProductionViewModel vm,
-    required List<String> items,
+    required Map<String, List<Employee>> groupedRoles,
+    required List<String> columnMajorKeys,
     required double workerColWidth,
-    required double itemColWidth,
+    required double baseItemWidth,
     required double totalColWidth,
-    required double rightTrackWidth,
+    required double availableWidth,
+    required NumberFormat inrFormat,
+    required WorkerNameDisplayMode nameDisplayMode,
   }) {
+    if (groupedRoles.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: ErpEmptyState(
+          icon: Icons.engineering_outlined,
+          title: 'No Matching Workers',
+          subtitle:
+              'No active contractual workers match the selected role filter or search query.',
+        ),
+      );
+    }
+
+    final cards = <Widget>[];
+    var isFirst = true;
+
+    for (final entry in groupedRoles.entries) {
+      final role = entry.key;
+      final roleWorkers = entry.value;
+      final isCollapsed = _collapsedRoles.contains(role);
+      final roleItems = vm.getActiveItemsForRole(role);
+      final roleTotal = vm.getRoleTotalQuantity(role);
+      final roleStyle = _getRoleStyle(role);
+      final roleTamil = DailyProductionViewModel.getRoleTamilName(role);
+
+      cards.add(
+        _buildDepartmentCard(
+          vm: vm,
+          role: role,
+          roleWorkers: roleWorkers,
+          roleItems: roleItems,
+          roleTotal: roleTotal,
+          roleStyle: roleStyle,
+          roleTamil: roleTamil,
+          isCollapsed: isCollapsed,
+          columnMajorKeys: columnMajorKeys,
+          workerColWidth: workerColWidth,
+          baseItemWidth: baseItemWidth,
+          totalColWidth: totalColWidth,
+          availableWidth: availableWidth,
+          inrFormat: inrFormat,
+          nameDisplayMode: nameDisplayMode,
+          isFirstDepartment: isFirst,
+        ),
+      );
+      isFirst = false;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: cards,
+    );
+  }
+
+  Widget _buildDepartmentCard({
+    required DailyProductionViewModel vm,
+    required String role,
+    required List<Employee> roleWorkers,
+    required List<String> roleItems,
+    required int roleTotal,
+    required ({Color bg, Color border, Color text, IconData icon}) roleStyle,
+    required String roleTamil,
+    required bool isCollapsed,
+    required List<String> columnMajorKeys,
+    required double workerColWidth,
+    required double baseItemWidth,
+    required double totalColWidth,
+    required double availableWidth,
+    required NumberFormat inrFormat,
+    required WorkerNameDisplayMode nameDisplayMode,
+    required bool isFirstDepartment,
+  }) {
+    final availableRightWidth =
+        (availableWidth - workerColWidth).clamp(0.0, double.infinity);
+    final baseRightWidth = (baseItemWidth * roleItems.length) + totalColWidth;
+    final itemColWidth =
+        roleItems.isNotEmpty && baseRightWidth < availableRightWidth
+            ? baseItemWidth +
+                ((availableRightWidth - baseRightWidth) / roleItems.length)
+            : baseItemWidth;
+    final rightTrackWidth = (itemColWidth * roleItems.length) + totalColWidth;
+
     return Container(
-      height: _headerHeight,
-      color: ErpTheme.slate100,
-      child: Row(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ErpTheme.slate200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: workerColWidth,
-            height: _headerHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            alignment: Alignment.centerLeft,
-            decoration: const BoxDecoration(
-              color: ErpTheme.slate100,
-              border: Border(
-                right: BorderSide(color: ErpTheme.slate200, width: 1.5),
-                bottom: BorderSide(color: ErpTheme.slate200),
+          // 1. Department Header Banner
+          InkWell(
+            onTap: () => setState(() {
+              if (isCollapsed) {
+                _collapsedRoles.remove(role);
+              } else {
+                _collapsedRoles.add(role);
+              }
+            }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: roleStyle.bg,
+                border: Border(
+                  left: BorderSide(color: roleStyle.border, width: 4),
+                  bottom: BorderSide(color: roleStyle.border),
+                ),
               ),
-            ),
-            child: const Text(
-              'WORKERS\n(PINNED)',
-              maxLines: 2,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: ErpTheme.slate700,
-                letterSpacing: 0.4,
-                height: 1.2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        isCollapsed
+                            ? Icons.chevron_right_rounded
+                            : Icons.expand_more_rounded,
+                        size: 20,
+                        color: roleStyle.text,
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(roleStyle.icon, size: 16, color: roleStyle.text),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          roleTamil.isNotEmpty
+                              ? '${role.toUpperCase()} • $roleTamil (${roleWorkers.length})'
+                              : '${role.toUpperCase()} (${roleWorkers.length})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w900,
+                            color: roleStyle.text,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: roleStyle.border),
+                        ),
+                        child: Text(
+                          '${inrFormat.format(roleTotal)} pcs',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            color: roleStyle.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${role.toUpperCase()} • $roleTamil (${roleWorkers.length} workers) • Subtotal: ${inrFormat.format(roleTotal)} pcs',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: roleStyle.text.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+
+          if (!isCollapsed) ...[
+            // 2. Department Quick Add Column Bar
+            _buildDepartmentAddColumnBar(vm, role, roleItems),
+
+            // 3. Department Sub-Grid (or Empty State)
+            if (roleItems.isEmpty)
+              _buildDepartmentEmptyColumns(vm, role)
+            else
+              _buildDepartmentTable(
+                vm: vm,
+                role: role,
+                roleWorkers: roleWorkers,
+                roleItems: roleItems,
+                roleTotal: roleTotal,
+                roleStyle: roleStyle,
+                workerColWidth: workerColWidth,
+                itemColWidth: itemColWidth,
+                totalColWidth: totalColWidth,
+                rightTrackWidth: rightTrackWidth,
+                inrFormat: inrFormat,
+                nameDisplayMode: nameDisplayMode,
+                columnMajorKeys: columnMajorKeys,
+                isFirstDepartment: isFirstDepartment,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDepartmentAddColumnBar(
+    DailyProductionViewModel vm,
+    String role,
+    List<String> roleItems,
+  ) {
+    final currentSelected = _selectedWipByRole[role];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
+      ),
+      child: Row(
+        children: [
           Expanded(
-            child: SingleChildScrollView(
-              controller: _headerHScroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: rightTrackWidth,
-                height: _headerHeight,
-                child: Row(
-                  children: [
-                    ...items.map((itemName) {
-                      final product = vm.findWipProductByName(itemName);
-                      final colTotal = vm.getItemTotalQuantity(itemName);
-                      final canRemove = items.length > 1;
-                      return Container(
-                        width: itemColWidth,
-                        height: _headerHeight,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 6,
-                        ),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            right: BorderSide(color: ErpTheme.slate200),
-                            bottom: BorderSide(color: ErpTheme.slate200),
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: ErpTheme.slate400),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: currentSelected,
+                  icon: const Icon(
+                    Icons.arrow_drop_down,
+                    color: ErpTheme.slate500,
+                  ),
+                  hint: Row(
+                    children: [
+                      const Icon(
+                        Icons.add_chart_rounded,
+                        size: 15,
+                        color: ErpTheme.productionAmber,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Add $role WIP Column...',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: ErpTheme.slate500,
                           ),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    itemName,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w900,
-                                      color: ErpTheme.hrIndigo,
-                                      height: 1.15,
-                                    ),
-                                  ),
-                                ),
-                                if (canRemove)
-                                  InkWell(
-                                    onTap: () async {
-                                      if (colTotal > 0) {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Remove Column?'),
-                                            content: Text(
-                                              'Remove "$itemName" column and clear all entered quantities ($colTotal ${product?.unit ?? 'Pcs'}) for this product?',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.of(ctx).pop(false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                style: FilledButton.styleFrom(
-                                                  backgroundColor:
-                                                      ErpTheme.dangerRose,
-                                                ),
-                                                onPressed: () =>
-                                                    Navigator.of(ctx).pop(true),
-                                                child: const Text('Remove'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true) {
-                                          vm.removeActiveItem(
-                                            itemName,
-                                            clearDraft: true,
-                                          );
-                                        }
-                                      } else {
-                                        vm.removeActiveItem(itemName);
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(2),
-                                      child: Icon(
-                                        Icons.close_rounded,
-                                        size: 13,
-                                        color: ErpTheme.dangerRose,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            Text(
-                              product?.unit ?? 'Pcs',
+                      ),
+                    ],
+                  ),
+                  items: vm.wipProducts.map((p) {
+                    final alreadyAdded = roleItems.contains(p.name);
+                    return DropdownMenuItem<String>(
+                      value: p.name,
+                      enabled: !alreadyAdded,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              p.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: ErpTheme.slate500,
-                              ),
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: alreadyAdded
+                                    ? FontWeight.w500
+                                    : FontWeight.w700,
+                              color: alreadyAdded
+                                  ? ErpTheme.slate400
+                                  : ErpTheme.slate900,
                             ),
-                          ],
+                          ),
                         ),
-                      );
-                    }),
-                    Container(
-                      width: totalColWidth,
-                      height: _headerHeight,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: ErpTheme.slate200),
-                        ),
-                      ),
-                      child: const Text(
-                        'WORKER\nTOTAL',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: ErpTheme.slate700,
-                        ),
-                      ),
+                        if (alreadyAdded)
+                          const Text(
+                            'Added',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              color: ErpTheme.slate400,
+                            ),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() => _selectedWipByRole[role] = val);
+                  }
+                },
               ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          key: ValueKey('matrix-add-column-button-$role'),
+          style: FilledButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            backgroundColor: ErpTheme.productionAmber,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          onPressed: currentSelected == null ||
+                  roleItems.contains(currentSelected)
+              ? null
+              : () {
+                  vm.addActiveItemForRole(role, currentSelected);
+                  setState(() => _selectedWipByRole[role] = null);
+                },
+          icon: const Icon(Icons.add_rounded, size: 16),
+          label: const Text(
+            '+ Add',
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+  Widget _buildDepartmentEmptyColumns(
+    DailyProductionViewModel vm,
+    String role,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.add_chart_rounded,
+            size: 32,
+            color: ErpTheme.productionAmber,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No WIP Product Columns for $role',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: ErpTheme.slate900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Select a product from the dropdown above to add a column for $role workers.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11.5,
+              color: ErpTheme.slate500,
             ),
           ),
         ],
@@ -2692,441 +2868,545 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     );
   }
 
-  Widget _buildMatrixBody({
+  Widget _buildDepartmentTable({
     required DailyProductionViewModel vm,
-    required Map<String, List<Employee>> groupedRoles,
-    required List<String> items,
-    required List<String> columnMajorKeys,
+    required String role,
+    required List<Employee> roleWorkers,
+    required List<String> roleItems,
+    required int roleTotal,
+    required ({Color bg, Color border, Color text, IconData icon}) roleStyle,
     required double workerColWidth,
     required double itemColWidth,
     required double totalColWidth,
     required double rightTrackWidth,
     required NumberFormat inrFormat,
     required WorkerNameDisplayMode nameDisplayMode,
+    required List<String> columnMajorKeys,
+    required bool isFirstDepartment,
   }) {
-    return SingleChildScrollView(
-      controller: _bodyVScroll,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Frozen Left Worker Column
-          SizedBox(
-            width: workerColWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final roleEntry in groupedRoles.entries) ...[
-                  Builder(
-                    builder: (context) {
-                      final style = _getRoleStyle(roleEntry.key);
-                      final tamilRole =
-                          DailyProductionViewModel.getRoleTamilName(
-                        roleEntry.key,
-                      );
-                      return InkWell(
-                        onTap: () => setState(() {
-                          if (_collapsedRoles.contains(roleEntry.key)) {
-                            _collapsedRoles.remove(roleEntry.key);
-                          } else {
-                            _collapsedRoles.add(roleEntry.key);
-                          }
-                        }),
-                        child: Container(
-                          height: _roleHeaderHeight,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: style.bg,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Frozen Left Worker Column (Worker Header, Rows, Subtotal Footer)
+        SizedBox(
+          width: workerColWidth,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Container(
+                height: _headerHeight,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                alignment: Alignment.centerLeft,
+                decoration: const BoxDecoration(
+                  color: ErpTheme.slate100,
+                  border: Border(
+                    right: BorderSide(color: ErpTheme.slate200, width: 1.5),
+                    bottom: BorderSide(color: ErpTheme.slate200),
+                  ),
+                ),
+                child: Text(
+                  isFirstDepartment ? 'WORKERS\n(PINNED)' : 'WORKER',
+                  maxLines: 2,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: ErpTheme.slate700,
+                    letterSpacing: 0.4,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              // Worker Rows
+              for (final emp in roleWorkers) ...[
+                Builder(
+                  builder: (context) {
+                    final empTotal = vm.getWorkerTotalQuantity(emp.id);
+                    return Container(
+                      height: _workerRowHeight,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: empTotal > 0
+                            ? ErpTheme.ordersEmeraldSoft.withValues(alpha: 0.35)
+                            : Colors.white,
+                        border: Border(
+                          left: BorderSide(
+                            color: roleStyle.border.withValues(alpha: 0.7),
+                            width: 3.5,
+                          ),
+                          right: const BorderSide(
+                            color: ErpTheme.slate200,
+                            width: 1.5,
+                          ),
+                          bottom: const BorderSide(color: ErpTheme.slate200),
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            emp.formattedName(nameDisplayMode),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12.5,
+                              color: ErpTheme.slate900,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              if (nameDisplayMode ==
+                                      WorkerNameDisplayMode.tamil &&
+                                  emp.englishName.isNotEmpty)
+                                emp.englishName
+                              else if (nameDisplayMode ==
+                                      WorkerNameDisplayMode.english &&
+                                  emp.tamilName.isNotEmpty)
+                                emp.tamilName,
+                              emp.paymentType,
+                              if (emp.isTemporary) 'TEMP',
+                              if (emp.unit != null) emp.unit!,
+                            ].join(' • '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: emp.isTemporary
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: emp.isTemporary
+                                  ? ErpTheme.productionAmber
+                                  : ErpTheme.slate500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+              // Subtotal Footer for Worker Column
+              Container(
+                height: _footerHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.centerRight,
+                decoration: BoxDecoration(
+                  color: roleStyle.bg.withValues(alpha: 0.5),
+                  border: Border(
+                    top: BorderSide(color: roleStyle.border, width: 1.5),
+                    right: const BorderSide(
+                      color: ErpTheme.slate200,
+                      width: 1.5,
+                    ),
+                    bottom: const BorderSide(color: ErpTheme.slate200),
+                  ),
+                ),
+                child: Text(
+                  'SUBTOTAL',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10.5,
+                    color: roleStyle.text,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Horizontally Scrollable Product Track (Header, Input Rows, Subtotal Footer)
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: rightTrackWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Product Headers Row
+                  Container(
+                    height: _headerHeight,
+                    color: ErpTheme.slate100,
+                    child: Row(
+                      children: [
+                        for (final itemName in roleItems) ...[
+                          Builder(
+                            builder: (context) {
+                              final product = vm.findWipProductByName(itemName);
+                              final roleColTotal =
+                                  vm.getRoleItemTotalQuantity(role, itemName);
+                              final canRemove = roleItems.length > 1;
+                              return Container(
+                                width: itemColWidth,
+                                height: _headerHeight,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 6,
+                                ),
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    right: BorderSide(
+                                      color: ErpTheme.slate200,
+                                    ),
+                                    bottom: BorderSide(
+                                      color: ErpTheme.slate200,
+                                    ),
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            itemName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w900,
+                                              color: ErpTheme.hrIndigo,
+                                              height: 1.15,
+                                            ),
+                                          ),
+                                        ),
+                                        if (canRemove)
+                                          InkWell(
+                                            onTap: () async {
+                                              if (roleColTotal > 0) {
+                                                final confirm =
+                                                    await showDialog<bool>(
+                                                  context: context,
+                                                  builder: (ctx) => AlertDialog(
+                                                    title: const Text(
+                                                      'Remove Column?',
+                                                    ),
+                                                    content: Text(
+                                                      'Remove "$itemName" column and clear entered quantities ($roleColTotal ${product?.unit ?? 'Pcs'}) for $role workers?',
+                                                    ),
+                                                    actions: [
+                                                      TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.of(ctx)
+                                                                .pop(false),
+                                                        child: const Text(
+                                                          'Cancel',
+                                                        ),
+                                                      ),
+                                                      FilledButton(
+                                                        style:
+                                                            FilledButton.styleFrom(
+                                                          backgroundColor:
+                                                              ErpTheme
+                                                                  .dangerRose,
+                                                        ),
+                                                        onPressed: () =>
+                                                            Navigator.of(ctx)
+                                                                .pop(true),
+                                                        child: const Text(
+                                                          'Remove',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                                if (confirm == true) {
+                                                  vm.removeActiveItemForRole(
+                                                    role,
+                                                    itemName,
+                                                    clearDraft: true,
+                                                  );
+                                                }
+                                              } else {
+                                                vm.removeActiveItemForRole(
+                                                  role,
+                                                  itemName,
+                                                );
+                                              }
+                                            },
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: const Padding(
+                                              padding: EdgeInsets.all(2),
+                                              child: Icon(
+                                                Icons.close_rounded,
+                                                size: 13,
+                                                color: ErpTheme.dangerRose,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    Text(
+                                      product?.unit ?? 'Pcs',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                        color: ErpTheme.slate500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                        // Worker Total Column Header
+                        Container(
+                          width: totalColWidth,
+                          height: _headerHeight,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
                             border: Border(
-                              left: BorderSide(color: style.border, width: 3.5),
-                              right: const BorderSide(
-                                color: ErpTheme.slate200,
-                                width: 1.5,
-                              ),
-                              bottom: BorderSide(color: style.border),
+                              bottom: BorderSide(color: ErpTheme.slate200),
+                            ),
+                          ),
+                          child: Text(
+                            isFirstDepartment ? 'WORKER\nTOTAL' : 'TOTAL',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: ErpTheme.slate700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Worker Rows
+                  for (final emp in roleWorkers) ...[
+                    Builder(
+                      builder: (context) {
+                        final empTotal = vm.getWorkerTotalQuantity(emp.id);
+                        return Container(
+                          height: _workerRowHeight,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            border: Border(
+                              bottom: BorderSide(color: ErpTheme.slate200),
                             ),
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                _collapsedRoles.contains(roleEntry.key)
-                                    ? Icons.chevron_right_rounded
-                                    : Icons.expand_more_rounded,
-                                size: 16,
-                                color: style.text,
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                style.icon,
-                                size: 14,
-                                color: style.text,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
+                              for (final itemName in roleItems) ...[
+                                Builder(
+                                  builder: (context) {
+                                    final key = _cellKey(emp.id, itemName);
+                                    final node = _focusNodeFor(key);
+                                    return Container(
+                                      width: itemColWidth,
+                                      height: _workerRowHeight,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 8,
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        border: Border(
+                                          right: BorderSide(
+                                            color: ErpTheme.slate200,
+                                          ),
+                                        ),
+                                      ),
+                                      child: _MatrixQtyCell(
+                                        key: ValueKey(
+                                          'matrix_${emp.id}_$itemName',
+                                        ),
+                                        focusNode: node,
+                                        quantity: vm.getQuantity(
+                                          emp.id,
+                                          itemName,
+                                        ),
+                                        onChanged: (q) => vm.setQuantity(
+                                          emp.id,
+                                          itemName,
+                                          q,
+                                        ),
+                                        onSubmitNext: () => _focusNextCell(
+                                          key,
+                                          columnMajorKeys,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                              Container(
+                                width: totalColWidth,
+                                height: _workerRowHeight,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                alignment: Alignment.center,
                                 child: Text(
-                                  tamilRole.isNotEmpty
-                                      ? '${roleEntry.key.toUpperCase()} • $tamilRole (${roleEntry.value.length})'
-                                      : '${roleEntry.key.toUpperCase()} (${roleEntry.value.length})',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  '$empTotal',
                                   style: TextStyle(
-                                    fontSize: 10.5,
                                     fontWeight: FontWeight.w900,
-                                    color: style.text,
-                                    letterSpacing: 0.3,
+                                    fontSize: 13.5,
+                                    color: empTotal > 0
+                                        ? ErpTheme.ordersEmerald
+                                        : ErpTheme.slate500,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                  if (!_collapsedRoles.contains(roleEntry.key))
-                    ...roleEntry.value.map((emp) {
-                      final empTotal = vm.getWorkerTotalQuantity(emp.id);
-                      final style = _getRoleStyle(roleEntry.key);
-                      return Container(
-                        height: _workerRowHeight,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: empTotal > 0
-                              ? ErpTheme.ordersEmeraldSoft.withValues(
-                                  alpha: 0.35,
-                                )
-                              : Colors.white,
-                          border: Border(
-                            left: BorderSide(
-                              color: style.border.withValues(alpha: 0.7),
-                              width: 3.5,
+                        );
+                      },
+                    ),
+                  ],
+
+                  // Subtotal Footer Row
+                  Container(
+                    height: _footerHeight,
+                    decoration: BoxDecoration(
+                      color: roleStyle.bg.withValues(alpha: 0.5),
+                      border: Border(
+                        top: BorderSide(color: roleStyle.border, width: 1.5),
+                        bottom: const BorderSide(color: ErpTheme.slate200),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        for (final itemName in roleItems) ...[
+                          Builder(
+                            builder: (context) {
+                              final colTotal = vm.getRoleItemTotalQuantity(
+                                role,
+                                itemName,
+                              );
+                              return Container(
+                                width: itemColWidth,
+                                height: _footerHeight,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 4),
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    right: BorderSide(
+                                      color: ErpTheme.slate200,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  '${inrFormat.format(colTotal)} pcs',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: roleStyle.text,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                        Container(
+                          width: totalColWidth,
+                          height: _footerHeight,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${inrFormat.format(roleTotal)} pcs',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: roleStyle.text,
                             ),
-                            right: const BorderSide(
-                              color: ErpTheme.slate200,
-                              width: 1.5,
-                            ),
-                            bottom: const BorderSide(color: ErpTheme.slate200),
                           ),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              emp.formattedName(nameDisplayMode),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12.5,
-                                color: ErpTheme.slate900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              [
-                                if (nameDisplayMode ==
-                                        WorkerNameDisplayMode.tamil &&
-                                    emp.englishName.isNotEmpty)
-                                  emp.englishName
-                                else if (nameDisplayMode ==
-                                        WorkerNameDisplayMode.english &&
-                                    emp.tamilName.isNotEmpty)
-                                  emp.tamilName,
-                                emp.paymentType,
-                                if (emp.isTemporary) 'TEMP',
-                                if (emp.unit != null) emp.unit!,
-                              ].join(' • '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: emp.isTemporary
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: emp.isTemporary
-                                    ? ErpTheme.productionAmber
-                                    : ErpTheme.slate500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
+                      ],
+                    ),
+                  ),
                 ],
-              ],
-            ),
-          ),
-          // Horizontally Scrollable WIP Qty Matrix
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _bodyHScroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: rightTrackWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final roleEntry in groupedRoles.entries) ...[
-                      Builder(
-                        builder: (context) {
-                          final roleTotal = roleEntry.value.fold<int>(
-                            0,
-                            (sum, e) => sum + vm.getWorkerTotalQuantity(e.id),
-                          );
-                          final style = _getRoleStyle(roleEntry.key);
-                          final tamilRole =
-                              DailyProductionViewModel.getRoleTamilName(
-                            roleEntry.key,
-                          );
-                          return Container(
-                            height: _roleHeaderHeight,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            alignment: Alignment.centerLeft,
-                            decoration: BoxDecoration(
-                              color: style.bg,
-                              border: Border(
-                                bottom: BorderSide(color: style.border),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    tamilRole.isNotEmpty
-                                        ? '${roleEntry.key.toUpperCase()} • $tamilRole (${roleEntry.value.length} workers)'
-                                        : '${roleEntry.key.toUpperCase()} (${roleEntry.value.length} workers)',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: style.text,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.85),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: style.border,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'Subtotal: ${inrFormat.format(roleTotal)} pcs',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w900,
-                                      color: style.text,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                      if (!_collapsedRoles.contains(roleEntry.key))
-                        ...roleEntry.value.map((emp) {
-                          final empTotal = vm.getWorkerTotalQuantity(emp.id);
-                          return Container(
-                            height: _workerRowHeight,
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              border: Border(
-                                bottom: BorderSide(color: ErpTheme.slate200),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                ...items.map((itemName) {
-                                  final key = _cellKey(emp.id, itemName);
-                                  final node = _focusNodeFor(key);
-                                  return Container(
-                                    width: itemColWidth,
-                                    height: _workerRowHeight,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 8,
-                                    ),
-                                    decoration: const BoxDecoration(
-                                      border: Border(
-                                        right: BorderSide(
-                                          color: ErpTheme.slate200,
-                                        ),
-                                      ),
-                                    ),
-                                    child: _MatrixQtyCell(
-                                      key: ValueKey('matrix_${emp.id}_$itemName'),
-                                      focusNode: node,
-                                      quantity: vm.getQuantity(
-                                        emp.id,
-                                        itemName,
-                                      ),
-                                      onChanged: (q) =>
-                                          vm.setQuantity(emp.id, itemName, q),
-                                      onSubmitNext: () =>
-                                          _focusNextCell(key, columnMajorKeys),
-                                    ),
-                                  );
-                                }),
-                                Container(
-                                  width: totalColWidth,
-                                  height: _workerRowHeight,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '$empTotal',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 13.5,
-                                      color: empTotal > 0
-                                          ? ErpTheme.ordersEmerald
-                                          : ErpTheme.slate500,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                    ],
-                  ],
-                ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPinnedFooter({
-    required DailyProductionViewModel vm,
-    required List<String> items,
-    required double workerColWidth,
-    required double itemColWidth,
-    required double totalColWidth,
-    required double rightTrackWidth,
-    required NumberFormat inrFormat,
-  }) {
-    final topBorder = Border(
-      top: BorderSide(
-        color: ErpTheme.productionAmber.withValues(alpha: 0.65),
-        width: 2,
-      ),
-    );
-
+  Widget _buildStickyBottomBar(
+    DailyProductionViewModel vm,
+    NumberFormat inrFormat,
+  ) {
     return Container(
-      height: _footerHeight,
-      color: ErpTheme.productionAmberSoft,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: ErpTheme.slate200, width: 1.5)),
+      ),
       child: Row(
         children: [
-          Container(
-            width: workerColWidth,
-            height: _footerHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            alignment: Alignment.centerRight,
-            decoration: BoxDecoration(
-              color: ErpTheme.productionAmberSoft,
-              border: Border(
-                top: topBorder.top,
-                right: const BorderSide(color: ErpTheme.slate200, width: 1.5),
-              ),
-            ),
-            child: const Text(
-              'TOTAL PCS',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-                color: ErpTheme.slate900,
-              ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Factory Total Entry',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: ErpTheme.slate500,
+                  ),
+                ),
+                Text(
+                  '${vm.activeWorkersLoggedCount} Workers • ${inrFormat.format(vm.totalPiecesEntered)} Pcs',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                    color: ErpTheme.slate900,
+                  ),
+                ),
+              ],
             ),
           ),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _footerHScroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: rightTrackWidth,
-                height: _footerHeight,
-                child: Row(
-                  children: [
-                    ...items.map((itemName) {
-                      final colTotal = vm.getItemTotalQuantity(itemName);
-                      return Container(
-                        width: itemColWidth,
-                        height: _footerHeight,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: topBorder.top,
-                            right: const BorderSide(color: ErpTheme.slate200),
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              inrFormat.format(colTotal),
-                              style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w900,
-                                color: ErpTheme.productionAmber,
-                              ),
-                            ),
-                            const Text(
-                              'ITEM PCS',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                fontWeight: FontWeight.w800,
-                                color: ErpTheme.slate700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    Container(
-                      width: totalColWidth,
-                      height: _footerHeight,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(border: topBorder),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            inrFormat.format(vm.totalPiecesEntered),
-                            style: const TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w900,
-                              color: ErpTheme.slate900,
-                            ),
-                          ),
-                          const Text(
-                            'GRAND',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w800,
-                              color: ErpTheme.slate700,
-                            ),
-                          ),
-                        ],
-                      ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            key: const ValueKey('matrix-save-button-bottom'),
+            style: FilledButton.styleFrom(
+              backgroundColor: ErpTheme.productionAmber,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: vm.isSaving ? null : widget.onSaveMatrix,
+            icon: vm.isSaving
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                  )
+                : const Icon(Icons.save_rounded, size: 16),
+            label: Text(
+              vm.isSaving
+                  ? 'Saving...'
+                  : 'Save All (${vm.filteredWorkers.length})',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),

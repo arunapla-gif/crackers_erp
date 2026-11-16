@@ -35,6 +35,7 @@ class DailyProductionViewModel extends ChangeNotifier {
 
   List<String> _pinnedItemNames = const [];
   final List<String> _activeItemNames = <String>[];
+  final Map<String, List<String>> _activeItemsByRole = <String, List<String>>{};
 
   // Map<employeeId, Map<itemName, qty>>
   Map<int, Map<String, int>> _baselineByEmp = <int, Map<String, int>>{};
@@ -60,6 +61,75 @@ class DailyProductionViewModel extends ChangeNotifier {
   List<DailyProductionRecord> get recentHistory => _recentHistory;
   List<String> get pinnedItemNames => _pinnedItemNames;
   List<String> get activeItemNames => List.unmodifiable(_activeItemNames);
+  Map<String, List<String>> get activeItemsByRole => Map.unmodifiable(_activeItemsByRole);
+
+  List<String> getActiveItemsForRole(String role) {
+    if (_activeItemsByRole.containsKey(role) && _activeItemsByRole[role]!.isNotEmpty) {
+      return List.unmodifiable(_activeItemsByRole[role]!);
+    }
+    final derived = _deriveActiveItemsForRole(role);
+    _activeItemsByRole[role] = derived;
+    return List.unmodifiable(derived);
+  }
+
+  void addActiveItemForRole(String role, String itemName) {
+    final list = _activeItemsByRole.putIfAbsent(role, () => <String>[]);
+    if (!list.contains(itemName)) {
+      list.add(itemName);
+    }
+    if (!_activeItemNames.contains(itemName)) {
+      _activeItemNames.add(itemName);
+    }
+    _safeNotify();
+  }
+
+  void removeActiveItemForRole(String role, String itemName, {bool clearDraft = false}) {
+    final list = _activeItemsByRole[role];
+    if (list != null) {
+      list.remove(itemName);
+    }
+    if (clearDraft) {
+      final roleWorkers = activeWorkers.where(
+        (e) => e.roleGroup.trim().toLowerCase() == role.trim().toLowerCase(),
+      );
+      for (final emp in roleWorkers) {
+        _draftByEmp[emp.id]?.remove(itemName);
+      }
+      _persistDraftSnapshot();
+    }
+    final anyRoleUsing = _activeItemsByRole.values.any((items) => items.contains(itemName));
+    if (!anyRoleUsing) {
+      _activeItemNames.remove(itemName);
+    }
+    _safeNotify();
+  }
+
+  int getRoleTotalQuantity(String role) {
+    var total = 0;
+    final workers = activeWorkers.where(
+      (e) => e.roleGroup.trim().toLowerCase() == role.trim().toLowerCase(),
+    );
+    for (final w in workers) {
+      final items = _draftByEmp[w.id];
+      if (items != null) {
+        for (final qty in items.values) {
+          if (qty > 0) total += qty;
+        }
+      }
+    }
+    return total;
+  }
+
+  int getRoleItemTotalQuantity(String role, String itemName) {
+    var total = 0;
+    final workers = activeWorkers.where(
+      (e) => e.roleGroup.trim().toLowerCase() == role.trim().toLowerCase(),
+    );
+    for (final w in workers) {
+      total += _draftByEmp[w.id]?[itemName] ?? 0;
+    }
+    return total;
+  }
 
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
@@ -320,6 +390,16 @@ class DailyProductionViewModel extends ChangeNotifier {
       if (!_activeItemNames.contains(itemName)) {
         _activeItemNames.add(itemName);
       }
+      final emp = _employees.cast<Employee?>().firstWhere(
+        (e) => e?.id == employeeId,
+        orElse: () => null,
+      );
+      if (emp != null) {
+        final list = _activeItemsByRole.putIfAbsent(emp.roleGroup, () => <String>[]);
+        if (!list.contains(itemName)) {
+          list.add(itemName);
+        }
+      }
     }
     _statusMessage = null;
     _persistDraftSnapshot();
@@ -334,12 +414,27 @@ class DailyProductionViewModel extends ChangeNotifier {
   void addActiveItem(String itemName) {
     if (!_activeItemNames.contains(itemName)) {
       _activeItemNames.add(itemName);
-      _safeNotify();
     }
+    if (_selectedRoleFilter != 'All') {
+      addActiveItemForRole(_selectedRoleFilter, itemName);
+    } else {
+      for (final role in availableRoles) {
+        if (role != 'All') {
+          final list = _activeItemsByRole.putIfAbsent(role, () => <String>[]);
+          if (!list.contains(itemName)) {
+            list.add(itemName);
+          }
+        }
+      }
+    }
+    _safeNotify();
   }
 
   void removeActiveItem(String itemName, {bool clearDraft = false}) {
     _activeItemNames.remove(itemName);
+    for (final list in _activeItemsByRole.values) {
+      list.remove(itemName);
+    }
     if (clearDraft) {
       for (final empItems in _draftByEmp.values) {
         empItems.remove(itemName);
@@ -351,6 +446,7 @@ class DailyProductionViewModel extends ChangeNotifier {
 
   void clearActiveItems() {
     _activeItemNames.clear();
+    _activeItemsByRole.clear();
     _safeNotify();
   }
 
@@ -485,6 +581,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     _dateRecords = const [];
     _recentHistory = const [];
     _activeItemNames.clear();
+    _activeItemsByRole.clear();
     _baselineByEmp = <int, Map<String, int>>{};
     _draftByEmp = <int, Map<String, int>>{};
     _isLoading = false;
@@ -527,32 +624,103 @@ class DailyProductionViewModel extends ChangeNotifier {
     _rebuildActiveItems();
   }
 
-  void _rebuildActiveItems() {
-    final ordered = <String>[];
-    void addUnique(String name) {
-      final trimmed = name.trim();
-      if (trimmed.isNotEmpty && !ordered.contains(trimmed)) {
-        ordered.add(trimmed);
+  List<String> _deriveActiveItemsForRole(String role) {
+    final cleanRole = role.trim().toLowerCase();
+    final items = <String>[];
+
+    // 1. Logged quantities for this role
+    final workersInRole = activeWorkers.where(
+      (e) => e.roleGroup.trim().toLowerCase() == cleanRole,
+    );
+    final workerIds = workersInRole.map((e) => e.id).toSet();
+    for (final empId in workerIds) {
+      final empItems = _draftByEmp[empId];
+      if (empItems != null) {
+        for (final entry in empItems.entries) {
+          if (entry.value > 0 && !items.contains(entry.key)) {
+            items.add(entry.key);
+          }
+        }
       }
     }
 
+    // 2. Keyword-based matching
+    List<String> keywords = [];
+    if (cleanRole == 'tape') {
+      keywords = ['tape', 'டேப்'];
+    } else if (cleanRole == 'chemical') {
+      keywords = ['chemical', 'dipping', 'கெமிக்கல்', 'டீப்பிங்'];
+    } else if (cleanRole == 'valayam contract' || cleanRole == 'valayam') {
+      keywords = ['valayam', 'ring', 'வளையம்'];
+    } else if (cleanRole == 'box packing' || cleanRole == 'packing') {
+      keywords = ['packing', 'pack', 'box', 'பேக்கிங்'];
+    } else if (cleanRole == 'rolling') {
+      keywords = ['rolling', 'roll', 'ரோலிங்'];
+    } else if (cleanRole == 'filling') {
+      keywords = ['filling', 'fill', 'ஃபில்லிங்'];
+    } else {
+      keywords = [cleanRole];
+    }
+
+    for (final prod in _wipProducts.where((p) => p.isActive)) {
+      final nameLower = prod.name.toLowerCase();
+      final catLower = (prod.category ?? '').toLowerCase();
+      final subLower = (prod.subCategory ?? '').toLowerCase();
+      final matches = keywords.any(
+        (kw) =>
+            nameLower.contains(kw) ||
+            catLower.contains(kw) ||
+            subLower.contains(kw),
+      );
+      if (matches && !items.contains(prod.name)) {
+        items.add(prod.name);
+      }
+    }
+
+    // 3. Fallback: if no keyword matched, use pinned items or first active WIP products
+    if (items.isEmpty) {
+      for (final pinned in _pinnedItemNames) {
+        if (!items.contains(pinned)) items.add(pinned);
+      }
+      if (items.isEmpty) {
+        for (final prod in _wipProducts.where((p) => p.isActive).take(2)) {
+          if (!items.contains(prod.name)) items.add(prod.name);
+        }
+      }
+    }
+
+    return items;
+  }
+
+  void _rebuildActiveItems() {
+    _activeItemsByRole.clear();
+    for (final role in availableRoles) {
+      if (role != 'All') {
+        _activeItemsByRole[role] = _deriveActiveItemsForRole(role);
+      }
+    }
+
+    final allItems = <String>{};
+    for (final list in _activeItemsByRole.values) {
+      allItems.addAll(list);
+    }
     for (final pinned in _pinnedItemNames) {
-      addUnique(pinned);
+      allItems.add(pinned);
     }
     for (final empItems in _draftByEmp.values) {
       for (final entry in empItems.entries) {
-        if (entry.value > 0) addUnique(entry.key);
+        if (entry.value > 0) allItems.add(entry.key);
       }
     }
-    if (ordered.isEmpty) {
-      for (final product in _wipProducts.where((p) => p.isActive).take(3)) {
-        addUnique(product.name);
+    if (allItems.isEmpty) {
+      for (final p in _wipProducts.where((p) => p.isActive).take(3)) {
+        allItems.add(p.name);
       }
     }
 
     _activeItemNames
       ..clear()
-      ..addAll(ordered);
+      ..addAll(allItems);
   }
 
   void _persistDraftSnapshot() {

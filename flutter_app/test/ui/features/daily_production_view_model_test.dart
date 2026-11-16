@@ -202,6 +202,84 @@ void main() {
       expect(vm.filteredWorkers.length, equals(1));
       expect(vm.filteredWorkers.first.englishName, equals('Muniyasamy'));
     });
+
+    test('Idea 2: isolates WIP product columns and subtotals by department/role', () async {
+      api.employeesData.addAll([
+        {
+          'id': 101,
+          'name': 'Abi (அபி)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 102,
+          'name': 'Muniyasamy (முனியசாமி)',
+          'role': 'Chemical',
+          'paymentType': 'Contractual',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+      ]);
+      api.productsData.addAll([
+        {
+          'id': 201,
+          'code': 'TAPE-01',
+          'name': '10 KVR 48 Tape',
+          'type': 'WIP',
+          'category': 'Tape',
+          'unit': 'Pcs',
+          'boxesPerCase': 1,
+          'status': 'Active',
+        },
+        {
+          'id': 202,
+          'code': 'CHEM-01',
+          'name': 'Red Dipping Chemical',
+          'type': 'WIP',
+          'category': 'Chemical',
+          'unit': 'Pcs',
+          'boxesPerCase': 1,
+          'status': 'Active',
+        },
+      ]);
+
+      await vm.loadInitialData();
+
+      // Check smart initial mapping
+      final tapeItems = vm.getActiveItemsForRole('Tape');
+      final chemItems = vm.getActiveItemsForRole('Chemical');
+      expect(tapeItems.contains('10 KVR 48 Tape'), isTrue);
+      expect(tapeItems.contains('Red Dipping Chemical'), isFalse);
+      expect(chemItems.contains('Red Dipping Chemical'), isTrue);
+      expect(chemItems.contains('10 KVR 48 Tape'), isFalse);
+
+      // Add a column specifically to Tape
+      vm.addActiveItemForRole('Tape', 'Special Custom Tape (WIP)');
+      expect(vm.getActiveItemsForRole('Tape').contains('Special Custom Tape (WIP)'), isTrue);
+      expect(vm.getActiveItemsForRole('Chemical').contains('Special Custom Tape (WIP)'), isFalse);
+
+      // Set quantities for Tape worker and Chemical worker
+      vm.setQuantity(101, '10 KVR 48 Tape', 60);
+      vm.setQuantity(101, 'Special Custom Tape (WIP)', 40);
+      vm.setQuantity(102, 'Red Dipping Chemical', 35);
+
+      // Verify department totals
+      expect(vm.getRoleTotalQuantity('Tape'), equals(100));
+      expect(vm.getRoleTotalQuantity('Chemical'), equals(35));
+      expect(vm.getRoleItemTotalQuantity('Tape', '10 KVR 48 Tape'), equals(60));
+      expect(vm.getRoleItemTotalQuantity('Tape', 'Special Custom Tape (WIP)'), equals(40));
+      expect(vm.getRoleItemTotalQuantity('Chemical', 'Red Dipping Chemical'), equals(35));
+      expect(vm.totalPiecesEntered, equals(135));
+
+      // Remove column from Tape with clearDraft: true
+      vm.removeActiveItemForRole('Tape', 'Special Custom Tape (WIP)', clearDraft: true);
+      expect(vm.getActiveItemsForRole('Tape').contains('Special Custom Tape (WIP)'), isFalse);
+      expect(vm.getQuantity(101, 'Special Custom Tape (WIP)'), equals(0));
+      expect(vm.getRoleTotalQuantity('Tape'), equals(60));
+      expect(vm.getRoleTotalQuantity('Chemical'), equals(35)); // Chemical remains intact
+    });
   });
 }
 
