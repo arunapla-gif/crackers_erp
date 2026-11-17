@@ -59,14 +59,14 @@ void main() {
       await tester.tap(find.text('+10').first);
       await tester.pump();
 
-      expect(find.text('Unsaved Local Changes'), findsOneWidget);
-      expect(find.text('Save Log'), findsOneWidget);
+      expect(find.text('Daily Worksheet'), findsOneWidget);
+      expect(find.text('Save Worksheet'), findsOneWidget);
 
-      await tester.tap(find.text('Save Log'));
+      await tester.tap(find.text('Save Worksheet'));
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Unsaved Local Changes'), findsNothing);
+      expect(find.text('Daily Worksheet'), findsNothing);
       expect(api.productionsData.length, equals(1));
     },
   );
@@ -117,7 +117,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
-      expect(find.text('Save Matrix'), findsOneWidget);
+      expect(find.text('Save Worksheet'), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
 
       // Focus first cell (Packing -> emp 12), use +10, Next -> emp 11 (+25), Next -> Col 2 emp 12 (+50)
@@ -153,7 +153,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Exit Focus'), findsOneWidget);
 
-      await tester.tap(find.text('Save Matrix'));
+      await tester.tap(find.text('Save Worksheet'));
       await tester.pumpAndSettle();
       expect(api.productionsData.length, equals(2));
     },

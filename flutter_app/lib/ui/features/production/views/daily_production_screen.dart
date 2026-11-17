@@ -378,6 +378,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
+        final inrFormat = NumberFormat('#,##,##0', 'en_IN');
         final effectiveMode = vm.entryMode;
         final inFocusMatrix =
             !_showHistoryTab &&
@@ -477,7 +478,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
               ),
             ],
           ),
-          bottomNavigationBar: !_showHistoryTab && vm.hasUnsavedChanges
+          bottomNavigationBar: !_showHistoryTab &&
+                  effectiveMode != ProductionEntryMode.matrix &&
+                  vm.hasUnsavedChanges
               ? SafeArea(
                   top: false,
                   child: Container(
@@ -497,7 +500,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Unsaved Local Changes',
+                                'Daily Worksheet',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 13,
@@ -505,7 +508,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                 ),
                               ),
                               Text(
-                                '${vm.activeWorkersLoggedCount} workers • ${vm.totalPiecesEntered} total pcs',
+                                '${vm.activeWorkersLoggedCount} workers logged • ${inrFormat.format(vm.totalPiecesEntered)} pcs',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: ErpTheme.slate500,
@@ -521,6 +524,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(
+                          key: const ValueKey('production-save-worksheet-button'),
                           onPressed: vm.isSaving ? null : _handleSave,
                           style: FilledButton.styleFrom(
                             backgroundColor: ErpTheme.productionAmber,
@@ -536,7 +540,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                   ),
                                 )
                               : const Icon(Icons.save_rounded, size: 18),
-                          label: Text(vm.isSaving ? 'Saving...' : 'Save Log'),
+                          label: Text(
+                            vm.isSaving ? 'Saving...' : 'Save Worksheet',
+                          ),
                         ),
                       ],
                     ),
@@ -2316,8 +2322,8 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -2328,23 +2334,24 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                       widget.isFocusMode
                           ? Icons.fullscreen_exit_rounded
                           : Icons.fullscreen_rounded,
-                      size: 15,
+                      size: 14,
                     ),
                     label: Text(
                       widget.isFocusMode ? 'Exit Focus' : 'Focus Grid',
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   FilledButton.icon(
+                    key: const ValueKey('matrix-save-button-top'),
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                       backgroundColor: ErpTheme.productionAmber,
                       foregroundColor: Colors.white,
@@ -2353,11 +2360,20 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                       ),
                     ),
                     onPressed: vm.isSaving ? null : widget.onSaveMatrix,
-                    icon: const Icon(Icons.save_rounded, size: 14),
+                    icon: vm.isSaving
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save_rounded, size: 14),
                     label: Text(
-                      vm.isSaving ? 'Saving...' : 'Save Matrix',
+                      vm.isSaving ? 'Saving...' : 'Save Worksheet',
                       style: const TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -3429,7 +3445,9 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Factory Total Entry',
+                  'Worksheet Summary',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
@@ -3438,8 +3456,10 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                 ),
                 Text(
                   '${vm.activeWorkersLoggedCount} Workers • ${inrFormat.format(vm.totalPiecesEntered)} Pcs',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w900,
                     color: ErpTheme.slate900,
                   ),
@@ -3453,7 +3473,8 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             style: FilledButton.styleFrom(
               backgroundColor: ErpTheme.productionAmber,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -3472,9 +3493,9 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             label: Text(
               vm.isSaving
                   ? 'Saving...'
-                  : 'Save All (${vm.filteredWorkers.length})',
+                  : 'Save Whole Sheet',
               style: const TextStyle(
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w900,
               ),
             ),

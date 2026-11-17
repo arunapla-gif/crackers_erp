@@ -470,7 +470,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     _hasRestoredLocalDraft = false;
     _rebuildActiveItems();
     await _productionRepository.clearDraft(selectedIsoDate);
-    _statusMessage = 'Unsaved draft discarded.';
+    _statusMessage = 'Worksheet draft discarded.';
     _safeNotify();
   }
 
@@ -519,13 +519,13 @@ class DailyProductionViewModel extends ChangeNotifier {
       _dateRecords = refreshed[0];
       _recentHistory = refreshed[1];
       _syncDayStateFromRecords(_dateRecords, checkLocalDraft: false);
-      _statusMessage = 'Saved production log for $selectedIsoDate.';
+      _statusMessage = 'Saved production worksheet for $selectedIsoDate.';
       return true;
     } on ApiException catch (e) {
       _errorMessage = e.message;
       return false;
     } catch (_) {
-      _errorMessage = 'Failed to save daily production log.';
+      _errorMessage = 'Failed to save daily production worksheet.';
       return false;
     } finally {
       _isSaving = false;
