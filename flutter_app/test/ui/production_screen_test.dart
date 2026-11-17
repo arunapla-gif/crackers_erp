@@ -743,4 +743,101 @@ void main() {
       expect(find.text('12cm Electric Sparklers (WIP)'), findsWidgets);
     },
   );
+
+  testWidgets(
+    'Docked In-App Keypad enables rapid numeric entry with 1-9, 00, backspace, and Next without native keyboard',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap cell for emp 12 (Packing)
+      final cellFinder = find.byKey(
+        const ValueKey('matrix_12_12cm Electric Sparklers (WIP)'),
+      );
+      await tester.ensureVisible(cellFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(cellFinder);
+      await tester.pumpAndSettle();
+
+      final keypadFinder = find.byKey(const ValueKey('matrix-docked-keypad'));
+      expect(keypadFinder, findsOneWidget);
+
+      // In-app keypad is open: test numeric keys 1, 5, 0 -> 150
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('1')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(1));
+
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('5')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(15));
+
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('0')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(150));
+
+      // Test double zero '00' -> 15000
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('00')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(15000));
+
+      // Test backspace -> 1500
+      await tester.tap(find.byIcon(Icons.backspace_outlined));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(1500));
+
+      // Test quick +50 -> 1550
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('+50')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(1550));
+
+      // Next ↓ moves to next worker (emp 11)
+      await tester.tap(find.byKey(const ValueKey('matrix-next-worker-button')));
+      await tester.pumpAndSettle();
+
+      // Type 2, 5 -> 25 for emp 11
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('5')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(25));
+
+      // Close keypad via close button
+      await tester.tap(find.byTooltip('Done / Close Keypad'));
+      await tester.pumpAndSettle();
+
+      // Keypad is closed and summary bar reappears with Save Whole Sheet
+      expect(keypadFinder, findsNothing);
+      expect(find.text('Save Whole Sheet'), findsOneWidget);
+    },
+  );
 }

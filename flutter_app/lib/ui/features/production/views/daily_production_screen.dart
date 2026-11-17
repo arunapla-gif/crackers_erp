@@ -1914,11 +1914,14 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     super.initState();
   }
 
+  bool _isNewFocusDigit = true;
+
   String _cellKey(int empId, String itemName) => '$empId::$itemName';
 
   void _updateFocusedKey(String key, bool hasFocus) {
     final next = hasFocus ? key : (_focusedKey == key ? null : _focusedKey);
     if (next == _focusedKey) return;
+    _isNewFocusDigit = true;
     if (WidgetsBinding.instance.schedulerPhase == SchedulerPhase.idle) {
       setState(() => _focusedKey = next);
     } else {
@@ -1928,6 +1931,79 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
         }
       });
     }
+  }
+
+  void _unfocusCurrentCell() {
+    if (_focusedKey != null) {
+      _cellFocusNodes[_focusedKey]?.unfocus();
+      setState(() => _focusedKey = null);
+    }
+  }
+
+  void _onKeypadDigit(
+    int digit,
+    int empId,
+    String itemName,
+    DailyProductionViewModel vm,
+  ) {
+    final current = vm.getQuantity(empId, itemName);
+    final int next;
+    if (_isNewFocusDigit) {
+      next = digit;
+      _isNewFocusDigit = false;
+    } else {
+      final str = '$current$digit';
+      if (str.length > 6) return;
+      next = int.tryParse(str) ?? current;
+    }
+    vm.setQuantity(empId, itemName, next);
+  }
+
+  void _onKeypadDoubleZero(
+    int empId,
+    String itemName,
+    DailyProductionViewModel vm,
+  ) {
+    final current = vm.getQuantity(empId, itemName);
+    if (_isNewFocusDigit || current == 0) {
+      vm.setQuantity(empId, itemName, 0);
+      _isNewFocusDigit = false;
+      return;
+    }
+    final str = '${current}00';
+    if (str.length > 6) return;
+    final next = int.tryParse(str) ?? current;
+    vm.setQuantity(empId, itemName, next);
+  }
+
+  void _onKeypadBackspace(
+    int empId,
+    String itemName,
+    DailyProductionViewModel vm,
+  ) {
+    final current = vm.getQuantity(empId, itemName);
+    final next = current ~/ 10;
+    _isNewFocusDigit = false;
+    vm.setQuantity(empId, itemName, next);
+  }
+
+  void _onKeypadClear(
+    int empId,
+    String itemName,
+    DailyProductionViewModel vm,
+  ) {
+    _isNewFocusDigit = true;
+    vm.setQuantity(empId, itemName, 0);
+  }
+
+  void _onKeypadDelta(
+    int delta,
+    int empId,
+    String itemName,
+    DailyProductionViewModel vm,
+  ) {
+    _isNewFocusDigit = false;
+    vm.incrementQuantity(empId, itemName, delta);
   }
 
   FocusNode _focusNodeFor(String key) {
@@ -2182,10 +2258,11 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             child: stackedCards,
           );
 
+          final hasKeypad = activeMeta != null && _focusedKey != null;
           final screenHeight = MediaQuery.sizeOf(context).height;
-          final maxCardHeight =
-              (screenHeight * (widget.isFocusMode ? 0.72 : 0.50))
-                  .clamp(260.0, 700.0);
+          final maxCardHeight = (screenHeight *
+                  (widget.isFocusMode ? 0.72 : (hasKeypad ? 0.30 : 0.50)))
+              .clamp(hasKeypad ? 160.0 : 260.0, 700.0);
           final bodyWrapper = useBoundedExpand
               ? Expanded(child: bodyScroll)
               : ConstrainedBox(
@@ -2202,17 +2279,19 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildToolbar(vm, items),
+              bodyWrapper,
               if (activeMeta != null && _focusedKey != null)
-                _buildQuickEntryBar(
+                _buildDockedKeypad(
                   vm: vm,
                   cellKey: _focusedKey!,
                   empId: activeMeta.empId,
                   empName: activeMeta.empName,
                   itemName: activeMeta.itemName,
                   columnMajorKeys: columnMajorKeys,
-                ),
-              bodyWrapper,
-              _buildStickyBottomBar(vm, inrFormat),
+                  inrFormat: inrFormat,
+                )
+              else
+                _buildStickyBottomBar(vm, inrFormat),
             ],
           );
         },
@@ -2509,51 +2588,251 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     );
   }
 
-  Widget _buildQuickEntryBar({
+  Widget _buildDockedKeypad({
     required DailyProductionViewModel vm,
     required String cellKey,
     required int empId,
     required String empName,
     required String itemName,
     required List<String> columnMajorKeys,
+    required NumberFormat inrFormat,
   }) {
+    final currentQty = vm.getQuantity(empId, itemName);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: ErpTheme.hrIndigoSoft.withValues(alpha: 0.7),
-        border: const Border(bottom: BorderSide(color: ErpTheme.slate200)),
+      key: const ValueKey('matrix-docked-keypad'),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: ErpTheme.slate200, width: 1.5)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Text(
-              '$empName • $itemName',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: ErpTheme.hrIndigo,
-              ),
+          // 1. Context Strip: Worker Name • WIP Item = Qty
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: const BoxDecoration(
+              color: ErpTheme.slate50,
+              border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        empName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: ErpTheme.slate900,
+                        ),
+                      ),
+                      Text(
+                        itemName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: ErpTheme.slate500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: ErpTheme.hrIndigoSoft,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: ErpTheme.hrIndigo.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    '${inrFormat.format(currentQty)} pcs',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: ErpTheme.hrIndigo,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  tooltip: 'Done / Close Keypad',
+                  onPressed: _unfocusCurrentCell,
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 6),
-          for (final delta in const [10, 25, 50]) ...[
-            _QuickQtyPill(
-              label: '+$delta',
-              onTap: () => vm.incrementQuantity(empId, itemName, delta),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 2. Quick Stepper Pills (+10, +25, +50, +100, 0)
+                Row(
+                  children: [
+                    for (final delta in const [10, 25, 50, 100])
+                      _KeypadButton(
+                        label: '+$delta',
+                        height: 28,
+                        fontSize: 11,
+                        backgroundColor: ErpTheme.hrIndigoSoft,
+                        foregroundColor: ErpTheme.hrIndigo,
+                        onTap: () => _onKeypadDelta(delta, empId, itemName, vm),
+                      ),
+                    _KeypadButton(
+                      label: 'Clear',
+                      height: 28,
+                      fontSize: 10.5,
+                      backgroundColor: ErpTheme.slate100,
+                      foregroundColor: ErpTheme.slate700,
+                      onTap: () => _onKeypadClear(empId, itemName, vm),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 3. Number Row 1: 1, 2, 3, ⌫
+                Row(
+                  children: [
+                    _KeypadButton(
+                      label: '1',
+                      onTap: () => _onKeypadDigit(1, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '2',
+                      onTap: () => _onKeypadDigit(2, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '3',
+                      onTap: () => _onKeypadDigit(3, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '⌫',
+                      icon: Icons.backspace_outlined,
+                      backgroundColor: ErpTheme.slate100,
+                      foregroundColor: ErpTheme.slate700,
+                      onTap: () => _onKeypadBackspace(empId, itemName, vm),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 4. Number Row 2: 4, 5, 6, 00
+                Row(
+                  children: [
+                    _KeypadButton(
+                      label: '4',
+                      onTap: () => _onKeypadDigit(4, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '5',
+                      onTap: () => _onKeypadDigit(5, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '6',
+                      onTap: () => _onKeypadDigit(6, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '00',
+                      backgroundColor: ErpTheme.slate50,
+                      onTap: () => _onKeypadDoubleZero(empId, itemName, vm),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 5. Number Row 3: 7, 8, 9, 0
+                Row(
+                  children: [
+                    _KeypadButton(
+                      label: '7',
+                      onTap: () => _onKeypadDigit(7, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '8',
+                      onTap: () => _onKeypadDigit(8, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '9',
+                      onTap: () => _onKeypadDigit(9, empId, itemName, vm),
+                    ),
+                    _KeypadButton(
+                      label: '0',
+                      onTap: () => _onKeypadDigit(0, empId, itemName, vm),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // 6. Action Bar: Next Worker ↓
+                Row(
+                  children: [
+                    Container(
+                      height: 34,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: ErpTheme.slate100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: ErpTheme.slate200),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${inrFormat.format(vm.totalPiecesEntered)} pcs',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: ErpTheme.slate700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: SizedBox(
+                        height: 34,
+                        child: FilledButton.icon(
+                          key: const ValueKey('matrix-next-worker-button'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: ErpTheme.productionAmber,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () {
+                            _isNewFocusDigit = true;
+                            _focusNextCell(cellKey, columnMajorKeys);
+                          },
+                          icon: const Icon(Icons.arrow_downward_rounded, size: 15),
+                          label: const Text(
+                            'Next ↓',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(width: 4),
-          ],
-          _QuickQtyPill(
-            label: '0',
-            onTap: () => vm.setQuantity(empId, itemName, 0),
-          ),
-          const SizedBox(width: 4),
-          _QuickQtyPill(
-            label: 'Next ↓',
-            highlighted: true,
-            onTap: () => _focusNextCell(cellKey, columnMajorKeys),
           ),
         ],
       ),
@@ -3506,40 +3785,54 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
   }
 }
 
-class _QuickQtyPill extends StatelessWidget {
-  const _QuickQtyPill({
+class _KeypadButton extends StatelessWidget {
+  const _KeypadButton({
     required this.label,
     required this.onTap,
-    this.highlighted = false,
+    this.icon,
+    this.backgroundColor = Colors.white,
+    this.foregroundColor = ErpTheme.slate900,
+    this.height = 32.0,
+    this.fontSize = 14.0,
   });
 
   final String label;
   final VoidCallback onTap;
-  final bool highlighted;
+  final IconData? icon;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final double height;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: highlighted ? ErpTheme.hrIndigo : Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        canRequestFocus: false,
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: highlighted ? ErpTheme.hrIndigo : ErpTheme.slate200,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: highlighted ? Colors.white : ErpTheme.slate900,
+    return Expanded(
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.symmetric(horizontal: 2.0),
+        child: Material(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(7),
+          child: InkWell(
+            canRequestFocus: false,
+            borderRadius: BorderRadius.circular(7),
+            onTap: onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: ErpTheme.slate200),
+              ),
+              alignment: Alignment.center,
+              child: icon != null
+                  ? Icon(icon, size: fontSize + 1, color: foregroundColor)
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: FontWeight.w800,
+                        color: foregroundColor,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -3636,6 +3929,8 @@ class _MatrixQtyCellState extends State<_MatrixQtyCell> {
       controller: _ctrl,
       focusNode: _focus,
       keyboardType: TextInputType.number,
+      readOnly: true,
+      showCursor: true,
       textInputAction: TextInputAction.next,
       textAlign: TextAlign.center,
       inputFormatters: [
@@ -3654,7 +3949,9 @@ class _MatrixQtyCellState extends State<_MatrixQtyCell> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
         fillColor: widget.quantity > 0
             ? ErpTheme.hrIndigoSoft.withValues(alpha: 0.45)
-            : ErpTheme.slate50,
+            : (_focus.hasFocus
+                ? ErpTheme.hrIndigoSoft.withValues(alpha: 0.25)
+                : ErpTheme.slate50),
       ),
       onChanged: (raw) => widget.onChanged(int.tryParse(raw.trim()) ?? 0),
       onEditingComplete: widget.onSubmitNext ?? _focus.nextFocus,
