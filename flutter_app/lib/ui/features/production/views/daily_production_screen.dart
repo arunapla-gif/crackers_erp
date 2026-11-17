@@ -406,6 +406,25 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         ),
                       ),
                     IconButton(
+                      tooltip: _showHistoryTab ? 'Back to Entry' : 'Saved Logs',
+                      onPressed: () => setState(() {
+                        _showHistoryTab = !_showHistoryTab;
+                        if (_showHistoryTab) {
+                          _isMatrixFocusMode = false;
+                        }
+                      }),
+                      icon: Badge(
+                        isLabelVisible:
+                            vm.recentHistory.isNotEmpty && !_showHistoryTab,
+                        label: Text('${vm.recentHistory.length}'),
+                        child: Icon(
+                          _showHistoryTab
+                              ? Icons.edit_note_rounded
+                              : Icons.history_rounded,
+                        ),
+                      ),
+                    ),
+                    IconButton(
                       tooltip: 'Refresh',
                       onPressed: vm.isLoading ? null : vm.refreshAll,
                       icon: const Icon(Icons.refresh_rounded),
@@ -431,37 +450,6 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         tooltip: 'Refresh',
                         onPressed: vm.isLoading ? null : vm.refreshAll,
                         icon: const Icon(Icons.refresh_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-              if (!inFocusMatrix)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: SegmentedButton<bool>(
-                          segments: const [
-                            ButtonSegment<bool>(
-                              value: false,
-                              icon: Icon(Icons.edit_note_rounded, size: 18),
-                              label: Text('Log Entry'),
-                            ),
-                            ButtonSegment<bool>(
-                              value: true,
-                              icon: Icon(Icons.history_rounded, size: 18),
-                              label: Text('Saved Logs'),
-                            ),
-                          ],
-                          selected: {_showHistoryTab},
-                          onSelectionChanged: (sel) => setState(() {
-                            _showHistoryTab = sel.first;
-                            if (_showHistoryTab) {
-                              _isMatrixFocusMode = false;
-                            }
-                          }),
-                        ),
                       ),
                     ],
                   ),
@@ -577,81 +565,349 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     return RefreshIndicator(
       onRefresh: vm.refreshAll,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 24),
         children: [
-          // Date switcher card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Previous Day',
-                    onPressed: () => vm.selectDate(
-                      vm.selectedDate.subtract(const Duration(days: 1)),
-                    ),
-                    icon: const Icon(Icons.chevron_left_rounded),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      onTap: _pickDate,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+          // Idea 1: Compact Streamline Control Card (Date, Mode, Search, Tamil Toggle, Saved Logs)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: ErpTheme.slate200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Row 1: Date Navigator Pill (Expanded) + History Toggle Pill
+                Row(
+                  children: [
+                    // Compact Date Navigator Pill
+                    Expanded(
+                      child: Container(
+                        height: 32,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: ErpTheme.slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: ErpTheme.slate200),
+                        ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
-                              Icons.calendar_today_rounded,
-                              size: 16,
-                              color: ErpTheme.productionAmber,
+                            InkWell(
+                              onTap: () => vm.selectDate(
+                                vm.selectedDate.subtract(const Duration(days: 1)),
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              child: const Padding(
+                                padding: EdgeInsets.all(2),
+                                child: Icon(Icons.chevron_left_rounded, size: 18),
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                dateLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                  color: ErpTheme.slate900,
+                            Expanded(
+                              child: InkWell(
+                                onTap: _pickDate,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today_rounded,
+                                        size: 13,
+                                        color: ErpTheme.productionAmber,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          dateLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12,
+                                            color: ErpTheme.slate900,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isToday) ...[
+                                        const SizedBox(width: 4),
+                                        const ErpBadge(
+                                          label: 'TODAY',
+                                          backgroundColor:
+                                              ErpTheme.productionAmberSoft,
+                                          foregroundColor:
+                                              ErpTheme.productionAmber,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                            if (isToday) ...[
-                              const SizedBox(width: 8),
-                              const ErpBadge(
-                                label: 'TODAY',
-                                backgroundColor: ErpTheme.productionAmberSoft,
-                                foregroundColor: ErpTheme.productionAmber,
+                            InkWell(
+                              onTap: isToday
+                                  ? null
+                                  : () => vm.selectDate(
+                                      vm.selectedDate.add(
+                                        const Duration(days: 1),
+                                      ),
+                                    ),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Padding(
+                                padding: const EdgeInsets.all(2),
+                                child: Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: isToday ? ErpTheme.slate400 : null,
+                                ),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Next Day',
-                    onPressed: isToday
-                        ? null
-                        : () => vm.selectDate(
-                            vm.selectedDate.add(const Duration(days: 1)),
+                    const SizedBox(width: 6),
+                    // History Toggle Pill
+                    InkWell(
+                      onTap: () => setState(() {
+                        _showHistoryTab = !_showHistoryTab;
+                        if (_showHistoryTab) _isMatrixFocusMode = false;
+                      }),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        height: 32,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _showHistoryTab
+                              ? ErpTheme.productionAmberSoft
+                              : ErpTheme.slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _showHistoryTab
+                                ? ErpTheme.productionAmber
+                                : ErpTheme.slate200,
                           ),
-                    icon: const Icon(Icons.chevron_right_rounded),
-                  ),
-                ],
-              ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _showHistoryTab
+                                  ? Icons.edit_note_rounded
+                                  : Icons.history_rounded,
+                              size: 16,
+                              color: _showHistoryTab
+                                  ? ErpTheme.productionAmber
+                                  : ErpTheme.slate700,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _showHistoryTab
+                                  ? 'Entry'
+                                  : (vm.recentHistory.isNotEmpty
+                                      ? 'Logs (${vm.recentHistory.length})'
+                                      : 'Logs'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: _showHistoryTab
+                                    ? ErpTheme.productionAmber
+                                    : ErpTheme.slate800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Row 2: Mode Selector (By Item / By Worker / Matrix) + Language Switcher (தமிழ் / Eng / Both)
+                Row(
+                  children: [
+                    // Mode Selector: By Item | By Worker | Matrix
+                    Expanded(
+                      child: SegmentedButton<ProductionEntryMode>(
+                        showSelectedIcon: false,
+                        style: const ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: WidgetStatePropertyAll(
+                            EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                          ),
+                        ),
+                        segments: const [
+                          ButtonSegment(
+                            value: ProductionEntryMode.byItem,
+                            icon: Icon(Icons.view_list_rounded, size: 14),
+                            label: Text(
+                              'By Item',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          ButtonSegment(
+                            value: ProductionEntryMode.byWorker,
+                            icon: Icon(Icons.person_search_rounded, size: 14),
+                            label: Text(
+                              'By Worker',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          ButtonSegment(
+                            value: ProductionEntryMode.matrix,
+                            icon: Icon(Icons.grid_on_rounded, size: 14),
+                            label: Text(
+                              'Matrix',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                        selected: {effectiveMode},
+                        onSelectionChanged: (sel) {
+                          if (sel.first != ProductionEntryMode.matrix &&
+                              _isMatrixFocusMode) {
+                            setState(() => _isMatrixFocusMode = false);
+                          }
+                          vm.setEntryMode(sel.first);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // Language Switcher: தமிழ் / Eng / Both
+                    SegmentedButton<WorkerNameDisplayMode>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: WidgetStatePropertyAll(
+                          EdgeInsets.symmetric(horizontal: 5, vertical: 0),
+                        ),
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                          value: WorkerNameDisplayMode.tamil,
+                          label: Text(
+                            'தமிழ்',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: WorkerNameDisplayMode.english,
+                          label: Text(
+                            'Eng',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        ButtonSegment(
+                          value: WorkerNameDisplayMode.both,
+                          label: Text(
+                            'Both',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                      selected: {_nameDisplayMode},
+                      onSelectionChanged: (sel) =>
+                          setState(() => _nameDisplayMode = sel.first),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Row 3: Worker Search Input (+ Pick WIP if not in matrix)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: vm.setWorkerSearch,
+                          style: const TextStyle(fontSize: 12),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'Filter worker name, role or unit...',
+                            hintStyle: const TextStyle(
+                              fontSize: 11,
+                              color: ErpTheme.slate400,
+                            ),
+                            prefixIcon: const Icon(Icons.search, size: 16),
+                            prefixIconConstraints:
+                                const BoxConstraints(minWidth: 28),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 14),
+                                    padding: EdgeInsets.zero,
+                                    constraints:
+                                        const BoxConstraints(minWidth: 24),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      vm.setWorkerSearch('');
+                                    },
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (effectiveMode != ProductionEntryMode.matrix) ...[
+                      const SizedBox(width: 6),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Pick / Pin WIP',
+                        onPressed: _openWipItemPicker,
+                        icon: const Icon(
+                          Icons.playlist_add_rounded,
+                          size: 18,
+                          color: ErpTheme.productionAmber,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
           ),
           if (vm.hasRestoredLocalDraft) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: ErpTheme.productionAmberSoft,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: ErpTheme.productionAmber.withValues(alpha: 0.4),
                 ),
@@ -660,15 +916,15 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 children: [
                   const Icon(
                     Icons.offline_pin_outlined,
-                    size: 18,
+                    size: 16,
                     color: ErpTheme.productionAmber,
                   ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Restored unsaved offline draft for this date. Tap Save Log to sync.',
+                      'Restored unsaved offline draft for this date. Tap Save to sync.',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: ErpTheme.slate900,
                       ),
@@ -682,130 +938,6 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 10),
-          // Entry mode + WIP Picker
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            alignment: WrapAlignment.spaceBetween,
-            children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SegmentedButton<ProductionEntryMode>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    padding: WidgetStatePropertyAll(
-                      EdgeInsets.symmetric(horizontal: 10),
-                    ),
-                  ),
-                  segments: const [
-                    ButtonSegment(
-                      value: ProductionEntryMode.byItem,
-                      icon: Icon(Icons.view_list_rounded, size: 16),
-                      label: Text('By Item'),
-                    ),
-                    ButtonSegment(
-                      value: ProductionEntryMode.byWorker,
-                      icon: Icon(Icons.person_search_rounded, size: 16),
-                      label: Text('By Worker'),
-                    ),
-                    ButtonSegment(
-                      value: ProductionEntryMode.matrix,
-                      icon: Icon(Icons.grid_on_rounded, size: 16),
-                      label: Text('Matrix'),
-                    ),
-                  ],
-                  selected: {effectiveMode},
-                  onSelectionChanged: (sel) {
-                    if (sel.first != ProductionEntryMode.matrix &&
-                        _isMatrixFocusMode) {
-                      setState(() => _isMatrixFocusMode = false);
-                    }
-                    vm.setEntryMode(sel.first);
-                  },
-                ),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (effectiveMode != ProductionEntryMode.matrix)
-                    SegmentedButton<WorkerNameDisplayMode>(
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: WidgetStatePropertyAll(
-                        EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-                      ),
-                    ),
-                    segments: const [
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.tamil,
-                        label: Text(
-                          'தமிழ்',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.english,
-                        label: Text(
-                          'Eng',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.both,
-                        label: Text(
-                          'Both',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                    selected: {_nameDisplayMode},
-                    onSelectionChanged: (sel) =>
-                        setState(() => _nameDisplayMode = sel.first),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _openWipItemPicker(),
-                    icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                    label: const Text('Pick / Pin WIP'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Worker search & Role filter
-          TextField(
-            controller: _searchController,
-            onChanged: vm.setWorkerSearch,
-            decoration: InputDecoration(
-              hintText: 'Filter worker name, role or unit...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        vm.setWorkerSearch('');
-                      },
-                    )
-                  : null,
-            ),
-          ),
           if (effectiveMode != ProductionEntryMode.matrix) ...[
             const SizedBox(height: 10),
             SingleChildScrollView(
@@ -2166,83 +2298,29 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
           ),
         ),
       ),
-        // Action toolbar
+        // Idea 1: Compact Matrix Action & Quick Add Column Bar
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: const BoxDecoration(
             color: ErpTheme.slate50,
             border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
           ),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '${vm.filteredWorkers.length} workers • ${items.length} WIP',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: ErpTheme.slate700,
-                ),
-              ),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              // Sub-row 1: Focus Grid + Save Matrix
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  SegmentedButton<WorkerNameDisplayMode>(
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: WidgetStatePropertyAll(
-                        EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-                      ),
-                    ),
-                    segments: const [
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.tamil,
-                        label: Text(
-                          'தமிழ்',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.english,
-                        label: Text(
-                          'Eng',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: WorkerNameDisplayMode.both,
-                        label: Text(
-                          'Both',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                    selected: {_nameDisplayMode},
-                    onSelectionChanged: (sel) =>
-                        widget.onNameDisplayModeChanged(sel.first),
-                  ),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
-                        vertical: 6,
+                        vertical: 5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                     onPressed: widget.onToggleFocusMode,
@@ -2250,172 +2328,163 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                       widget.isFocusMode
                           ? Icons.fullscreen_exit_rounded
                           : Icons.fullscreen_rounded,
-                      size: 16,
+                      size: 15,
                     ),
-                    label: Text(widget.isFocusMode ? 'Exit Focus' : 'Focus Grid'),
+                    label: Text(
+                      widget.isFocusMode ? 'Exit Focus' : 'Focus Grid',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      backgroundColor: ErpTheme.productionAmber,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: vm.isSaving ? null : widget.onSaveMatrix,
+                    icon: const Icon(Icons.save_rounded, size: 14),
+                    label: Text(
+                      vm.isSaving ? 'Saving...' : 'Save Matrix',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              // Sub-row 2: Quick Add Column Dropdown + Add Column Button
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: ErpTheme.slate200),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: _selectedWipProductToAdd,
+                          icon: const Icon(
+                            Icons.arrow_drop_down,
+                            size: 18,
+                            color: ErpTheme.slate500,
+                          ),
+                          hint: const Row(
+                            children: [
+                              Icon(
+                                Icons.add_chart_rounded,
+                                size: 14,
+                                color: ErpTheme.productionAmber,
+                              ),
+                              SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Add Product Column (e.g. 10 KVR 48)...',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: ErpTheme.slate500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          items: vm.wipProducts.map((p) {
+                            final alreadyAdded = items.contains(p.name);
+                            return DropdownMenuItem<String>(
+                              value: p.name,
+                              enabled: !alreadyAdded,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      p.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: alreadyAdded
+                                            ? FontWeight.w500
+                                            : FontWeight.w700,
+                                        color: alreadyAdded
+                                            ? ErpTheme.slate400
+                                            : ErpTheme.slate900,
+                                      ),
+                                    ),
+                                  ),
+                                  if (alreadyAdded)
+                                    const Text(
+                                      'Added',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: ErpTheme.slate400,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _selectedWipProductToAdd = val);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  FilledButton.icon(
+                    key: const ValueKey('matrix-add-column-button'),
+                    style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 6,
                       ),
-                    ),
-                    onPressed: vm.isSaving || vm.totalPiecesEntered == 0
-                        ? null
-                        : widget.onClearMatrix,
-                    icon: const Icon(Icons.clear_all_rounded, size: 16),
-                    label: const Text('Clear'),
-                  ),
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
                       backgroundColor: ErpTheme.productionAmber,
                       foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    onPressed: vm.isSaving ? null : widget.onSaveMatrix,
-                    icon: const Icon(Icons.save_rounded, size: 16),
-                    label: Text(vm.isSaving ? 'Saving...' : 'Save Matrix'),
+                    onPressed: _selectedWipProductToAdd == null ||
+                            items.contains(_selectedWipProductToAdd)
+                        ? null
+                        : () {
+                            vm.addActiveItem(_selectedWipProductToAdd!);
+                            setState(() => _selectedWipProductToAdd = null);
+                          },
+                    icon: const Icon(Icons.add_rounded, size: 15),
+                    label: const Text(
+                      '+ Add Column',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            ],
-          ),
-        ),
-        // React-style Quick Add Product Column Bar
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 38,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: ErpTheme.slate50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: ErpTheme.slate400),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      value: _selectedWipProductToAdd,
-                      icon: const Icon(
-                        Icons.arrow_drop_down,
-                        color: ErpTheme.slate500,
-                      ),
-                      hint: const Row(
-                        children: [
-                          Icon(
-                            Icons.add_chart_rounded,
-                            size: 16,
-                            color: ErpTheme.productionAmber,
-                          ),
-                          SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Add Product Column (e.g. 10 KVR 48)...',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: ErpTheme.slate500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      items: vm.wipProducts.map((p) {
-                        final alreadyAdded = items.contains(p.name);
-                        return DropdownMenuItem<String>(
-                          value: p.name,
-                          enabled: !alreadyAdded,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  p.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: alreadyAdded
-                                        ? FontWeight.w500
-                                        : FontWeight.w700,
-                                    color: alreadyAdded
-                                        ? ErpTheme.slate400
-                                        : ErpTheme.slate900,
-                                  ),
-                                ),
-                              ),
-                              if (alreadyAdded)
-                                const Text(
-                                  'Added',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: ErpTheme.slate400,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() => _selectedWipProductToAdd = val);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                key: const ValueKey('matrix-add-column-button'),
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  backgroundColor: ErpTheme.productionAmber,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                onPressed: _selectedWipProductToAdd == null ||
-                        items.contains(_selectedWipProductToAdd)
-                    ? null
-                    : () {
-                        vm.addActiveItem(_selectedWipProductToAdd!);
-                        setState(() => _selectedWipProductToAdd = null);
-                      },
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text(
-                  '+ Add Column',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Pick / Pin WIP Items',
-                onPressed: widget.onOpenWipPicker,
-                icon: const Icon(
-                  Icons.playlist_add_rounded,
-                  color: ErpTheme.slate500,
-                ),
               ),
             ],
           ),
