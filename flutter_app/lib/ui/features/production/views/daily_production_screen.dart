@@ -29,10 +29,10 @@ class DailyProductionScreen extends StatefulWidget {
 
 class _DailyProductionScreenState extends State<DailyProductionScreen> {
   final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false;
   bool _showHistoryTab = false;
   bool _isMatrixFocusMode = false;
   WorkerNameDisplayMode _nameDisplayMode = WorkerNameDisplayMode.tamil;
-  final Set<String> _collapsedItemRoles = <String>{};
 
   @override
   void initState() {
@@ -378,22 +378,109 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
-        final inrFormat = NumberFormat('#,##,##0', 'en_IN');
-        final effectiveMode = vm.entryMode;
-        final inFocusMatrix =
-            !_showHistoryTab &&
-            effectiveMode == ProductionEntryMode.matrix &&
-            _isMatrixFocusMode;
+        final inFocusMatrix = !_showHistoryTab && _isMatrixFocusMode;
+        final now = DateTime.now();
+        final todayNormalized = DateTime(now.year, now.month, now.day);
+        final selectedNormalized = DateTime(
+          vm.selectedDate.year,
+          vm.selectedDate.month,
+          vm.selectedDate.day,
+        );
+        final isToday = selectedNormalized == todayNormalized;
+        final dateLabel = DateFormat('EEE, dd MMM yyyy').format(vm.selectedDate);
 
         return Scaffold(
           appBar: isEmbedded
               ? null
               : AppBar(
-                  title: const Text('Daily Production'),
+                  title: _isSearching
+                      ? TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          onChanged: vm.setWorkerSearch,
+                          style: const TextStyle(fontSize: 14, color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Filter worker name, role or unit...',
+                            hintStyle: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white70,
+                            ),
+                            border: InputBorder.none,
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                            suffixIcon: IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                              onPressed: () {
+                                setState(() => _isSearching = false);
+                                _searchController.clear();
+                                vm.setWorkerSearch('');
+                              },
+                            ),
+                          ),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Daily Production',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            InkWell(
+                              key: const ValueKey('daily-production-date-picker'),
+                              onTap: _pickDate,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 1),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today_rounded,
+                                      size: 11,
+                                      color: ErpTheme.productionAmber,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isToday ? 'Today ($dateLabel)' : dateLabel,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: ErpTheme.slate700,
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      size: 14,
+                                      color: ErpTheme.slate700,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                   actions: [
-                    if (effectiveMode == ProductionEntryMode.matrix &&
-                        !_showHistoryTab)
+                    if (!_isSearching && !_showHistoryTab)
                       IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Search Workers',
+                        icon: const Icon(Icons.search_rounded),
+                        onPressed: () => setState(() => _isSearching = true),
+                      ),
+                    if (!_showHistoryTab)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
                         tooltip: _isMatrixFocusMode
                             ? 'Exit Focus Grid'
                             : 'Full Screen Matrix',
@@ -407,7 +494,8 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         ),
                       ),
                     IconButton(
-                      tooltip: _showHistoryTab ? 'Back to Entry' : 'Saved Logs',
+                      visualDensity: VisualDensity.compact,
+                      tooltip: _showHistoryTab ? 'Back to Matrix' : 'Saved Logs',
                       onPressed: () => setState(() {
                         _showHistoryTab = !_showHistoryTab;
                         if (_showHistoryTab) {
@@ -420,12 +508,13 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         label: Text('${vm.recentHistory.length}'),
                         child: Icon(
                           _showHistoryTab
-                              ? Icons.edit_note_rounded
+                              ? Icons.grid_on_rounded
                               : Icons.history_rounded,
                         ),
                       ),
                     ),
                     IconButton(
+                      visualDensity: VisualDensity.compact,
                       tooltip: 'Refresh',
                       onPressed: vm.isLoading ? null : vm.refreshAll,
                       icon: const Icon(Icons.refresh_rounded),
@@ -444,9 +533,18 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                   child: ErpSectionHeaderBar(
                     title: 'Daily Production',
                     subtitle:
-                        'Log daily WIP quantities by Item, Worker, or Role Matrix.',
+                        'Log daily WIP quantities across departments in Production Matrix.',
                     accentColor: ErpTheme.productionAmber,
                     actions: [
+                      OutlinedButton.icon(
+                        key: const ValueKey('embedded-date-picker-button'),
+                        onPressed: _pickDate,
+                        icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                        label: Text(
+                          isToday ? 'Today ($dateLabel)' : dateLabel,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
                       IconButton(
                         tooltip: 'Refresh',
                         onPressed: vm.isLoading ? null : vm.refreshAll,
@@ -474,441 +572,22 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                     ? _buildHistoryList(vm)
                     : inFocusMatrix
                     ? _buildMatrixFocusWorkspace(vm)
-                    : _buildEntryWorkspace(vm, effectiveMode: effectiveMode),
+                    : _buildEntryWorkspace(vm),
               ),
             ],
           ),
-          bottomNavigationBar: !_showHistoryTab &&
-                  effectiveMode != ProductionEntryMode.matrix &&
-                  vm.hasUnsavedChanges
-              ? SafeArea(
-                  top: false,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(top: BorderSide(color: ErpTheme.slate200)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Daily Worksheet',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                  color: ErpTheme.slate900,
-                                ),
-                              ),
-                              Text(
-                                '${vm.activeWorkersLoggedCount} workers logged • ${inrFormat.format(vm.totalPiecesEntered)} pcs',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: ErpTheme.slate500,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: vm.isSaving ? null : vm.discardDraft,
-                          child: const Text('Discard'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          key: const ValueKey('production-save-worksheet-button'),
-                          onPressed: vm.isSaving ? null : _handleSave,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: ErpTheme.productionAmber,
-                            foregroundColor: Colors.white,
-                          ),
-                          icon: vm.isSaving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.save_rounded, size: 18),
-                          label: Text(
-                            vm.isSaving ? 'Saving...' : 'Save Worksheet',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : null,
         );
       },
     );
   }
 
-  Widget _buildEntryWorkspace(
-    DailyProductionViewModel vm, {
-    required ProductionEntryMode effectiveMode,
-  }) {
-    final now = DateTime.now();
-    final todayNormalized = DateTime(now.year, now.month, now.day);
-    final selectedNormalized = DateTime(
-      vm.selectedDate.year,
-      vm.selectedDate.month,
-      vm.selectedDate.day,
-    );
-    final isToday = selectedNormalized == todayNormalized;
-    final dateLabel = DateFormat('EEE, dd MMM yyyy').format(vm.selectedDate);
-
+  Widget _buildEntryWorkspace(DailyProductionViewModel vm) {
     return RefreshIndicator(
       onRefresh: vm.refreshAll,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(10, 6, 10, 24),
         children: [
-          // Idea 1: Compact Streamline Control Card (Date, Mode, Search, Tamil Toggle, Saved Logs)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: ErpTheme.slate200),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Row 1: Date Navigator Pill (Expanded) + History Toggle Pill
-                Row(
-                  children: [
-                    // Compact Date Navigator Pill
-                    Expanded(
-                      child: Container(
-                        height: 32,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: ErpTheme.slate50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: ErpTheme.slate200),
-                        ),
-                        child: Row(
-                          children: [
-                            InkWell(
-                              onTap: () => vm.selectDate(
-                                vm.selectedDate.subtract(const Duration(days: 1)),
-                              ),
-                              borderRadius: BorderRadius.circular(6),
-                              child: const Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(Icons.chevron_left_rounded, size: 18),
-                              ),
-                            ),
-                            Expanded(
-                              child: InkWell(
-                                onTap: _pickDate,
-                                borderRadius: BorderRadius.circular(6),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.calendar_today_rounded,
-                                        size: 13,
-                                        color: ErpTheme.productionAmber,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Flexible(
-                                        child: Text(
-                                          dateLabel,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 12,
-                                            color: ErpTheme.slate900,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isToday) ...[
-                                        const SizedBox(width: 4),
-                                        const ErpBadge(
-                                          label: 'TODAY',
-                                          backgroundColor:
-                                              ErpTheme.productionAmberSoft,
-                                          foregroundColor:
-                                              ErpTheme.productionAmber,
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            InkWell(
-                              onTap: isToday
-                                  ? null
-                                  : () => vm.selectDate(
-                                      vm.selectedDate.add(
-                                        const Duration(days: 1),
-                                      ),
-                                    ),
-                              borderRadius: BorderRadius.circular(6),
-                              child: Padding(
-                                padding: const EdgeInsets.all(2),
-                                child: Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 18,
-                                  color: isToday ? ErpTheme.slate400 : null,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // History Toggle Pill
-                    InkWell(
-                      onTap: () => setState(() {
-                        _showHistoryTab = !_showHistoryTab;
-                        if (_showHistoryTab) _isMatrixFocusMode = false;
-                      }),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        height: 32,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          color: _showHistoryTab
-                              ? ErpTheme.productionAmberSoft
-                              : ErpTheme.slate50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _showHistoryTab
-                                ? ErpTheme.productionAmber
-                                : ErpTheme.slate200,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _showHistoryTab
-                                  ? Icons.edit_note_rounded
-                                  : Icons.history_rounded,
-                              size: 16,
-                              color: _showHistoryTab
-                                  ? ErpTheme.productionAmber
-                                  : ErpTheme.slate700,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _showHistoryTab
-                                  ? 'Entry'
-                                  : (vm.recentHistory.isNotEmpty
-                                      ? 'Logs (${vm.recentHistory.length})'
-                                      : 'Logs'),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: _showHistoryTab
-                                    ? ErpTheme.productionAmber
-                                    : ErpTheme.slate800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // Row 2: Mode Selector (By Item / By Worker / Matrix) + Language Switcher (தமிழ் / Eng / Both)
-                Row(
-                  children: [
-                    // Mode Selector: By Item | By Worker | Matrix
-                    Expanded(
-                      child: SegmentedButton<ProductionEntryMode>(
-                        showSelectedIcon: false,
-                        style: const ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          padding: WidgetStatePropertyAll(
-                            EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-                          ),
-                        ),
-                        segments: const [
-                          ButtonSegment(
-                            value: ProductionEntryMode.byItem,
-                            icon: Icon(Icons.view_list_rounded, size: 14),
-                            label: Text(
-                              'By Item',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: ProductionEntryMode.byWorker,
-                            icon: Icon(Icons.person_search_rounded, size: 14),
-                            label: Text(
-                              'By Worker',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: ProductionEntryMode.matrix,
-                            icon: Icon(Icons.grid_on_rounded, size: 14),
-                            label: Text(
-                              'Matrix',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
-                        selected: {effectiveMode},
-                        onSelectionChanged: (sel) {
-                          if (sel.first != ProductionEntryMode.matrix &&
-                              _isMatrixFocusMode) {
-                            setState(() => _isMatrixFocusMode = false);
-                          }
-                          vm.setEntryMode(sel.first);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    // Language Switcher: தமிழ் / Eng / Both
-                    SegmentedButton<WorkerNameDisplayMode>(
-                      showSelectedIcon: false,
-                      style: const ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: WidgetStatePropertyAll(
-                          EdgeInsets.symmetric(horizontal: 5, vertical: 0),
-                        ),
-                      ),
-                      segments: const [
-                        ButtonSegment(
-                          value: WorkerNameDisplayMode.tamil,
-                          label: Text(
-                            'தமிழ்',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        ButtonSegment(
-                          value: WorkerNameDisplayMode.english,
-                          label: Text(
-                            'Eng',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        ButtonSegment(
-                          value: WorkerNameDisplayMode.both,
-                          label: Text(
-                            'Both',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                      selected: {_nameDisplayMode},
-                      onSelectionChanged: (sel) =>
-                          setState(() => _nameDisplayMode = sel.first),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                // Row 3: Worker Search Input (+ Pick WIP if not in matrix)
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 32,
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: vm.setWorkerSearch,
-                          style: const TextStyle(fontSize: 12),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            hintText: 'Filter worker name, role or unit...',
-                            hintStyle: const TextStyle(
-                              fontSize: 11,
-                              color: ErpTheme.slate400,
-                            ),
-                            prefixIcon: const Icon(Icons.search, size: 16),
-                            prefixIconConstraints:
-                                const BoxConstraints(minWidth: 28),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 14),
-                                    padding: EdgeInsets.zero,
-                                    constraints:
-                                        const BoxConstraints(minWidth: 24),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      vm.setWorkerSearch('');
-                                    },
-                                  )
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (effectiveMode != ProductionEntryMode.matrix) ...[
-                      const SizedBox(width: 6),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        tooltip: 'Pick / Pin WIP',
-                        onPressed: _openWipItemPicker,
-                        icon: const Icon(
-                          Icons.playlist_add_rounded,
-                          size: 18,
-                          color: ErpTheme.productionAmber,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
           if (vm.hasRestoredLocalDraft) ...[
-            const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -943,644 +622,44 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
           ],
-          if (effectiveMode != ProductionEntryMode.matrix) ...[
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  FilterChip(
-                    label: const Text('Include Monthly'),
-                    selected: vm.includeMonthlyWorkers,
-                    onSelected: vm.toggleIncludeMonthlyWorkers,
-                  ),
-                  const SizedBox(width: 8),
-                  ...vm.availableRoles.map(
-                    (role) {
-                      final count = vm.getWorkerCountForRole(role);
-                      final tamil = DailyProductionViewModel.getRoleTamilName(role);
-                      final label = role == 'All'
-                          ? 'All Workers ($count)'
-                          : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(label),
-                          selected: vm.selectedRoleFilter == role,
-                          onSelected: (_) => vm.setRoleFilter(role),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
           if (vm.filteredWorkers.isEmpty)
             const ErpEmptyState(
               icon: Icons.engineering_outlined,
               title: 'No Matching Active Workers',
               subtitle:
-                  'Add Contractual workers in the Workers & Advances tab or clear filters.',
+                  'Add Contractual workers in the Workers & Advances tab.',
             )
-          else if (effectiveMode == ProductionEntryMode.matrix)
-            ..._buildMatrixWorkspace(vm)
-          else if (effectiveMode == ProductionEntryMode.byItem)
-            ..._buildByItemCards(vm)
           else
-            ..._buildByWorkerCards(vm),
+            ..._buildMatrixWorkspace(vm),
         ],
       ),
     );
   }
 
-  Widget _buildRoleSectionHeader({
-    required String role,
-    required int count,
-    required int subtotal,
-    required String unit,
-    required bool isCollapsed,
-    required VoidCallback onToggleCollapse,
-  }) {
-    final cleanRole = role.trim().toLowerCase();
-    final isTape = cleanRole == 'tape';
-    final isChemical = cleanRole == 'chemical';
-    final isValayam = cleanRole == 'valayam contract' || cleanRole == 'valayam';
-
-    final IconData roleIcon;
-    final Color roleColor;
-    final Color roleBgColor;
-    final String roleTamil;
-
-    if (isTape) {
-      roleIcon = Icons.view_week_rounded;
-      roleColor = const Color(0xFF0F766E); // Teal 700
-      roleBgColor = const Color(0xFFCCFBF1); // Teal 100
-      roleTamil = 'டேப்';
-    } else if (isChemical) {
-      roleIcon = Icons.science_rounded;
-      roleColor = const Color(0xFFB45309); // Amber 700
-      roleBgColor = const Color(0xFFFEF3C7); // Amber 100
-      roleTamil = 'கெமிக்கல்';
-    } else if (isValayam) {
-      roleIcon = Icons.all_inclusive_rounded;
-      roleColor = const Color(0xFF4338CA); // Indigo 700
-      roleBgColor = const Color(0xFFE0E7FF); // Indigo 100
-      roleTamil = 'வளையம் ஒப்பந்தம்';
-    } else {
-      roleIcon = Icons.badge_outlined;
-      roleColor = ErpTheme.slate700;
-      roleBgColor = ErpTheme.slate100;
-      roleTamil = DailyProductionViewModel.getRoleTamilName(role);
-    }
-
-    return InkWell(
-      onTap: onToggleCollapse,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(top: 8, bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: roleBgColor.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: roleColor.withValues(alpha: 0.25),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(roleIcon, size: 16, color: roleColor),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Row(
-                children: [
-                  Text(
-                    role.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.3,
-                      color: roleColor,
-                    ),
-                  ),
-                  if (roleTamil.isNotEmpty) ...[
-                    const SizedBox(width: 5),
-                    Text(
-                      '• $roleTamil',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: roleColor.withValues(alpha: 0.85),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: roleColor.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: roleColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (subtotal > 0)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: ErpBadge(
-                  label: '$subtotal $unit',
-                  backgroundColor: Colors.white,
-                  foregroundColor: roleColor,
-                ),
-              ),
-            Icon(
-              isCollapsed
-                  ? Icons.chevron_right_rounded
-                  : Icons.expand_more_rounded,
-              size: 16,
-              color: roleColor,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildByItemCards(DailyProductionViewModel vm) {
-    if (vm.activeItemNames.isEmpty) {
-      return [
-        ErpEmptyState(
-          icon: Icons.inventory_2_outlined,
-          title: 'No WIP Items Selected',
-          subtitle:
-              'Tap Pick / Pin WIP to choose factory items produced today.',
-          actionLabel: 'Pick WIP Items',
-          onAction: () => _openWipItemPicker(),
-        ),
-      ];
-    }
-
-    final groupedRoles = vm.filteredWorkersByRole;
-
-    return vm.activeItemNames.asMap().entries.map((entry) {
-      final index = entry.key;
-      final itemName = entry.value;
-      final product = vm.findWipProductByName(itemName);
-      final itemTotal = vm.getItemTotalQuantity(itemName);
-      final isPinned = vm.pinnedItemNames.contains(itemName);
-
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: ExpansionTile(
-            initiallyExpanded: index == 0 || itemTotal > 0,
-            tilePadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 6,
-            ),
-            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        itemName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          color: ErpTheme.slate900,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        product != null
-                            ? '${product.displayGroup} • ${product.unit}'
-                            : 'WIP Production Item',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: ErpTheme.slate500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ErpBadge(
-                  label: '$itemTotal ${product?.unit ?? 'Pcs'}',
-                  backgroundColor: itemTotal > 0
-                      ? ErpTheme.productionAmberSoft
-                      : ErpTheme.slate100,
-                  foregroundColor: itemTotal > 0
-                      ? ErpTheme.productionAmber
-                      : ErpTheme.slate700,
-                ),
-                IconButton(
-                  tooltip: isPinned ? 'Unpin' : 'Pin item',
-                  icon: Icon(
-                    isPinned ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 20,
-                    color: isPinned
-                        ? ErpTheme.productionAmber
-                        : ErpTheme.slate500,
-                  ),
-                  onPressed: () => vm.togglePinnedItem(itemName),
-                ),
-                if (itemTotal == 0 && vm.activeItemNames.length > 1)
-                  IconButton(
-                    tooltip: 'Hide from list',
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: ErpTheme.slate500,
-                    ),
-                    onPressed: () => vm.removeActiveItem(itemName),
-                  ),
-              ],
-            ),
-            children: [
-              const Divider(height: 1, color: ErpTheme.slate200),
-              const SizedBox(height: 4),
-              for (final roleEntry in groupedRoles.entries) ...[
-                Builder(
-                  builder: (context) {
-                    final roleCollapseKey = '$itemName::${roleEntry.key}';
-                    final isCollapsed =
-                        _collapsedItemRoles.contains(roleCollapseKey);
-                    final roleSubtotal = roleEntry.value.fold<int>(
-                      0,
-                      (sum, emp) => sum + vm.getQuantity(emp.id, itemName),
-                    );
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildRoleSectionHeader(
-                          role: roleEntry.key,
-                          count: roleEntry.value.length,
-                          subtotal: roleSubtotal,
-                          unit: product?.unit ?? 'Pcs',
-                          isCollapsed: isCollapsed,
-                          onToggleCollapse: () {
-                            setState(() {
-                              if (isCollapsed) {
-                                _collapsedItemRoles.remove(roleCollapseKey);
-                              } else {
-                                _collapsedItemRoles.add(roleCollapseKey);
-                              }
-                            });
-                          },
-                        ),
-                        if (!isCollapsed)
-                          ...roleEntry.value.map(
-                            (emp) => _WorkerQtyRow(
-                              employee: emp,
-                              quantity: vm.getQuantity(emp.id, itemName),
-                              onChanged: (q) =>
-                                  vm.setQuantity(emp.id, itemName, q),
-                              nameDisplayMode: _nameDisplayMode,
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ],
-          ),
-        ),
-      );
-    }).toList();
-  }
-
-  List<Widget> _buildByWorkerCards(DailyProductionViewModel vm) {
-    final groupedRoles = vm.filteredWorkersByRole;
-    final widgets = <Widget>[];
-
-    for (final roleEntry in groupedRoles.entries) {
-      final role = roleEntry.key;
-      final roleWorkers = roleEntry.value;
-      final roleTotal = roleWorkers.fold<int>(
-        0,
-        (sum, emp) => sum + vm.getWorkerTotalQuantity(emp.id),
-      );
-      final roleCollapseKey = 'worker_mode::$role';
-      final isCollapsed = _collapsedItemRoles.contains(roleCollapseKey);
-
-      widgets.add(
-        _buildRoleSectionHeader(
-          role: role,
-          count: roleWorkers.length,
-          subtotal: roleTotal,
-          unit: 'Pcs',
-          isCollapsed: isCollapsed,
-          onToggleCollapse: () {
-            setState(() {
-              if (isCollapsed) {
-                _collapsedItemRoles.remove(roleCollapseKey);
-              } else {
-                _collapsedItemRoles.add(roleCollapseKey);
-              }
-            });
-          },
-        ),
-      );
-
-      if (!isCollapsed) {
-        for (final emp in roleWorkers) {
-          final totalQty = vm.getWorkerTotalQuantity(emp.id);
-          final enteredMap = vm.getWorkerEntries(emp.id);
-          final primaryName = emp.formattedName(_nameDisplayMode);
-          final parsed = emp.parsedNames;
-          final subtitleParts = <String>[];
-          if (_nameDisplayMode == WorkerNameDisplayMode.tamil &&
-              parsed.english.isNotEmpty) {
-            subtitleParts.add(parsed.english);
-          } else if (_nameDisplayMode == WorkerNameDisplayMode.english &&
-              parsed.tamil.isNotEmpty) {
-            subtitleParts.add(parsed.tamil);
-          }
-          subtitleParts.add(emp.roleGroup);
-          subtitleParts.add(emp.paymentType);
-          if (emp.isTemporary) subtitleParts.add('TEMP');
-          if (emp.unit != null && emp.unit!.isNotEmpty) {
-            subtitleParts.add(emp.unit!);
-          }
-
-          widgets.add(
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: ErpTheme.hrIndigoSoft,
-                            child: Text(
-                              emp.name.isNotEmpty
-                                  ? emp.name[0].toUpperCase()
-                                  : 'W',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: ErpTheme.hrIndigo,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  primaryName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    color: ErpTheme.slate900,
-                                  ),
-                                ),
-                                Text(
-                                  subtitleParts.join(' • '),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: emp.isTemporary
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color: emp.isTemporary
-                                        ? ErpTheme.productionAmber
-                                        : ErpTheme.slate500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          ErpBadge(
-                            label: '$totalQty Pcs',
-                            backgroundColor: totalQty > 0
-                                ? ErpTheme.productionAmberSoft
-                                : ErpTheme.slate100,
-                            foregroundColor: totalQty > 0
-                                ? ErpTheme.productionAmber
-                                : ErpTheme.slate700,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (enteredMap.isEmpty)
-                        const Text(
-                          'No WIP items logged yet for this worker.',
-                          style: TextStyle(fontSize: 12, color: ErpTheme.slate500),
-                        )
-                      else
-                        ...enteredMap.entries.map(
-                          (e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: LayoutBuilder(
-                              builder: (ctx, c) {
-                                final narrow = c.maxWidth < 360;
-                                if (narrow) {
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        e.key,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      QuantityStepperField(
-                                        quantity: e.value,
-                                        onChanged: (q) =>
-                                            vm.setQuantity(emp.id, e.key, q),
-                                      ),
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        e.key,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                          color: ErpTheme.slate900,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    QuantityStepperField(
-                                      quantity: e.value,
-                                      onChanged: (q) =>
-                                          vm.setQuantity(emp.id, e.key, q),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () => _openWipItemPicker(
-                            forEmployeeId: emp.id,
-                            workerName: emp.name,
-                          ),
-                          icon: const Icon(Icons.add_circle_outline, size: 18),
-                          label: const Text('Add WIP Item'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-      }
-    }
-    return widgets;
-  }
-
   Widget _buildMatrixFocusWorkspace(DailyProductionViewModel vm) {
-    final dateLabel = DateFormat('dd MMM').format(vm.selectedDate);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: Row(
-            children: [
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: ErpTheme.productionAmberSoft,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: ErpTheme.productionAmber.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.calendar_today_rounded,
-                        size: 14,
-                        color: ErpTheme.productionAmber,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        dateLabel,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                          color: ErpTheme.slate900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: vm.availableRoles.map((role) {
-                      final count = vm.getWorkerCountForRole(role);
-                      final tamil = DailyProductionViewModel.getRoleTamilName(role);
-                      final label = role == 'All'
-                          ? 'All ($count)'
-                          : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          label: Text(
-                            label,
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          selected: vm.selectedRoleFilter == role,
-                          onSelected: (_) => vm.setRoleFilter(role),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Pick / Pin WIP',
-                onPressed: () => _openWipItemPicker(),
-                icon: const Icon(Icons.playlist_add_rounded),
-              ),
-              IconButton(
-                tooltip: 'Exit Focus Grid',
-                onPressed: () => setState(() => _isMatrixFocusMode = false),
-                icon: const Icon(Icons.fullscreen_exit_rounded),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 10),
-            child: vm.filteredWorkers.isEmpty
-                ? const ErpEmptyState(
-                    icon: Icons.engineering_outlined,
-                    title: 'No Matching Active Workers',
-                    subtitle:
-                        'Add Contractual workers in the Workers & Advances tab or clear filters.',
-                  )
-                : _ProductionMatrixCard(
-                    viewModel: vm,
-                    isFocusMode: true,
-                    nameDisplayMode: _nameDisplayMode,
-                    onNameDisplayModeChanged: (mode) =>
-                        setState(() => _nameDisplayMode = mode),
-                    onToggleFocusMode: () =>
-                        setState(() => _isMatrixFocusMode = false),
-                    onOpenWipPicker: () => _openWipItemPicker(),
-                    onClearMatrix: _confirmClearMatrix,
-                    onSaveMatrix: _handleSave,
-                  ),
-          ),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      child: vm.filteredWorkers.isEmpty
+          ? const ErpEmptyState(
+              icon: Icons.engineering_outlined,
+              title: 'No Matching Active Workers',
+              subtitle:
+                  'Add Contractual workers in the Workers & Advances tab.',
+            )
+          : _ProductionMatrixCard(
+              viewModel: vm,
+              isFocusMode: true,
+              nameDisplayMode: _nameDisplayMode,
+              onNameDisplayModeChanged: (mode) =>
+                  setState(() => _nameDisplayMode = mode),
+              onToggleFocusMode: () =>
+                  setState(() => _isMatrixFocusMode = false),
+              onOpenWipPicker: () => _openWipItemPicker(),
+              onClearMatrix: _confirmClearMatrix,
+              onSaveMatrix: _handleSave,
+            ),
     );
   }
 
@@ -1723,100 +802,6 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 ],
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _WorkerQtyRow extends StatelessWidget {
-  const _WorkerQtyRow({
-    required this.employee,
-    required this.quantity,
-    required this.onChanged,
-    this.nameDisplayMode = WorkerNameDisplayMode.both,
-  });
-
-  final Employee employee;
-  final int quantity;
-  final ValueChanged<int> onChanged;
-  final WorkerNameDisplayMode nameDisplayMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final parsed = employee.parsedNames;
-    final primaryName = employee.formattedName(nameDisplayMode);
-    final subtitleParts = <String>[];
-    if (nameDisplayMode == WorkerNameDisplayMode.tamil &&
-        parsed.english.isNotEmpty) {
-      subtitleParts.add(parsed.english);
-    } else if (nameDisplayMode == WorkerNameDisplayMode.english &&
-        parsed.tamil.isNotEmpty) {
-      subtitleParts.add(parsed.tamil);
-    }
-    subtitleParts.add(employee.roleGroup);
-    subtitleParts.add(employee.paymentType);
-    if (employee.isTemporary) subtitleParts.add('TEMP');
-    if (employee.unit != null && employee.unit!.isNotEmpty) {
-      subtitleParts.add(employee.unit!);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final stacked = constraints.maxWidth < 370;
-          final labelWidget = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                primaryName,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: ErpTheme.slate900,
-                ),
-              ),
-              const SizedBox(height: 1.5),
-              Text(
-                subtitleParts.join(' • '),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: employee.isTemporary
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                  color: employee.isTemporary
-                      ? ErpTheme.productionAmber
-                      : ErpTheme.slate500,
-                ),
-              ),
-            ],
-          );
-
-          if (stacked) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                labelWidget,
-                const SizedBox(height: 6),
-                QuantityStepperField(
-                  quantity: quantity,
-                  onChanged: onChanged,
-                ),
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Expanded(child: labelWidget),
-              const SizedBox(width: 8),
-              QuantityStepperField(
-                quantity: quantity,
-                onChanged: onChanged,
-              ),
-            ],
           );
         },
       ),

@@ -33,7 +33,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -47,26 +46,33 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // WIP item and contractual workers appear; no rupee sign appears anywhere
-      expect(find.text('12cm Electric Sparklers (WIP)'), findsOneWidget);
-      expect(find.text('Mariappan K'), findsOneWidget);
-      expect(find.text('Selvi R'), findsOneWidget);
+      // Matrix appears directly with zero rupee sign anywhere
+      expect(find.text('Save Worksheet'), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
 
-      // Tap quick +10 stepper on the first worker row
-      await tester.ensureVisible(find.text('+10').first);
+      // Tap cell for worker 12 (Selvi)
+      final cellFinder = find.byKey(
+        const ValueKey('matrix_12_12cm Electric Sparklers (WIP)'),
+      );
+      await tester.ensureVisible(cellFinder);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+10').first);
-      await tester.pump();
-
-      expect(find.text('Daily Worksheet'), findsOneWidget);
-      expect(find.text('Save Worksheet'), findsOneWidget);
-
-      await tester.tap(find.text('Save Worksheet'));
-      await tester.pump();
+      await tester.tap(cellFinder);
       await tester.pumpAndSettle();
 
-      expect(find.text('Daily Worksheet'), findsNothing);
+      // Tap quick +10 stepper on the keypad
+      await tester.tap(find.text('+10'));
+      await tester.pumpAndSettle();
+
+      // Close keypad via close button
+      await tester.tap(find.byTooltip('Done / Close Keypad'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Save Whole Sheet'), findsOneWidget);
+
+      await tester.tap(find.text('Save Whole Sheet'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
       expect(api.productionsData.length, equals(1));
     },
   );
@@ -95,7 +101,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -109,13 +114,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Supervisor sees Matrix option and can switch to it
-      expect(find.text('Matrix'), findsOneWidget);
-      await tester.ensureVisible(find.text('Matrix'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Matrix'));
-      await tester.pumpAndSettle();
-
+      // Supervisor sees Matrix directly on screen without extra filters
       expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
       expect(find.text('Save Worksheet'), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
@@ -190,7 +189,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -204,17 +202,12 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Switch to Matrix
-      await tester.ensureVisible(find.text('Matrix'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Matrix'));
-      await tester.pumpAndSettle();
-
-      // By default in Matrix, language toggle shows [தமிழ்] selected and displays 'முத்து'
-      expect(find.text('தமிழ்'), findsOneWidget);
-      expect(find.text('Eng'), findsOneWidget);
-      expect(find.text('Both'), findsOneWidget);
+      // By default in Matrix, displays Tamil worker name 'முத்து'
       expect(find.text('முத்து'), findsWidgets);
+
+      // Tap search icon in AppBar
+      await tester.tap(find.byIcon(Icons.search_rounded));
+      await tester.pumpAndSettle();
 
       // Search in English matches the worker
       await tester.enterText(
@@ -232,22 +225,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('முத்து'), findsNothing);
 
-      // Clear search
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
-        '',
-      );
+      // Close search restores worker
+      await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
-
-      // Toggle to English: shows 'Muthu'
-      await tester.tap(find.text('Eng'));
-      await tester.pumpAndSettle();
-      expect(find.text('Muthu'), findsWidgets);
-
-      // Toggle to Both: shows 'Muthu (முத்து)'
-      await tester.tap(find.text('Both'));
-      await tester.pumpAndSettle();
-      expect(find.text('Muthu (முத்து)'), findsWidgets);
+      expect(find.text('முத்து'), findsWidgets);
     },
   );
 
@@ -309,7 +290,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -323,21 +303,13 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Check fixed role chips with Tamil labels and counts
-      expect(find.textContaining('Tape • டேப்'), findsOneWidget);
-      expect(find.textContaining('Chemical • கெமிக்கல்'), findsOneWidget);
+      // Check fixed role chips with Tamil labels and counts in Matrix
+      expect(find.textContaining('Tape • டேப்'), findsWidgets);
+      expect(find.textContaining('Chemical • கெமிக்கல்'), findsWidgets);
       expect(
         find.textContaining('Valayam Contract • வளையம் ஒப்பந்தம்'),
-        findsOneWidget,
+        findsWidgets,
       );
-
-      // In By Item mode, under WIP item, check fixed role section headers
-      expect(find.text('TAPE'), findsWidgets);
-      expect(find.text('• டேப்'), findsWidgets);
-      expect(find.text('CHEMICAL'), findsWidgets);
-      expect(find.text('• கெமிக்கல்'), findsWidgets);
-      expect(find.text('VALAYAM CONTRACT'), findsWidgets);
-      expect(find.text('• வளையம் ஒப்பந்தம்'), findsWidgets);
 
       // Check workers are displayed with Tamil names
       expect(find.text('அபி'), findsWidgets);
@@ -345,7 +317,7 @@ void main() {
       expect(find.text('வசந்த்'), findsWidgets);
 
       // Tap Chemical chip: only Chemical worker Muniyasamy is displayed
-      final chemChip = find.textContaining('Chemical • கெமிக்கல்');
+      final chemChip = find.textContaining('Chemical • கெமிக்கல்').first;
       await tester.ensureVisible(chemChip);
       await tester.pumpAndSettle();
       await tester.tap(chemChip);
@@ -355,33 +327,14 @@ void main() {
       expect(find.text('அபி'), findsNothing);
       expect(find.text('வசந்த்'), findsNothing);
 
-      // Reset to All Workers
-      final allChip = find.textContaining('All Workers');
+      // Reset to All
+      final allChip = find.textContaining('All (3)');
       await tester.ensureVisible(allChip);
       await tester.pumpAndSettle();
       await tester.tap(allChip);
       await tester.pumpAndSettle();
 
-      // Switch to By Worker mode
-      final byWorkerSegment = find.text('By Worker');
-      await tester.ensureVisible(byWorkerSegment);
-      await tester.pumpAndSettle();
-      await tester.tap(byWorkerSegment);
-      await tester.pumpAndSettle();
-
-      // Check By Worker role headers
-      expect(find.text('TAPE'), findsWidgets);
-      expect(find.text('CHEMICAL'), findsWidgets);
-      expect(find.text('VALAYAM CONTRACT'), findsWidgets);
-
-      // Switch to Matrix mode
-      final matrixSegment = find.text('Matrix');
-      await tester.ensureVisible(matrixSegment);
-      await tester.pumpAndSettle();
-      await tester.tap(matrixSegment);
-      await tester.pumpAndSettle();
-
-      // Check Matrix headers include Tamil mappings and category sections
+      // Check Matrix department section headers
       expect(find.textContaining('TAPE • டேப்'), findsWidgets);
       expect(find.textContaining('CHEMICAL • கெமிக்கல்'), findsWidgets);
       expect(
@@ -451,7 +404,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -463,12 +415,6 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.pumpAndSettle();
-
-      // Switch to Matrix mode
-      final matrixSegment = find.text('Matrix');
-      await tester.ensureVisible(matrixSegment);
-      await tester.tap(matrixSegment);
       await tester.pumpAndSettle();
 
       // 1. Verify Category Tabs in Matrix toolbar
@@ -581,8 +527,6 @@ void main() {
       );
       addTearDown(prodVm.dispose);
       addTearDown(authVm.dispose);
-      prodVm.setEntryMode(ProductionEntryMode.byItem);
-
       final repaintKey = GlobalKey();
 
       await tester.pumpWidget(
@@ -598,12 +542,6 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.pumpAndSettle();
-
-      // Switch to Matrix mode
-      final matrixSegment = find.text('Matrix');
-      await tester.ensureVisible(matrixSegment);
-      await tester.tap(matrixSegment);
       await tester.pumpAndSettle();
 
       // 1. Verify Category Tabs in Matrix toolbar
