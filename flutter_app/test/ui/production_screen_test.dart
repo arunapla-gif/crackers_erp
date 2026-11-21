@@ -778,4 +778,90 @@ void main() {
       expect(find.text('Save Whole Sheet'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'DailyProductionScreen operates smoothly in Landscape mode with side-by-side keypad and zero rupees',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(844, 390);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Zero rupees
+      expect(find.textContaining('₹'), findsNothing);
+
+      // Tap cell for worker 12 (Selvi)
+      final cellFinder = find.byKey(
+        const ValueKey('matrix_12_12cm Electric Sparklers (WIP)'),
+      );
+      await tester.ensureVisible(cellFinder);
+      await tester.tap(cellFinder);
+      await tester.pumpAndSettle();
+
+      // Keypad is docked side-by-side on the right
+      final keypadFinder = find.byKey(const ValueKey('matrix-docked-keypad'));
+      expect(keypadFinder, findsOneWidget);
+
+      // Verify side-by-side layout: left table is still visible!
+      expect(cellFinder, findsOneWidget);
+
+      // Tap quick stepper +50 on the keypad
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('+50')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(50));
+
+      // Tap 'Next ↓' on the keypad
+      await tester.tap(find.byKey(const ValueKey('matrix-next-worker-button')));
+      await tester.pumpAndSettle();
+
+      // Type 7, 5 on keypad for emp 11
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('7')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('5')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(75));
+
+      // Close keypad via close button
+      await tester.tap(find.byTooltip('Done / Close Keypad'));
+      await tester.pumpAndSettle();
+      expect(keypadFinder, findsNothing);
+
+      // Bottom bar is visible with Save Whole Sheet
+      expect(find.text('Save Whole Sheet'), findsOneWidget);
+      await tester.tap(find.text('Save Whole Sheet'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(api.productionsData.length, equals(2));
+    },
+  );
 }

@@ -389,10 +389,16 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
         final isToday = selectedNormalized == todayNormalized;
         final dateLabel = DateFormat('EEE, dd MMM yyyy').format(vm.selectedDate);
 
+        final isLandscape =
+            MediaQuery.orientationOf(context) == Orientation.landscape;
+        final screenHeight = MediaQuery.sizeOf(context).height;
+        final isLandscapePhone = isLandscape && screenHeight < 550;
+
         return Scaffold(
           appBar: isEmbedded
               ? null
               : AppBar(
+                  toolbarHeight: isLandscapePhone ? 42.0 : null,
                   title: _isSearching
                       ? TextField(
                           controller: _searchController,
@@ -425,51 +431,117 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                             ),
                           ),
                         )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'Daily Production',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                              ),
-                            ),
-                            InkWell(
-                              key: const ValueKey('daily-production-date-picker'),
-                              onTap: _pickDate,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 1),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.calendar_today_rounded,
-                                      size: 11,
-                                      color: ErpTheme.productionAmber,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      isToday ? 'Today ($dateLabel)' : dateLabel,
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: ErpTheme.slate700,
+                      : isLandscapePhone
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Daily Production',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  '•',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: InkWell(
+                                    key: const ValueKey(
+                                        'daily-production-date-picker'),
+                                    onTap: _pickDate,
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 2,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 11,
+                                            color: ErpTheme.productionAmber,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              isToday
+                                                  ? 'Today ($dateLabel)'
+                                                  : dateLabel,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: ErpTheme.slate700,
+                                              ),
+                                            ),
+                                          ),
+                                          Icon(
+                                            Icons.arrow_drop_down,
+                                            size: 14,
+                                            color: ErpTheme.slate700,
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    Icon(
-                                      Icons.arrow_drop_down,
-                                      size: 14,
-                                      color: ErpTheme.slate700,
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Daily Production',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                InkWell(
+                                  key: const ValueKey('daily-production-date-picker'),
+                                  onTap: _pickDate,
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 1),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.calendar_today_rounded,
+                                          size: 11,
+                                          color: ErpTheme.productionAmber,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isToday ? 'Today ($dateLabel)' : dateLabel,
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: ErpTheme.slate700,
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.arrow_drop_down,
+                                          size: 14,
+                                          color: ErpTheme.slate700,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
                   actions: [
                     if (!_isSearching && !_showHistoryTab)
                       IconButton(
@@ -582,14 +654,31 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
   }
 
   Widget _buildEntryWorkspace(DailyProductionViewModel vm) {
-    return RefreshIndicator(
-      onRefresh: vm.refreshAll,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 24),
+    if (vm.filteredWorkers.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: vm.refreshAll,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: const [
+            ErpEmptyState(
+              icon: Icons.engineering_outlined,
+              title: 'No Matching Active Workers',
+              subtitle:
+                  'Add Contractual workers in the Workers & Advances tab.',
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      child: Column(
         children: [
           if (vm.hasRestoredLocalDraft) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 6),
               decoration: BoxDecoration(
                 color: ErpTheme.productionAmberSoft,
                 borderRadius: BorderRadius.circular(12),
@@ -622,17 +711,21 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
           ],
-          if (vm.filteredWorkers.isEmpty)
-            const ErpEmptyState(
-              icon: Icons.engineering_outlined,
-              title: 'No Matching Active Workers',
-              subtitle:
-                  'Add Contractual workers in the Workers & Advances tab.',
-            )
-          else
-            ..._buildMatrixWorkspace(vm),
+          Expanded(
+            child: _ProductionMatrixCard(
+              viewModel: vm,
+              isFocusMode: false,
+              nameDisplayMode: _nameDisplayMode,
+              onNameDisplayModeChanged: (mode) =>
+                  setState(() => _nameDisplayMode = mode),
+              onToggleFocusMode: () =>
+                  setState(() => _isMatrixFocusMode = true),
+              onOpenWipPicker: () => _openWipItemPicker(),
+              onClearMatrix: _confirmClearMatrix,
+              onSaveMatrix: _handleSave,
+            ),
+          ),
         ],
       ),
     );
@@ -661,22 +754,6 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
               onSaveMatrix: _handleSave,
             ),
     );
-  }
-
-  List<Widget> _buildMatrixWorkspace(DailyProductionViewModel vm) {
-    return [
-      _ProductionMatrixCard(
-        viewModel: vm,
-        isFocusMode: false,
-        nameDisplayMode: _nameDisplayMode,
-        onNameDisplayModeChanged: (mode) =>
-            setState(() => _nameDisplayMode = mode),
-        onToggleFocusMode: () => setState(() => _isMatrixFocusMode = true),
-        onOpenWipPicker: () => _openWipItemPicker(),
-        onClearMatrix: _confirmClearMatrix,
-        onSaveMatrix: _handleSave,
-      ),
-    ];
   }
 
   Widget _buildHistoryList(DailyProductionViewModel vm) {
@@ -1215,15 +1292,83 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
       clipBehavior: Clip.antiAlias,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final isLandscape =
+              MediaQuery.orientationOf(context) == Orientation.landscape;
+          final hasKeypad = activeMeta != null && _focusedKey != null;
+          final useSideBySideKeypad =
+              hasKeypad && (isLandscape || constraints.maxWidth >= 600);
+
+          if (useSideBySideKeypad) {
+            final sideKeypadWidth =
+                (constraints.maxWidth * 0.38).clamp(275.0, 340.0);
+            final leftPaneWidth = constraints.maxWidth - sideKeypadWidth - 1.0;
+            final isLeftCompact = leftPaneWidth < 500;
+            final workerColWidth = isLeftCompact ? 130.0 : 160.0;
+            final baseItemWidth = isLeftCompact ? 94.0 : 120.0;
+            final totalColWidth = isLeftCompact ? 70.0 : 86.0;
+
+            final stackedCards = _buildDepartmentStackedCards(
+              vm: vm,
+              groupedRoles: groupedRoles,
+              columnMajorKeys: columnMajorKeys,
+              workerColWidth: workerColWidth,
+              baseItemWidth: baseItemWidth,
+              totalColWidth: totalColWidth,
+              availableWidth: leftPaneWidth,
+              inrFormat: inrFormat,
+              nameDisplayMode: _nameDisplayMode,
+            );
+
+            final bodyScroll = SingleChildScrollView(
+              controller: _bodyVScroll,
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              child: stackedCards,
+            );
+
+            final rightKeypad = SizedBox(
+              width: sideKeypadWidth,
+              child: _buildDockedKeypad(
+                vm: vm,
+                cellKey: _focusedKey!,
+                empId: activeMeta.empId,
+                empName: activeMeta.empName,
+                itemName: activeMeta.itemName,
+                columnMajorKeys: columnMajorKeys,
+                inrFormat: inrFormat,
+                isSideBySide: true,
+              ),
+            );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildToolbar(
+                  vm,
+                  items,
+                  isLandscape: isLandscape || constraints.maxWidth >= 600,
+                ),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: bodyScroll),
+                      const VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: ErpTheme.slate200,
+                      ),
+                      rightKeypad,
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+
           final isCompact = constraints.maxWidth < 600;
           final workerColWidth = isCompact ? 132.0 : 176.0;
           final baseItemWidth = isCompact ? 98.0 : 136.0;
           final totalColWidth = isCompact ? 72.0 : 92.0;
-
-          final useBoundedExpand =
-              widget.isFocusMode &&
-              constraints.hasBoundedHeight &&
-              constraints.maxHeight >= 260;
 
           final stackedCards = _buildDepartmentStackedCards(
             vm: vm,
@@ -1243,7 +1388,8 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             child: stackedCards,
           );
 
-          final hasKeypad = activeMeta != null && _focusedKey != null;
+          final useBoundedExpand = constraints.hasBoundedHeight &&
+              constraints.maxHeight >= 240;
           final screenHeight = MediaQuery.sizeOf(context).height;
           final maxCardHeight = (screenHeight *
                   (widget.isFocusMode ? 0.72 : (hasKeypad ? 0.30 : 0.50)))
@@ -1258,14 +1404,17 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                 );
 
           return Column(
-            mainAxisSize: useBoundedExpand
-                ? MainAxisSize.max
-                : MainAxisSize.min,
+            mainAxisSize:
+                useBoundedExpand ? MainAxisSize.max : MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildToolbar(vm, items),
+              _buildToolbar(
+                vm,
+                items,
+                isLandscape: isLandscape || constraints.maxWidth >= 600,
+              ),
               bodyWrapper,
-              if (activeMeta != null && _focusedKey != null)
+              if (hasKeypad)
                 _buildDockedKeypad(
                   vm: vm,
                   cellKey: _focusedKey!,
@@ -1274,6 +1423,7 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                   itemName: activeMeta.itemName,
                   columnMajorKeys: columnMajorKeys,
                   inrFormat: inrFormat,
+                  isSideBySide: false,
                 )
               else
                 _buildStickyBottomBar(vm, inrFormat),
@@ -1284,7 +1434,186 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     );
   }
 
-  Widget _buildToolbar(DailyProductionViewModel vm, List<String> items) {
+  Widget _buildToolbar(
+    DailyProductionViewModel vm,
+    List<String> items, {
+    bool isLandscape = false,
+  }) {
+    final addColumnDropdown = Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: ErpTheme.slate200),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: _selectedWipProductToAdd,
+          icon: const Icon(
+            Icons.arrow_drop_down,
+            size: 18,
+            color: ErpTheme.slate500,
+          ),
+          hint: const Row(
+            children: [
+              Icon(
+                Icons.add_chart_rounded,
+                size: 14,
+                color: ErpTheme.productionAmber,
+              ),
+              SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Add Product Column (e.g. 10 KVR 48)...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: ErpTheme.slate500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          items: vm.wipProducts.map((p) {
+            final alreadyAdded = items.contains(p.name);
+            return DropdownMenuItem<String>(
+              value: p.name,
+              enabled: !alreadyAdded,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            alreadyAdded ? FontWeight.w500 : FontWeight.w700,
+                        color: alreadyAdded
+                            ? ErpTheme.slate400
+                            : ErpTheme.slate900,
+                      ),
+                    ),
+                  ),
+                  if (alreadyAdded)
+                    const Text(
+                      'Added',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: ErpTheme.slate400,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) {
+              setState(() => _selectedWipProductToAdd = val);
+            }
+          },
+        ),
+      ),
+    );
+
+    final addColumnButton = FilledButton.icon(
+      key: const ValueKey('matrix-add-column-button'),
+      style: FilledButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 6,
+        ),
+        backgroundColor: ErpTheme.productionAmber,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      onPressed: _selectedWipProductToAdd == null ||
+              items.contains(_selectedWipProductToAdd)
+          ? null
+          : () {
+              vm.addActiveItem(_selectedWipProductToAdd!);
+              setState(() => _selectedWipProductToAdd = null);
+            },
+      icon: const Icon(Icons.add_rounded, size: 15),
+      label: const Text(
+        '+ Add Column',
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    final focusButton = OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 4,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      onPressed: widget.onToggleFocusMode,
+      icon: Icon(
+        widget.isFocusMode
+            ? Icons.fullscreen_exit_rounded
+            : Icons.fullscreen_rounded,
+        size: 14,
+      ),
+      label: Text(
+        widget.isFocusMode ? 'Exit Focus' : 'Focus Grid',
+        style: const TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+
+    final saveButton = FilledButton.icon(
+      key: const ValueKey('matrix-save-button-top'),
+      style: FilledButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: 4,
+        ),
+        backgroundColor: ErpTheme.productionAmber,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      onPressed: vm.isSaving ? null : widget.onSaveMatrix,
+      icon: vm.isSaving
+          ? const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.save_rounded, size: 14),
+      label: Text(
+        vm.isSaving ? 'Saving...' : 'Save Worksheet',
+        style: const TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -1324,255 +1653,97 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
                   ),
                 ),
                 ...vm.availableRoles.map((role) {
-                final count = vm.getWorkerCountForRole(role);
-                final tamil = DailyProductionViewModel.getRoleTamilName(role);
-                final isSelected = vm.selectedRoleFilter == role;
-                final style = role == 'All'
-                    ? (
-                        bg: ErpTheme.slate100,
-                        border: ErpTheme.slate400,
-                        text: ErpTheme.slate900,
-                        icon: Icons.groups_rounded,
-                      )
-                    : _getRoleStyle(role);
-                final label = role == 'All'
-                    ? 'All ($count)'
-                    : (tamil.isNotEmpty ? '$role • $tamil ($count)' : '$role ($count)');
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    avatar: Icon(
-                      style.icon,
-                      size: 14,
-                      color: isSelected ? style.text : ErpTheme.slate500,
+                  final count = vm.getWorkerCountForRole(role);
+                  final tamil = DailyProductionViewModel.getRoleTamilName(role);
+                  final isSelected = vm.selectedRoleFilter == role;
+                  final style = role == 'All'
+                      ? (
+                          bg: ErpTheme.slate100,
+                          border: ErpTheme.slate400,
+                          text: ErpTheme.slate900,
+                          icon: Icons.groups_rounded,
+                        )
+                      : _getRoleStyle(role);
+                  final label = role == 'All'
+                      ? 'All ($count)'
+                      : (tamil.isNotEmpty
+                          ? '$role • $tamil ($count)'
+                          : '$role ($count)');
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: FilterChip(
+                      avatar: Icon(
+                        style.icon,
+                        size: 14,
+                        color: isSelected ? style.text : ErpTheme.slate500,
+                      ),
+                      label: Text(label),
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? style.text : ErpTheme.slate700,
+                      ),
+                      selected: isSelected,
+                      selectedColor: style.bg,
+                      checkmarkColor: style.text,
+                      side: BorderSide(
+                        color: isSelected ? style.border : ErpTheme.slate200,
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                      onSelected: (_) => vm.setRoleFilter(role),
+                      visualDensity: VisualDensity.compact,
                     ),
-                    label: Text(label),
-                    labelStyle: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? style.text : ErpTheme.slate700,
-                    ),
-                    selected: isSelected,
-                    selectedColor: style.bg,
-                    checkmarkColor: style.text,
-                    side: BorderSide(
-                      color: isSelected ? style.border : ErpTheme.slate200,
-                      width: isSelected ? 1.5 : 1.0,
-                    ),
-                    onSelected: (_) => vm.setRoleFilter(role),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                );
-              }),
-            ],
+                  );
+                }),
+              ],
+            ),
           ),
         ),
-      ),
-        // Idea 1: Compact Matrix Action & Quick Add Column Bar
+        // Action & Quick Add Column Bar
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: const BoxDecoration(
             color: ErpTheme.slate50,
             border: Border(bottom: BorderSide(color: ErpTheme.slate200)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Sub-row 1: Focus Grid + Save Matrix
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+          child: isLandscape
+              ? Row(
+                  children: [
+                    focusButton,
+                    const SizedBox(width: 8),
+                    Expanded(child: addColumnDropdown),
+                    const SizedBox(width: 6),
+                    addColumnButton,
+                    const SizedBox(width: 8),
+                    saveButton,
+                  ],
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        focusButton,
+                        const SizedBox(width: 6),
+                        saveButton,
+                      ],
                     ),
-                    onPressed: widget.onToggleFocusMode,
-                    icon: Icon(
-                      widget.isFocusMode
-                          ? Icons.fullscreen_exit_rounded
-                          : Icons.fullscreen_rounded,
-                      size: 14,
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Expanded(child: addColumnDropdown),
+                        const SizedBox(width: 6),
+                        addColumnButton,
+                      ],
                     ),
-                    label: Text(
-                      widget.isFocusMode ? 'Exit Focus' : 'Focus Grid',
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  FilledButton.icon(
-                    key: const ValueKey('matrix-save-button-top'),
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      backgroundColor: ErpTheme.productionAmber,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: vm.isSaving ? null : widget.onSaveMatrix,
-                    icon: vm.isSaving
-                        ? const SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.save_rounded, size: 14),
-                    label: Text(
-                      vm.isSaving ? 'Saving...' : 'Save Worksheet',
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              // Sub-row 2: Quick Add Column Dropdown + Add Column Button
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 32,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: ErpTheme.slate200),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          value: _selectedWipProductToAdd,
-                          icon: const Icon(
-                            Icons.arrow_drop_down,
-                            size: 18,
-                            color: ErpTheme.slate500,
-                          ),
-                          hint: const Row(
-                            children: [
-                              Icon(
-                                Icons.add_chart_rounded,
-                                size: 14,
-                                color: ErpTheme.productionAmber,
-                              ),
-                              SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Add Product Column (e.g. 10 KVR 48)...',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: ErpTheme.slate500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          items: vm.wipProducts.map((p) {
-                            final alreadyAdded = items.contains(p.name);
-                            return DropdownMenuItem<String>(
-                              value: p.name,
-                              enabled: !alreadyAdded,
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      p.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: alreadyAdded
-                                            ? FontWeight.w500
-                                            : FontWeight.w700,
-                                        color: alreadyAdded
-                                            ? ErpTheme.slate400
-                                            : ErpTheme.slate900,
-                                      ),
-                                    ),
-                                  ),
-                                  if (alreadyAdded)
-                                    const Text(
-                                      'Added',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: ErpTheme.slate400,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedWipProductToAdd = val);
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  FilledButton.icon(
-                    key: const ValueKey('matrix-add-column-button'),
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      backgroundColor: ErpTheme.productionAmber,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: _selectedWipProductToAdd == null ||
-                            items.contains(_selectedWipProductToAdd)
-                        ? null
-                        : () {
-                            vm.addActiveItem(_selectedWipProductToAdd!);
-                            setState(() => _selectedWipProductToAdd = null);
-                          },
-                    icon: const Icon(Icons.add_rounded, size: 15),
-                    label: const Text(
-                      '+ Add Column',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                  ],
+                ),
         ),
       ],
     );
   }
-
   Widget _buildDockedKeypad({
     required DailyProductionViewModel vm,
     required String cellKey,
@@ -1581,17 +1752,203 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
     required String itemName,
     required List<String> columnMajorKeys,
     required NumberFormat inrFormat,
+    bool isSideBySide = false,
   }) {
     final currentQty = vm.getQuantity(empId, itemName);
+    final btnHeight = isSideBySide ? 28.0 : 32.0;
+    final stepperHeight = isSideBySide ? 24.0 : 28.0;
+    final btnFontSize = isSideBySide ? 13.0 : 14.0;
+    final spacing = isSideBySide ? 3.0 : 4.0;
+
+    final keypadContent = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 2. Quick Stepper Pills (+10, +25, +50, +100, 0)
+        Row(
+          children: [
+            for (final delta in const [10, 25, 50, 100])
+              _KeypadButton(
+                label: '+$delta',
+                height: stepperHeight,
+                fontSize: isSideBySide ? 10.0 : 11.0,
+                backgroundColor: ErpTheme.hrIndigoSoft,
+                foregroundColor: ErpTheme.hrIndigo,
+                onTap: () => _onKeypadDelta(delta, empId, itemName, vm),
+              ),
+            _KeypadButton(
+              label: 'Clear',
+              height: stepperHeight,
+              fontSize: isSideBySide ? 10.0 : 10.5,
+              backgroundColor: ErpTheme.slate100,
+              foregroundColor: ErpTheme.slate700,
+              onTap: () => _onKeypadClear(empId, itemName, vm),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing),
+
+        // 3. Number Row 1: 1, 2, 3, ⌫
+        Row(
+          children: [
+            _KeypadButton(
+              label: '1',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(1, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '2',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(2, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '3',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(3, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '⌫',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              icon: Icons.backspace_outlined,
+              backgroundColor: ErpTheme.slate100,
+              foregroundColor: ErpTheme.slate700,
+              onTap: () => _onKeypadBackspace(empId, itemName, vm),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing),
+
+        // 4. Number Row 2: 4, 5, 6, 00
+        Row(
+          children: [
+            _KeypadButton(
+              label: '4',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(4, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '5',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(5, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '6',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(6, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '00',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              backgroundColor: ErpTheme.slate50,
+              onTap: () => _onKeypadDoubleZero(empId, itemName, vm),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing),
+
+        // 5. Number Row 3: 7, 8, 9, 0
+        Row(
+          children: [
+            _KeypadButton(
+              label: '7',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(7, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '8',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(8, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '9',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(9, empId, itemName, vm),
+            ),
+            _KeypadButton(
+              label: '0',
+              height: btnHeight,
+              fontSize: btnFontSize,
+              onTap: () => _onKeypadDigit(0, empId, itemName, vm),
+            ),
+          ],
+        ),
+        SizedBox(height: spacing),
+
+        // 6. Action Bar: Next Worker ↓
+        Row(
+          children: [
+            Container(
+              height: isSideBySide ? 30 : 34,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: ErpTheme.slate100,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: ErpTheme.slate200),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                '${inrFormat.format(vm.totalPiecesEntered)} pcs',
+                style: TextStyle(
+                  fontSize: isSideBySide ? 10.5 : 11,
+                  fontWeight: FontWeight.w800,
+                  color: ErpTheme.slate700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: SizedBox(
+                height: isSideBySide ? 30 : 34,
+                child: FilledButton.icon(
+                  key: const ValueKey('matrix-next-worker-button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: ErpTheme.productionAmber,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () {
+                    _isNewFocusDigit = true;
+                    _focusNextCell(cellKey, columnMajorKeys);
+                  },
+                  icon: const Icon(Icons.arrow_downward_rounded, size: 15),
+                  label: Text(
+                    'Next ↓',
+                    style: TextStyle(
+                      fontSize: isSideBySide ? 11 : 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
 
     return Container(
       key: const ValueKey('matrix-docked-keypad'),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: ErpTheme.slate200, width: 1.5)),
+        border: isSideBySide
+            ? const Border(left: BorderSide(color: ErpTheme.slate200, width: 1.5))
+            : const Border(top: BorderSide(color: ErpTheme.slate200, width: 1.5)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: isSideBySide ? MainAxisSize.max : MainAxisSize.min,
         children: [
           // 1. Context Strip: Worker Name • WIP Item = Qty
           Container(
@@ -1662,163 +2019,18 @@ class _ProductionMatrixCardState extends State<_ProductionMatrixCard> {
             ),
           ),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 2. Quick Stepper Pills (+10, +25, +50, +100, 0)
-                Row(
-                  children: [
-                    for (final delta in const [10, 25, 50, 100])
-                      _KeypadButton(
-                        label: '+$delta',
-                        height: 28,
-                        fontSize: 11,
-                        backgroundColor: ErpTheme.hrIndigoSoft,
-                        foregroundColor: ErpTheme.hrIndigo,
-                        onTap: () => _onKeypadDelta(delta, empId, itemName, vm),
-                      ),
-                    _KeypadButton(
-                      label: 'Clear',
-                      height: 28,
-                      fontSize: 10.5,
-                      backgroundColor: ErpTheme.slate100,
-                      foregroundColor: ErpTheme.slate700,
-                      onTap: () => _onKeypadClear(empId, itemName, vm),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-
-                // 3. Number Row 1: 1, 2, 3, ⌫
-                Row(
-                  children: [
-                    _KeypadButton(
-                      label: '1',
-                      onTap: () => _onKeypadDigit(1, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '2',
-                      onTap: () => _onKeypadDigit(2, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '3',
-                      onTap: () => _onKeypadDigit(3, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '⌫',
-                      icon: Icons.backspace_outlined,
-                      backgroundColor: ErpTheme.slate100,
-                      foregroundColor: ErpTheme.slate700,
-                      onTap: () => _onKeypadBackspace(empId, itemName, vm),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-
-                // 4. Number Row 2: 4, 5, 6, 00
-                Row(
-                  children: [
-                    _KeypadButton(
-                      label: '4',
-                      onTap: () => _onKeypadDigit(4, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '5',
-                      onTap: () => _onKeypadDigit(5, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '6',
-                      onTap: () => _onKeypadDigit(6, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '00',
-                      backgroundColor: ErpTheme.slate50,
-                      onTap: () => _onKeypadDoubleZero(empId, itemName, vm),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-
-                // 5. Number Row 3: 7, 8, 9, 0
-                Row(
-                  children: [
-                    _KeypadButton(
-                      label: '7',
-                      onTap: () => _onKeypadDigit(7, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '8',
-                      onTap: () => _onKeypadDigit(8, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '9',
-                      onTap: () => _onKeypadDigit(9, empId, itemName, vm),
-                    ),
-                    _KeypadButton(
-                      label: '0',
-                      onTap: () => _onKeypadDigit(0, empId, itemName, vm),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-
-                // 6. Action Bar: Next Worker ↓
-                Row(
-                  children: [
-                    Container(
-                      height: 34,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: ErpTheme.slate100,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: ErpTheme.slate200),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        '${inrFormat.format(vm.totalPiecesEntered)} pcs',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: ErpTheme.slate700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: SizedBox(
-                        height: 34,
-                        child: FilledButton.icon(
-                          key: const ValueKey('matrix-next-worker-button'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: ErpTheme.productionAmber,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          onPressed: () {
-                            _isNewFocusDigit = true;
-                            _focusNextCell(cellKey, columnMajorKeys);
-                          },
-                          icon: const Icon(Icons.arrow_downward_rounded, size: 15),
-                          label: const Text(
-                            'Next ↓',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+          if (isSideBySide)
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+                child: keypadContent,
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+              child: keypadContent,
             ),
-          ),
         ],
       ),
     );
