@@ -736,9 +736,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     final allIds = <int>{..._baselineByEmp.keys, ..._draftByEmp.keys};
     final changed = <int>[];
     for (final id in allIds) {
-      final base = _normalizedNonZero(_baselineByEmp[id]);
-      final draft = _normalizedNonZero(_draftByEmp[id]);
-      if (!_mapsEqual(base, draft)) {
+      if (!_mapsEqualNormalized(_baselineByEmp[id], _draftByEmp[id])) {
         changed.add(id);
       }
     }
@@ -753,10 +751,24 @@ class DailyProductionViewModel extends ChangeNotifier {
     );
   }
 
-  static bool _mapsEqual(Map<String, int> a, Map<String, int> b) {
-    if (a.length != b.length) return false;
-    for (final entry in a.entries) {
-      if (b[entry.key] != entry.value) return false;
+  static bool _mapsEqualNormalized(Map<String, int>? a, Map<String, int>? b) {
+    if (identical(a, b)) return true;
+    if ((a == null || a.isEmpty) && (b == null || b.isEmpty)) return true;
+    if (a != null) {
+      for (final entry in a.entries) {
+        final key = entry.key.trim();
+        final val = entry.value;
+        if (key.isEmpty || val <= 0) continue;
+        if ((b?[entry.key] ?? 0) != val) return false;
+      }
+    }
+    if (b != null) {
+      for (final entry in b.entries) {
+        final key = entry.key.trim();
+        final val = entry.value;
+        if (key.isEmpty || val <= 0) continue;
+        if ((a?[entry.key] ?? 0) != val) return false;
+      }
     }
     return true;
   }
@@ -765,9 +777,10 @@ class DailyProductionViewModel extends ChangeNotifier {
     Map<int, Map<String, int>> a,
     Map<int, Map<String, int>> b,
   ) {
+    if (identical(a, b)) return true;
     final ids = <int>{...a.keys, ...b.keys};
     for (final id in ids) {
-      if (!_mapsEqual(_normalizedNonZero(a[id]), _normalizedNonZero(b[id]))) {
+      if (!_mapsEqualNormalized(a[id], b[id])) {
         return false;
       }
     }

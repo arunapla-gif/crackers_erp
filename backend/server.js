@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
@@ -11,6 +12,7 @@ const { createPresignedGetUrl } = require('./s3_signer');
 const app = express();
 const prisma = new PrismaClient();
 
+app.use(compression());
 app.use(cors());
 app.use(express.json());
 
@@ -1462,14 +1464,17 @@ app.post('/api/advances', async (req, res) => {
 });
 
 // Daily Production Routes
-const resolveProductionItems = async (tx, items, allowClientRates) => {
-  const wipProducts = await tx.product.findMany({
-    where: { type: 'WIP' },
-    select: { name: true, rate: true }
-  });
-  const rateByName = new Map(
-    wipProducts.map((p) => [String(p.name).trim().toLowerCase(), parseFloat(p.rate || 0)])
-  );
+const resolveProductionItems = async (tx, items, allowClientRates, preloadedRateMap = null) => {
+  let rateByName = preloadedRateMap;
+  if (!rateByName) {
+    const wipProducts = await tx.product.findMany({
+      where: { type: 'WIP' },
+      select: { name: true, rate: true }
+    });
+    rateByName = new Map(
+      wipProducts.map((p) => [String(p.name).trim().toLowerCase(), parseFloat(p.rate || 0)])
+    );
+  }
 
   let computedTotalAmount = 0;
   const normalizedItems = (items || [])
@@ -1582,19 +1587,44 @@ app.post('/api/production/daily/bulk', async (req, res) => {
     const { start, end } = getUtcDayBounds(date);
 
     const savedRecords = await prisma.$transaction(async (tx) => {
+      // Optimization: Preload WIP product rates once for the entire batch
+      const wipProducts = await tx.product.findMany({
+        where: { type: 'WIP' },
+        select: { name: true, rate: true }
+      });
+      const preloadedRateMap = new Map(
+        wipProducts.map((p) => [String(p.name).trim().toLowerCase(), parseFloat(p.rate || 0)])
+      );
+
+      // Collect all valid employee IDs in the batch
+      const empIds = entries
+        .map((e) => parseInt(e.employeeId))
+        .filter((id) => Boolean(id));
+
+      // Optimization: Fetch existing day records for all employees in one query
+      const allExisting = await tx.dailyProduction.findMany({
+        where: {
+          employeeId: { in: empIds },
+          date: { gte: start, lte: end }
+        },
+        orderBy: { id: 'asc' }
+      });
+
+      const existingByEmpId = new Map();
+      for (const rec of allExisting) {
+        if (!existingByEmpId.has(rec.employeeId)) {
+          existingByEmpId.set(rec.employeeId, []);
+        }
+        existingByEmpId.get(rec.employeeId).push(rec);
+      }
+
       const results = [];
       for (const entry of entries) {
         const empId = parseInt(entry.employeeId);
         if (!empId) continue;
 
-        const resolved = await resolveProductionItems(tx, entry.items, allowClientRates);
-        const existingForDay = await tx.dailyProduction.findMany({
-          where: {
-            employeeId: empId,
-            date: { gte: start, lte: end }
-          },
-          orderBy: { id: 'asc' }
-        });
+        const resolved = await resolveProductionItems(tx, entry.items, allowClientRates, preloadedRateMap);
+        const existingForDay = existingByEmpId.get(empId) || [];
 
         if (resolved.items.length === 0) {
           if (existingForDay.length > 0) {
@@ -2166,45 +2196,52 @@ app.get('/api/ewaybill/reports/recent', async (req, res) => {
       return res.status(500).json({ error: "Whitebooks API did not return an AuthToken", details: authData });
     }
 
-    // 2. Loop through the last N days
+    // 2. Fetch past N days concurrently via Promise.allSettled
+    const dayIndices = Array.from({ length: days }, (_, i) => i);
+    const dayPromises = dayIndices.map(async (i) => {
+      const dateObj = new Date();
+      dateObj.setDate(dateObj.getDate() - i);
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const yyyy = dateObj.getFullYear();
+      const dateStr = `${dd}/${mm}/${yyyy}`;
+
+      const ewayUrl = `https://api.whitebooks.in/ewaybillapi/v1.03/ewayapi/GetEwayBillsByDate?date=${dateStr}`;
+      try {
+        const ewayResp = await fetch(ewayUrl, {
+          method: "GET",
+          headers: { 
+            "Content-Type": "application/json", 
+            "client_id": clientId, 
+            "client_secret": clientSecret, 
+            "gstin": gstin, 
+            "authtoken": token 
+          }
+        });
+        const ewayData = await ewayResp.json();
+        if (ewayData.status_cd === "1") {
+          return { success: true, date: dateStr, data: ewayData.data };
+        } else {
+          return { success: false, date: dateStr, error: ewayData.error || ewayData };
+        }
+      } catch (err) {
+        return { success: false, date: dateStr, error: err.message };
+      }
+    });
+
+    const settled = await Promise.allSettled(dayPromises);
     const results = [];
     const errors = [];
-    
-    for (let i = 0; i < days; i++) {
-       const dateObj = new Date();
-       dateObj.setDate(dateObj.getDate() - i);
-       // Format to DD/MM/YYYY
-       const dd = String(dateObj.getDate()).padStart(2, '0');
-       const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-       const yyyy = dateObj.getFullYear();
-       const dateStr = `${dd}/${mm}/${yyyy}`;
-
-       // Note: Standard NIC API requires payload encryption here. 
-       // If Whitebooks handles it automatically via query param, it works. 
-       // Otherwise it will return an encryption required error.
-       const ewayUrl = `https://api.whitebooks.in/ewaybillapi/v1.03/ewayapi/GetEwayBillsByDate?date=${dateStr}`;
-       
-       try {
-         const ewayResp = await fetch(ewayUrl, {
-           method: "GET",
-           headers: { 
-             "Content-Type": "application/json", 
-             "client_id": clientId, 
-             "client_secret": clientSecret, 
-             "gstin": gstin, 
-             "authtoken": token 
-           }
-         });
-         const ewayData = await ewayResp.json();
-         if (ewayData.status_cd === "1") {
-           // Success! Add to results
-           results.push({ date: dateStr, data: ewayData.data });
-         } else {
-           errors.push({ date: dateStr, error: ewayData.error || ewayData });
-         }
-       } catch (err) {
-         errors.push({ date: dateStr, error: err.message });
-       }
+    for (const res of settled) {
+      if (res.status === 'fulfilled') {
+        if (res.value.success) {
+          results.push({ date: res.value.date, data: res.value.data });
+        } else {
+          errors.push({ date: res.value.date, error: res.value.error });
+        }
+      } else {
+        errors.push({ error: res.reason?.message || 'Request failed' });
+      }
     }
 
     res.json({ 
