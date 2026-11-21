@@ -1429,35 +1429,48 @@ class AccountAppBarAction extends StatelessWidget {
           ),
         ),
       ],
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: ErpTheme.slate100,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: ErpTheme.slate200),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.account_circle_outlined,
-                size: 18,
-                color: ErpTheme.slate700,
+      child: Builder(
+        builder: (context) {
+          final isNarrow = MediaQuery.sizeOf(context).width < 600;
+          return Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isNarrow ? 4 : 10,
+              vertical: 6,
+            ),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isNarrow ? 6 : 10,
+                vertical: 6,
               ),
-              const SizedBox(width: 6),
-              Text(
-                user.username,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: ErpTheme.slate900,
-                ),
+              decoration: BoxDecoration(
+                color: ErpTheme.slate100,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: ErpTheme.slate200),
               ),
-            ],
-          ),
-        ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.account_circle_outlined,
+                    size: 18,
+                    color: ErpTheme.slate700,
+                  ),
+                  if (!isNarrow) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      user.username,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: ErpTheme.slate900,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -352,6 +352,72 @@ class DailyProductionViewModel extends ChangeNotifier {
     await loadInitialData();
   }
 
+  Future<bool> copyFromPreviousDay({DateTime? sourceDate}) async {
+    final prevDate = sourceDate ?? _selectedDate.subtract(const Duration(days: 1));
+    final prevIsoDate = toIsoCalendarDate(prevDate);
+
+    _isLoading = true;
+    _errorMessage = null;
+    _statusMessage = null;
+    _safeNotify();
+
+    try {
+      final records = await _productionRepository.fetchDailyProductions(
+        date: prevIsoDate,
+      );
+      if (records.isEmpty) {
+        _errorMessage = 'No production records found for $prevIsoDate.';
+        return false;
+      }
+
+      final newDraft = <int, Map<String, int>>{};
+      for (final rec in records) {
+        final empItems = newDraft.putIfAbsent(rec.employeeId, () => <String, int>{});
+        for (final item in rec.items) {
+          if (item.quantity > 0 && item.itemName.trim().isNotEmpty) {
+            empItems[item.itemName] = item.quantity;
+          }
+        }
+      }
+
+      _draftByEmp = newDraft;
+      _rebuildActiveItems();
+      _persistDraftSnapshot();
+      _hasRestoredLocalDraft = true;
+      _statusMessage = 'Prefilled ${records.length} worker entries from $prevIsoDate.';
+      return true;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      return false;
+    } catch (_) {
+      _errorMessage = 'Failed to copy previous day worksheet.';
+      return false;
+    } finally {
+      _isLoading = false;
+      _safeNotify();
+    }
+  }
+
+  String generateCsv() {
+    final buffer = StringBuffer();
+    buffer.writeln('Date,Department,Worker ID,Worker Name,Item Name,Quantity');
+    final groupedRoles = filteredWorkersByRole;
+    for (final roleEntry in groupedRoles.entries) {
+      final role = roleEntry.key;
+      for (final emp in roleEntry.value) {
+        final entries = getWorkerEntries(emp.id);
+        for (final item in entries.entries) {
+          if (item.value > 0) {
+            final cleanName = '"${emp.name.replaceAll('"', '""')}"';
+            final cleanItem = '"${item.key.replaceAll('"', '""')}"';
+            buffer.writeln('$selectedIsoDate,$role,${emp.id},$cleanName,$cleanItem,${item.value}');
+          }
+        }
+      }
+    }
+    return buffer.toString();
+  }
+
   void setEntryMode(ProductionEntryMode mode) {
     if (_entryMode == mode) return;
     _entryMode = mode;

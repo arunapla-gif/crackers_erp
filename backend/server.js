@@ -1,5 +1,6 @@
 const express = require('express');
 const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
@@ -12,6 +13,7 @@ const { createPresignedGetUrl } = require('./s3_signer');
 const app = express();
 const prisma = new PrismaClient();
 
+app.set('trust proxy', 1);
 app.use(compression());
 app.use(cors());
 app.use(express.json());
@@ -89,8 +91,17 @@ async function seedAdmin() {
 }
 seedAdmin();
 
+// Rate limiter for PIN login protection
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15, // Max 15 attempts per IP per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please try again after 15 minutes.' }
+});
+
 // Auth Routes
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const { username, pin } = req.body;
   try {
     const user = await prisma.user.findUnique({ where: { username } });
@@ -2543,6 +2554,31 @@ if (hasWebBundle) {
 }
 
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Graceful shutdown handling for container redeployments
+const handleShutdown = async (signal) => {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  server.close(async () => {
+    console.log('HTTP server closed.');
+    try {
+      await prisma.$disconnect();
+      console.log('Prisma database client disconnected cleanly.');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during database disconnect:', err);
+      process.exit(1);
+    }
+  });
+
+  // Force exit if connections do not close within 10s
+  setTimeout(() => {
+    console.error('Forcefully terminating server after timeout.');
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));

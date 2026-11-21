@@ -49,6 +49,7 @@ import 'package:crackers_erp/ui/features/masters/views/supplier_master_screen.da
 import 'package:crackers_erp/ui/features/masters/views/transporter_master_screen.dart';
 import 'package:crackers_erp/ui/features/masters/views/vehicle_master_screen.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
+import 'package:crackers_erp/ui/features/production/views/daily_production_matrix_page.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_screen.dart';
 import 'package:crackers_erp/ui/features/sales/view_models/billing_history_view_model.dart';
 import 'package:crackers_erp/ui/features/sales/view_models/billing_view_model.dart';
@@ -172,6 +173,15 @@ class AppRouter {
                 viewModel: productionViewModel,
                 authViewModel: authViewModel,
               ),
+              routes: [
+                GoRoute(
+                  path: 'matrix',
+                  builder: (context, state) => DailyProductionMatrixPage(
+                    viewModel: productionViewModel,
+                    authViewModel: authViewModel,
+                  ),
+                ),
+              ],
             ),
             GoRoute(
               path: '/employees',

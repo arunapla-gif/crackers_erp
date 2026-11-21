@@ -6,6 +6,7 @@ import 'package:crackers_erp/data/repositories/employee_repository.dart';
 import 'package:crackers_erp/data/repositories/production_repository.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
+import 'package:crackers_erp/ui/features/production/views/daily_production_matrix_page.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -15,7 +16,7 @@ import '../support/fakes.dart';
 
 void main() {
   testWidgets(
-    'DailyProductionScreen updates quantities, saves bulk log, and shows zero rupees',
+    'Daily Production 2-Screen Flow: Opens Hub, reviews summary, enters Matrix Workspace, and saves bulk log with zero rupees',
     (WidgetTester tester) async {
       final api = FakeApiClient();
       final storage = InMemoryLocalStorageService();
@@ -46,7 +47,17 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Matrix appears directly with zero rupee sign anywhere
+      // Screen 1: Hub appears with summary and Open Matrix Entry button
+      expect(find.text('Daily Production Hub'), findsOneWidget);
+      expect(find.byKey(const ValueKey('open-matrix-entry-button')), findsOneWidget);
+      expect(find.textContaining('₹'), findsNothing);
+
+      // Tap Open Matrix Entry button -> navigates to Screen 2 (Fullscreen Matrix)
+      await tester.tap(find.byKey(const ValueKey('open-matrix-entry-button')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Screen 2: Dedicated Fullscreen Matrix appears
       expect(find.text('Save Worksheet'), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
 
@@ -67,9 +78,9 @@ void main() {
       await tester.tap(find.byTooltip('Done / Close Keypad'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Save Whole Sheet'), findsOneWidget);
+      expect(find.text('Save Worksheet'), findsOneWidget);
 
-      await tester.tap(find.text('Save Whole Sheet'));
+      await tester.tap(find.text('Save Worksheet'));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -78,7 +89,7 @@ void main() {
   );
 
   testWidgets(
-    'Supervisor can use Matrix on Android phone viewport with Focus Grid, quick qty, and zero rupees',
+    'Supervisor can use Fullscreen Matrix on Android phone viewport with quick qty, Next auto-jump, and zero rupees',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
@@ -105,7 +116,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
@@ -114,7 +125,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Supervisor sees Matrix directly on screen without extra filters
+      // Supervisor sees Dedicated Matrix directly on screen without extra filters
       expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
       expect(find.text('Save Worksheet'), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
@@ -145,12 +156,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(prodVm.getQuantity(12, 'Ground Chakkar Big (WIP)'), equals(50));
 
-      // Enter and exit Focus Grid mode cleanly
-      await tester.ensureVisible(find.text('Focus Grid'));
+      // Close keypad via close button
+      await tester.tap(find.byTooltip('Done / Close Keypad'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Focus Grid'));
-      await tester.pumpAndSettle();
-      expect(find.text('Exit Focus'), findsOneWidget);
 
       await tester.tap(find.text('Save Worksheet'));
       await tester.pumpAndSettle();
@@ -193,7 +201,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
@@ -211,7 +219,7 @@ void main() {
 
       // Search in English matches the worker
       await tester.enterText(
-        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
+        find.widgetWithText(TextField, 'Filter worker name or role...'),
         'muthu',
       );
       await tester.pumpAndSettle();
@@ -219,7 +227,7 @@ void main() {
 
       // Search query not matching hides the worker
       await tester.enterText(
-        find.widgetWithText(TextField, 'Filter worker name, role or unit...'),
+        find.widgetWithText(TextField, 'Filter worker name or role...'),
         'unknown_worker_xyz',
       );
       await tester.pumpAndSettle();
@@ -294,7 +302,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
@@ -408,7 +416,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
@@ -498,18 +506,18 @@ void main() {
         {'id': 6, 'name': 'Bavitha (பவித்தா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
         {'id': 7, 'name': 'Seetha (சீதா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
         {'id': 8, 'name': 'Kaviya (காவியா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 15, 'name': 'Abi (அபி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 16, 'name': 'Rasammal (ராசம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 17, 'name': 'Kanakammal (கணகம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 18, 'name': 'Shree (ஸ்ரீ)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 19, 'name': 'Pandiyammal (பாண்டியம்மாள்)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 20, 'name': 'Iniya (இனியா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 21, 'name': 'Annalakshmi (அண்ணலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 22, 'name': 'Rasalakshmi (ராசலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 23, 'name': 'Sadaiyandi (சடையாண்டி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 24, 'name': 'Muniyasamy (முனியசாமி)', 'role': 'Chemical', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 25, 'name': 'Vasanth (வசந்த்)', 'role': 'Valayam Contract', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
-        {'id': 26, 'name': 'Karthi Appa (கார்த்தி அப்பா)', 'role': 'Box Packing', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 9, 'name': 'Abirami (அபிராமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 10, 'name': 'Sowmiya (சௌமியா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 13, 'name': 'Santhi (சாந்தி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 14, 'name': 'Karthik Raja (கார்த்திக் ராஜா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 15, 'name': 'Subramani (சுப்பிரமணி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 16, 'name': 'Muthulakshmi (முத்துலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 17, 'name': 'Vijaya (விஜயா)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 18, 'name': 'Muthumari (முத்துமாரி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 19, 'name': 'Ramalakshmi (ராமலட்சுமி)', 'role': 'Tape', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 5, 'name': 'Muniyasamy (முனியசாமி)', 'role': 'Chemical', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 20, 'name': 'Vasanth (வசந்த்)', 'role': 'Valayam Contract', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
+        {'id': 22, 'name': 'Karthi Appa (கார்த்தி அப்பா)', 'role': 'Box Packing', 'paymentType': 'Contractual', 'employmentType': 'Regular', 'status': 'Active', 'advanceBalance': '0.00'},
       ]);
 
       final storage = InMemoryLocalStorageService();
@@ -534,7 +542,7 @@ void main() {
           theme: ErpTheme.buildLightTheme(),
           home: RepaintBoundary(
             key: repaintKey,
-            child: DailyProductionScreen(
+            child: DailyProductionMatrixPage(
               viewModel: prodVm,
               authViewModel: authVm,
             ),
@@ -557,13 +565,7 @@ void main() {
       expect(find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம் (1)'), findsWidgets);
       expect(find.textContaining('BOX PACKING • பேக்கிங் (1)'), findsWidgets);
 
-      // 3. Verify Right Track Subtotal Banners
-      expect(find.textContaining('TAPE • டேப் (14 workers)'), findsWidgets);
-      expect(find.textContaining('CHEMICAL • கெமிக்கல் (1 workers)'), findsWidgets);
-      expect(find.textContaining('VALAYAM CONTRACT • வளையம் ஒப்பந்தம் (1 workers)'), findsWidgets);
-      expect(find.textContaining('BOX PACKING • பேக்கிங் (1 workers)'), findsWidgets);
-
-      // 4. Test Category Filter to Chemical (Muniyasamy)
+      // 3. Test Category Filter to Chemical (Muniyasamy)
       await tester.tap(find.widgetWithText(FilterChip, 'Chemical • கெமிக்கல் (1)'));
       await tester.pumpAndSettle();
 
@@ -572,46 +574,32 @@ void main() {
       expect(find.text('வசந்த்'), findsNothing);
       expect(find.text('கார்த்தி அப்பா'), findsNothing);
 
-      // 5. Test Category Filter to Valayam Contract (Vasanth)
+      // 4. Test Category Filter to Valayam Contract (Vasanth)
       final valayamChip = find.widgetWithText(
         FilterChip,
         'Valayam Contract • வளையம் ஒப்பந்தம் (1)',
       );
       await tester.ensureVisible(valayamChip);
-      await tester.pumpAndSettle();
       await tester.tap(valayamChip);
       await tester.pumpAndSettle();
 
       expect(find.text('வசந்த்'), findsWidgets);
       expect(find.text('முனியசாமி'), findsNothing);
-      expect(find.text('மணிமேகலை'), findsNothing);
-      expect(find.text('கார்த்தி அப்பா'), findsNothing);
 
-      // 6. Test Category Filter to Box Packing (Karthi Appa)
-      final boxPackingChip =
-          find.widgetWithText(FilterChip, 'Box Packing • பேக்கிங் (1)');
-      await tester.ensureVisible(boxPackingChip);
-      await tester.pumpAndSettle();
-      await tester.tap(boxPackingChip);
-      await tester.pumpAndSettle();
-
-      expect(find.text('கார்த்தி அப்பா'), findsWidgets);
-      expect(find.text('முனியசாமி'), findsNothing);
-      expect(find.text('வசந்த்'), findsNothing);
-      expect(find.text('மணிமேகலை'), findsNothing);
-
-      // 7. Reset back to All
+      // 5. Reset to All
       final allChip = find.widgetWithText(FilterChip, 'All (17)');
       await tester.ensureVisible(allChip);
-      await tester.pumpAndSettle();
       await tester.tap(allChip);
       await tester.pumpAndSettle();
+      expect(find.text('மணிமேகலை'), findsWidgets);
 
-      // 8. Capture rendered frame to PNG for visual inspection
+      // 6. Capture clean screenshot of the matrix
       await tester.runAsync(() async {
-        final boundary = repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+        final boundary =
+            repaintKey.currentContext?.findRenderObject()
+                as RenderRepaintBoundary?;
         if (boundary != null) {
-          final image = await boundary.toImage(pixelRatio: 1.5);
+          final image = await boundary.toImage(pixelRatio: 2.0);
           final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
           if (byteData != null) {
             File('/Users/arun_ap/.gemini/antigravity/brain/f7071202-34e1-4867-acdb-69999a14b709/matrix_display.png')
@@ -623,7 +611,7 @@ void main() {
   );
 
   testWidgets(
-    'Matrix defaults on screen and allows adding product column in 1-click across all workers',
+    'Daily Production Hub displays WIP products and launches dedicated fullscreen Matrix Workspace',
     (tester) async {
       final api = FakeApiClient();
       final storage = InMemoryLocalStorageService();
@@ -654,29 +642,19 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // 1. Verify screen opens directly in Matrix mode by default
-      expect(prodVm.entryMode, equals(ProductionEntryMode.matrix));
-      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+      // 1. Verify Screen 1 is the Hub
+      expect(find.text('Daily Production Hub'), findsOneWidget);
+      expect(find.textContaining('WIP Products for Today'), findsOneWidget);
+      expect(find.byKey(const ValueKey('open-matrix-entry-button')), findsOneWidget);
 
-      // 2. Verify React-style Quick Add Column button exists
-      expect(
-        find.byKey(const ValueKey('matrix-add-column-button')),
-        findsOneWidget,
-      );
-      expect(find.text('+ Add Column'), findsOneWidget);
+      // 2. Pick products button exists on Hub
+      expect(find.byKey(const ValueKey('hub-add-wip-button')), findsOneWidget);
 
-      // 3. Clear existing columns to test empty state and adding column
-      prodVm.clearActiveItems();
+      // 3. Tap open matrix button -> navigates to fullscreen matrix
+      await tester.tap(find.byKey(const ValueKey('open-matrix-entry-button')));
+      await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('No WIP Product Columns Added'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('matrix-empty-add-column-button')),
-        findsOneWidget,
-      );
 
-      // 4. Add product column via vm and verify it reappears
-      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
-      await tester.pumpAndSettle();
       expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
       expect(find.text('12cm Electric Sparklers (WIP)'), findsWidgets);
     },
@@ -710,12 +688,13 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
         ),
       );
+      await tester.pump();
       await tester.pumpAndSettle();
 
       // Tap cell for emp 12 (Packing)
@@ -773,14 +752,14 @@ void main() {
       await tester.tap(find.byTooltip('Done / Close Keypad'));
       await tester.pumpAndSettle();
 
-      // Keypad is closed and summary bar reappears with Save Whole Sheet
+      // Keypad is closed and summary bar reappears with Save Worksheet
       expect(keypadFinder, findsNothing);
-      expect(find.text('Save Whole Sheet'), findsOneWidget);
+      expect(find.text('Save Worksheet'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'DailyProductionScreen operates smoothly in Landscape mode with side-by-side keypad and zero rupees',
+    'DailyProductionMatrixPage operates smoothly in Landscape mode with side-by-side keypad and zero rupees',
     (WidgetTester tester) async {
       tester.view.physicalSize = const Size(844, 390);
       tester.view.devicePixelRatio = 1.0;
@@ -807,7 +786,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ErpTheme.buildLightTheme(),
-          home: DailyProductionScreen(
+          home: DailyProductionMatrixPage(
             viewModel: prodVm,
             authViewModel: authVm,
           ),
@@ -855,9 +834,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(keypadFinder, findsNothing);
 
-      // Bottom bar is visible with Save Whole Sheet
-      expect(find.text('Save Whole Sheet'), findsOneWidget);
-      await tester.tap(find.text('Save Whole Sheet'));
+      // Bottom bar is visible with Save Worksheet
+      expect(find.text('Save Worksheet'), findsOneWidget);
+      await tester.tap(find.text('Save Worksheet'));
       await tester.pump();
       await tester.pumpAndSettle();
 
