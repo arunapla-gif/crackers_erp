@@ -12,6 +12,7 @@ import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
 import 'daily_production_matrix_page.dart';
 import 'daily_production_pdf.dart';
+import 'quick_temp_worker_sheet.dart';
 
 /// Screen 1: Daily Production Hub
 ///
@@ -1300,15 +1301,64 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
           ),
 
           // 5. Department Quick-Access Cards
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Text(
-              'Departments in Production',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: ErpTheme.slate700,
-              ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Departments in Production',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: ErpTheme.slate700,
+                    ),
+                  ),
+                ),
+                if (widget.authViewModel.currentUser?.canAdd('employees') ==
+                    true) ...[
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    key: const ValueKey('hub-quick-add-temp-worker-button'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ErpTheme.hrIndigoSoft,
+                      foregroundColor: ErpTheme.hrIndigo,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                    ),
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final created = await showQuickTempWorkerSheet(
+                        context,
+                        viewModel: vm,
+                      );
+                      if (created != null && mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Added temporary worker ${created.displayEnglishName} (${created.roleGroup}).',
+                            ),
+                            backgroundColor: ErpTheme.ordersEmerald,
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 15),
+                    label: const Text(
+                      '+ Temp Worker',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 6),

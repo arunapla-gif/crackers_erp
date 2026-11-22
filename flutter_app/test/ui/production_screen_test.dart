@@ -1222,4 +1222,85 @@ void main() {
       expect(find.text('Save Worksheet'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'Supervisor can quick-add a Temporary worker directly from Matrix with zero-rupee secrecy',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Tap pinned + Temp pill inside Matrix
+      final quickTempBtn = find.byKey(
+        const ValueKey('matrix-quick-add-temp-worker-button'),
+      );
+      expect(quickTempBtn, findsOneWidget);
+      await tester.tap(quickTempBtn);
+      await tester.pumpAndSettle();
+
+      // Zero-rupee secrecy inside the quick-add sheet
+      expect(find.text('Quick Add Temporary Worker'), findsOneWidget);
+      expect(find.textContaining('₹'), findsNothing);
+      expect(find.textContaining('Salary'), findsNothing);
+
+      // Enter worker name and pick Packing role preset
+      await tester.enterText(
+        find.byKey(const ValueKey('quick-temp-name-field')),
+        'Karthik',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ActionChip, 'Packing'));
+      await tester.pumpAndSettle();
+
+      // Save
+      await tester.tap(find.byKey(const ValueKey('quick-temp-save-button')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Verify payload sent to backend
+      expect(api.lastSavedEmployeePayload, isNotNull);
+      expect(api.lastSavedEmployeePayload!['employmentType'], 'Temporary');
+      expect(api.lastSavedEmployeePayload!['role'], 'Packing');
+      expect(api.lastSavedEmployeePayload!.containsKey('salary'), isFalse);
+
+      // Worker immediately appears in the Matrix with TEMP badge
+      expect(
+        prodVm.employees.any(
+          (e) => e.englishName == 'Karthik' && e.isTemporary,
+        ),
+        isTrue,
+      );
+      expect(find.textContaining('TEMP'), findsWidgets);
+    },
+  );
 }

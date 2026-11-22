@@ -94,6 +94,12 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
           bg: ErpTheme.ordersEmeraldSoft,
           fg: ErpTheme.ordersEmerald,
         );
+      case 'employees':
+        return (
+          label: 'EMPLOYEES',
+          bg: const Color(0xFFE0F2FE),
+          fg: const Color(0xFF0369A1),
+        );
       default:
         return (
           label: module.toUpperCase(),
@@ -280,6 +286,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                             ('production', 'Production'),
                             ('advances', 'Advances'),
                             ('payroll', 'Payroll'),
+                            ('employees', 'Employees'),
                           ])
                             Padding(
                               padding: const EdgeInsets.only(right: 6),

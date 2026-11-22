@@ -1230,25 +1230,95 @@ app.post('/api/employees', async (req, res) => {
         updateData.salary = parseFloat(salary || 0);
       }
 
-      const employee = await prisma.employee.update({
-        where: { id: empId },
-        data: updateData
+      const employee = await prisma.$transaction(async (tx) => {
+        const updatedEmp = await tx.employee.update({
+          where: { id: empId },
+          data: updateData
+        });
+
+        const changed = [];
+        if (existing.name !== updatedEmp.name) changed.push(`name: ${existing.name} -> ${updatedEmp.name}`);
+        if ((existing.role || '') !== (updatedEmp.role || '')) changed.push(`dept: ${existing.role || '-'} -> ${updatedEmp.role || '-'}`);
+        if ((existing.paymentType || '') !== (updatedEmp.paymentType || '')) changed.push(`type: ${existing.paymentType} -> ${updatedEmp.paymentType}`);
+        if ((existing.employmentType || '') !== (updatedEmp.employmentType || '')) changed.push(`category: ${existing.employmentType} -> ${updatedEmp.employmentType}`);
+        if ((existing.status || '') !== (updatedEmp.status || '')) changed.push(`status: ${existing.status} -> ${updatedEmp.status}`);
+        if (!isSupervisorUser(req) && Number(existing.salary || 0) !== Number(updatedEmp.salary || 0)) {
+          changed.push(`salary: ₹${Number(existing.salary || 0)} -> ₹${Number(updatedEmp.salary || 0)}`);
+        }
+
+        await writeAuditLog(tx, req, {
+          module: 'employees',
+          action: 'UPDATE',
+          recordId: updatedEmp.id,
+          employeeId: updatedEmp.id,
+          employeeName: updatedEmp.name,
+          isBackdated: false,
+          summary: changed.length > 0
+            ? `Updated worker: ${changed.join(', ')}`
+            : `Updated worker details (${updatedEmp.employmentType}, ${updatedEmp.role || 'General'})`,
+          beforeData: {
+            name: existing.name,
+            mobile: existing.mobile,
+            role: existing.role,
+            paymentType: existing.paymentType,
+            employmentType: existing.employmentType,
+            status: existing.status,
+            unit: existing.unit,
+            salary: Number(existing.salary || 0),
+          },
+          afterData: {
+            name: updatedEmp.name,
+            mobile: updatedEmp.mobile,
+            role: updatedEmp.role,
+            paymentType: updatedEmp.paymentType,
+            employmentType: updatedEmp.employmentType,
+            status: updatedEmp.status,
+            unit: updatedEmp.unit,
+            salary: Number(updatedEmp.salary || 0),
+          },
+        });
+
+        return updatedEmp;
       });
       return res.json(sanitizeEmployeeForRole(employee, req));
     } else {
       const initialEmploymentType = cleanEmploymentType || 'Regular';
-      const employee = await prisma.employee.create({
-        data: {
-          name: String(name).trim(),
-          mobile: mobile || null,
-          role: role || null,
-          salary: isSupervisorUser(req) ? 0 : parseFloat(salary || 0),
-          paymentType: cleanPaymentType || 'Monthly',
-          employmentType: initialEmploymentType,
-          regularizedAt: initialEmploymentType === 'Regular' ? new Date() : null,
-          unit: unit || null,
-          status: currentStatus
-        }
+      const employee = await prisma.$transaction(async (tx) => {
+        const createdEmp = await tx.employee.create({
+          data: {
+            name: String(name).trim(),
+            mobile: mobile || null,
+            role: role || null,
+            salary: isSupervisorUser(req) ? 0 : parseFloat(salary || 0),
+            paymentType: cleanPaymentType || 'Monthly',
+            employmentType: initialEmploymentType,
+            regularizedAt: initialEmploymentType === 'Regular' ? new Date() : null,
+            unit: unit || null,
+            status: currentStatus
+          }
+        });
+
+        await writeAuditLog(tx, req, {
+          module: 'employees',
+          action: 'CREATE',
+          recordId: createdEmp.id,
+          employeeId: createdEmp.id,
+          employeeName: createdEmp.name,
+          isBackdated: false,
+          summary: `Added ${createdEmp.employmentType} worker (${createdEmp.role || 'General'}, ${createdEmp.paymentType})`,
+          afterData: {
+            name: createdEmp.name,
+            mobile: createdEmp.mobile,
+            role: createdEmp.role,
+            paymentType: createdEmp.paymentType,
+            employmentType: createdEmp.employmentType,
+            status: createdEmp.status,
+            unit: createdEmp.unit,
+            salary: Number(createdEmp.salary || 0),
+          },
+        });
+
+        return createdEmp;
       });
       return res.json(sanitizeEmployeeForRole(employee, req));
     }
@@ -1294,9 +1364,33 @@ app.post('/api/employees/:id/make-regular', async (req, res) => {
       updateData.salary = parsedSalary;
     }
 
-    const updated = await prisma.employee.update({
-      where: { id: empId },
-      data: updateData,
+    const updated = await prisma.$transaction(async (tx) => {
+      const regEmp = await tx.employee.update({
+        where: { id: empId },
+        data: updateData,
+      });
+
+      await writeAuditLog(tx, req, {
+        module: 'employees',
+        action: 'UPDATE',
+        recordId: regEmp.id,
+        employeeId: regEmp.id,
+        employeeName: regEmp.name,
+        isBackdated: false,
+        summary: `Converted Temporary worker to Regular (${regEmp.paymentType}, salary ₹${Number(regEmp.salary || 0)})`,
+        beforeData: {
+          employmentType: existing.employmentType,
+          paymentType: existing.paymentType,
+          salary: Number(existing.salary || 0),
+        },
+        afterData: {
+          employmentType: regEmp.employmentType,
+          paymentType: regEmp.paymentType,
+          salary: Number(regEmp.salary || 0),
+        },
+      });
+
+      return regEmp;
     });
     res.json(updated);
   } catch (err) {
@@ -1309,7 +1403,30 @@ app.delete('/api/employees/:id', async (req, res) => {
     const allowed = await canAccessModule(req, 'employees', 'delete');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 
-    await prisma.employee.delete({ where: { id: parseInt(req.params.id) } });
+    const empId = parseInt(req.params.id);
+    const existing = await prisma.employee.findUnique({ where: { id: empId } });
+    if (!existing) return res.status(404).json({ error: 'Employee not found.' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.employee.delete({ where: { id: empId } });
+      await writeAuditLog(tx, req, {
+        module: 'employees',
+        action: 'DELETE',
+        recordId: existing.id,
+        employeeId: existing.id,
+        employeeName: existing.name,
+        isBackdated: false,
+        summary: `Deleted ${existing.employmentType} worker (${existing.role || 'General'})`,
+        beforeData: {
+          name: existing.name,
+          role: existing.role,
+          paymentType: existing.paymentType,
+          employmentType: existing.employmentType,
+          status: existing.status,
+          advanceBalance: Number(existing.advanceBalance || 0),
+        },
+      });
+    });
     res.json({ message: 'Employee deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

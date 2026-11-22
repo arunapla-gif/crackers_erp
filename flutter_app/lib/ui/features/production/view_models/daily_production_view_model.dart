@@ -866,6 +866,63 @@ class DailyProductionViewModel extends ChangeNotifier {
     return clone;
   }
 
+  /// Quickly registers a walk-in Temporary worker directly from Daily Production
+  /// without exposing any wage or salary fields.
+  Future<Employee?> addQuickTemporaryWorker({
+    required String name,
+    required String role,
+    String? mobile,
+    String paymentType = 'Contractual',
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedRole = role.trim();
+    if (trimmedName.isEmpty || trimmedRole.isEmpty) {
+      _errorMessage = 'Worker name and department are required.';
+      _safeNotify();
+      return null;
+    }
+
+    _errorMessage = null;
+    _statusMessage = null;
+    _safeNotify();
+
+    try {
+      final draft = Employee(
+        id: 0,
+        name: trimmedName,
+        mobile: (mobile == null || mobile.trim().isEmpty)
+            ? null
+            : mobile.trim(),
+        role: trimmedRole,
+        paymentType: paymentType,
+        employmentType: 'Temporary',
+        status: 'Active',
+        advanceBalance: 0,
+      );
+      final saved = await _employeeRepository.saveEmployee(draft);
+      final updated = List<Employee>.from(_employees)
+        ..removeWhere((e) => e.id == saved.id)
+        ..add(saved)
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      _employees = updated;
+      if (!saved.isContractual && !_includeMonthlyWorkers) {
+        _includeMonthlyWorkers = true;
+      }
+      _statusMessage =
+          'Added temporary worker ${saved.displayEnglishName} (${saved.roleGroup}).';
+      _safeNotify();
+      return saved;
+    } on ApiException catch (e) {
+      _errorMessage = e.message;
+      _safeNotify();
+      return null;
+    } catch (e) {
+      _errorMessage = 'Could not add temporary worker: $e';
+      _safeNotify();
+      return null;
+    }
+  }
+
   void _safeNotify() {
     if (!_disposed) {
       notifyListeners();

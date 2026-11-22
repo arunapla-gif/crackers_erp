@@ -9,6 +9,7 @@ import 'package:crackers_erp/domain/models/employee.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
+import 'quick_temp_worker_sheet.dart';
 
 /// Screen 2: Dedicated Fullscreen Matrix Workspace
 /// 
@@ -960,6 +961,84 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                             ),
                           ),
                         ),
+                        if (widget.authViewModel.currentUser?.canAdd(
+                              'employees',
+                            ) ==
+                            true) ...[
+                          const SizedBox(width: 6),
+                          Material(
+                            color: ErpTheme.hrIndigoSoft,
+                            borderRadius: BorderRadius.circular(8),
+                            child: InkWell(
+                              key: const ValueKey(
+                                'matrix-quick-add-temp-worker-button',
+                              ),
+                              onTap: () async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                final currentFilter = vm.selectedRoleFilter;
+                                final created = await showQuickTempWorkerSheet(
+                                  context,
+                                  viewModel: vm,
+                                  initialRole: currentFilter == 'All'
+                                      ? null
+                                      : currentFilter,
+                                );
+                                if (created == null || !mounted) return;
+                                setState(() {
+                                  _collapsedRoles.remove(created.roleGroup);
+                                  _pendingOnly = false;
+                                });
+                                if (vm.selectedRoleFilter != 'All' &&
+                                    vm.selectedRoleFilter.toLowerCase() !=
+                                        created.roleGroup.toLowerCase()) {
+                                  vm.setRoleFilter(created.roleGroup);
+                                }
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Added ${created.displayEnglishName} (TEMP) to ${created.roleGroup}. Ready for entry.',
+                                    ),
+                                    backgroundColor: ErpTheme.ordersEmerald,
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                height: 28,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: ErpTheme.hrIndigo.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.person_add_alt_1_rounded,
+                                      size: 13,
+                                      color: ErpTheme.hrIndigo,
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Temp',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w900,
+                                        color: ErpTheme.hrIndigo,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 6),
                         Container(
                           width: 1,
