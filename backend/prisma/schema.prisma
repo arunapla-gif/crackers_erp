@@ -733,3 +733,29 @@ model Legacy_ChemicalParticular {
 
   @@schema("crackers")
 }
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  module       String
+  action       String
+  recordId     Int?
+  targetDate   String?
+  employeeId   Int?
+  employeeName String?
+  userId       Int?
+  username     String
+  userRole     String
+  summary      String
+  beforeData   Json?
+  afterData    Json?
+  isBackdated  Boolean  @default(false)
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module, createdAt])
+  @@index([action, createdAt])
+  @@index([username, createdAt])
+  @@index([employeeId])
+  @@schema("crackers")
+}

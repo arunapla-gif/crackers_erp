@@ -18,6 +18,7 @@ import 'data/services/api_client.dart';
 import 'data/services/app_updater_service.dart';
 import 'data/services/local_storage_service.dart';
 import 'ui/core/app_update_dialog.dart';
+import 'ui/features/admin/view_models/audit_log_view_model.dart';
 import 'ui/features/admin/view_models/company_profile_view_model.dart';
 import 'ui/features/admin/view_models/eway_bill_report_view_model.dart';
 import 'ui/features/admin/view_models/user_master_view_model.dart';
@@ -154,6 +155,9 @@ Future<void> main() async {
     adminRepository: adminRepository,
     masterRepository: masterRepository,
   );
+  final auditLogViewModel = AuditLogViewModel(
+    adminRepository: adminRepository,
+  );
   final ewayBillReportViewModel = EwayBillReportViewModel(
     billingRepository: billingRepository,
   );
@@ -187,6 +191,7 @@ Future<void> main() async {
       payrollViewModel.reset();
       companyProfileViewModel.reset();
       userMasterViewModel.reset();
+      auditLogViewModel.reset();
       ewayBillReportViewModel.reset();
       legacyViewModel.reset();
     }
@@ -218,6 +223,7 @@ Future<void> main() async {
     payrollViewModel: payrollViewModel,
     companyProfileViewModel: companyProfileViewModel,
     userMasterViewModel: userMasterViewModel,
+    auditLogViewModel: auditLogViewModel,
     ewayBillReportViewModel: ewayBillReportViewModel,
     legacyViewModel: legacyViewModel,
   );

@@ -1201,6 +1201,25 @@ void main() {
       expect(api.productionsData.length, equals(1));
       expect(prodVm.hasUnsavedChanges, isFalse);
       expect(find.byKey(const ValueKey('hub-save-draft-button')), findsNothing);
+
+      // Hub CTA switches to exclusive Edit Worksheet button when saved entries exist
+      expect(find.text('Edit Worksheet (1 Saved)'), findsOneWidget);
+
+      // Open Saved Logs (History) and tap the exclusive Edit button -> jumps straight into Matrix
+      await tester.tap(find.byTooltip('Saved Logs'));
+      await tester.pumpAndSettle();
+
+      final historyEditBtn = find.byKey(
+        ValueKey('history-edit-record-${prodVm.recentHistory.first.id}'),
+      );
+      expect(historyEditBtn, findsOneWidget);
+      await tester.tap(historyEditBtn);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Directly inside Screen 2 Matrix ready to edit
+      expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
+      expect(find.text('Save Worksheet'), findsOneWidget);
     },
   );
 }

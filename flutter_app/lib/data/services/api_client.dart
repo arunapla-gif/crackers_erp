@@ -48,6 +48,14 @@ abstract class ApiClient {
   Future<Map<String, dynamic>> saveBillingSeries(Map<String, dynamic> payload);
   Future<void> deleteBillingSeries(int id);
   Future<Map<String, dynamic>> getSystemCredentials();
+  Future<Map<String, dynamic>> getAuditLogs({
+    String module = 'all',
+    String action = 'all',
+    String username = 'all',
+    String search = '',
+    bool onlyFlagged = false,
+    int limit = 100,
+  });
 
   // Invoices & Billing & E-Way Bills
   Future<Map<String, dynamic>> getInvoice(String number);
@@ -465,6 +473,30 @@ class HttpApiClient implements ApiClient {
   @override
   Future<Map<String, dynamic>> getSystemCredentials() async {
     final res = await _send(method: 'GET', path: '/system-credentials');
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getAuditLogs({
+    String module = 'all',
+    String action = 'all',
+    String username = 'all',
+    String search = '',
+    bool onlyFlagged = false,
+    int limit = 100,
+  }) async {
+    final res = await _send(
+      method: 'GET',
+      path: '/admin/audit-logs',
+      queryParameters: {
+        'module': module,
+        'action': action,
+        'username': username,
+        if (search.trim().isNotEmpty) 'search': search.trim(),
+        if (onlyFlagged) 'onlyFlagged': 'true',
+        'limit': '$limit',
+      },
+    );
     return _asMap(res);
   }
 

@@ -1,3 +1,4 @@
+import '../../domain/models/audit_log.dart';
 import '../../domain/models/company_profile.dart';
 import '../../domain/models/erp_user.dart';
 import '../services/api_client.dart';
@@ -61,6 +62,36 @@ class AdminRepository {
   Future<SystemCredentials> fetchSystemCredentials() async {
     final raw = await _apiClient.getSystemCredentials();
     return SystemCredentials.fromJson(raw);
+  }
+
+  Future<AuditLogPageData> fetchAuditLogs({
+    String module = 'all',
+    String action = 'all',
+    String username = 'all',
+    String search = '',
+    bool onlyFlagged = false,
+    int limit = 100,
+  }) async {
+    final raw = await _apiClient.getAuditLogs(
+      module: module,
+      action: action,
+      username: username,
+      search: search,
+      onlyFlagged: onlyFlagged,
+      limit: limit,
+    );
+    final rawLogs = raw['logs'];
+    final logs = rawLogs is List
+        ? rawLogs
+            .whereType<Map<String, dynamic>>()
+            .map(AuditLogEntry.fromJson)
+            .toList()
+        : const <AuditLogEntry>[];
+    final rawUsers = raw['users'];
+    final users = rawUsers is List
+        ? rawUsers.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+        : const <String>[];
+    return AuditLogPageData(logs: logs, users: users);
   }
 }
 

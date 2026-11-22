@@ -6,9 +6,11 @@ import 'package:crackers_erp/data/repositories/master_repository.dart';
 import 'package:crackers_erp/domain/models/sales_order.dart';
 import 'package:crackers_erp/domain/models/user_session.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
+import 'package:crackers_erp/ui/features/admin/view_models/audit_log_view_model.dart';
 import 'package:crackers_erp/ui/features/admin/view_models/company_profile_view_model.dart';
 import 'package:crackers_erp/ui/features/admin/view_models/eway_bill_report_view_model.dart';
 import 'package:crackers_erp/ui/features/admin/view_models/user_master_view_model.dart';
+import 'package:crackers_erp/ui/features/admin/views/audit_log_screen.dart';
 import 'package:crackers_erp/ui/features/admin/views/company_profile_screen.dart';
 import 'package:crackers_erp/ui/features/admin/views/eway_bill_report_screen.dart';
 import 'package:crackers_erp/ui/features/admin/views/user_master_screen.dart';
@@ -90,6 +92,7 @@ class AppRouter {
     required this.userMasterViewModel,
     required this.ewayBillReportViewModel,
     required this.legacyViewModel,
+    this.auditLogViewModel,
   }) {
     router = GoRouter(
       initialLocation: _defaultHomePath(),
@@ -293,6 +296,14 @@ class AppRouter {
                 authViewModel: authViewModel,
               ),
             ),
+            if (auditLogViewModel != null)
+              GoRoute(
+                path: '/audit-logs',
+                builder: (context, state) => AuditLogScreen(
+                  viewModel: auditLogViewModel!,
+                  authViewModel: authViewModel,
+                ),
+              ),
             GoRoute(
               path: '/eway-bills',
               builder: (context, state) =>
@@ -336,6 +347,7 @@ class AppRouter {
   final UserMasterViewModel userMasterViewModel;
   final EwayBillReportViewModel ewayBillReportViewModel;
   final LegacyViewModel legacyViewModel;
+  final AuditLogViewModel? auditLogViewModel;
   late final GoRouter router;
 
   String _defaultHomePath() {
@@ -389,6 +401,7 @@ class AppRouter {
         loc.startsWith('/customer-rates') ||
         loc.startsWith('/company-profiles') ||
         loc.startsWith('/users') ||
+        loc.startsWith('/audit-logs') ||
         loc.startsWith('/factory-orders')) {
       return false;
     }

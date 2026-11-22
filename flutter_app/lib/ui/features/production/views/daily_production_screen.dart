@@ -1060,13 +1060,15 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
             ),
           ),
 
-          // 3. THE PRIMARY ACTION: Open Dedicated Fullscreen Matrix Page
+          // 3. THE PRIMARY ACTION: Open or Edit Dedicated Fullscreen Matrix Page
           SizedBox(
             height: 54,
             child: FilledButton.icon(
               key: const ValueKey('open-matrix-entry-button'),
               style: FilledButton.styleFrom(
-                backgroundColor: ErpTheme.productionAmber,
+                backgroundColor: vm.dateRecords.isNotEmpty
+                    ? ErpTheme.hrIndigo
+                    : ErpTheme.productionAmber,
                 foregroundColor: Colors.white,
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -1074,11 +1076,18 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 ),
               ),
               onPressed: () => _openMatrixPage(),
-              icon: const Icon(Icons.grid_on_rounded, size: 22),
+              icon: Icon(
+                vm.dateRecords.isNotEmpty
+                    ? Icons.edit_rounded
+                    : Icons.grid_on_rounded,
+                size: 22,
+              ),
               label: Text(
-                activeItems.isEmpty
-                    ? 'Open Matrix Entry Workspace'
-                    : 'Open Worksheet Entry (${activeItems.length} Products)',
+                vm.dateRecords.isNotEmpty
+                    ? 'Edit Worksheet (${vm.dateRecords.length} Saved)'
+                    : (activeItems.isEmpty
+                        ? 'Open Matrix Entry Workspace'
+                        : 'Open Worksheet Entry (${activeItems.length} Products)'),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w900,
@@ -1369,10 +1378,15 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         ),
                       ),
                       onPressed: () => _openMatrixPage(roleFilter: role),
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 14),
-                      label: const Text(
-                        'Enter',
-                        style: TextStyle(
+                      icon: Icon(
+                        pcs > 0
+                            ? Icons.edit_rounded
+                            : Icons.arrow_forward_rounded,
+                        size: 14,
+                      ),
+                      label: Text(
+                        pcs > 0 ? 'Edit' : 'Enter',
+                        style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1577,20 +1591,40 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      TextButton.icon(
+                      FilledButton.tonalIcon(
+                        key: ValueKey('history-edit-record-${rec.id}'),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: ErpTheme.hrIndigoSoft,
+                          foregroundColor: ErpTheme.hrIndigo,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                         onPressed: () async {
                           await vm.selectDate(rec.date);
-                          if (mounted) {
-                            setState(() => _showHistoryTab = false);
-                          }
+                          if (!mounted) return;
+                          setState(() => _showHistoryTab = false);
+                          final roleTarget =
+                              rec.employeeRole != null &&
+                                      vm.availableRoles.contains(
+                                        rec.employeeRole,
+                                      )
+                                  ? rec.employeeRole!
+                                  : 'All';
+                          await _openMatrixPage(roleFilter: roleTarget);
                         },
-                        icon: const Icon(
-                          Icons.edit_calendar_outlined,
-                          size: 16,
+                        icon: const Icon(Icons.edit_rounded, size: 15),
+                        label: const Text(
+                          'Edit',
+                          style: TextStyle(fontWeight: FontWeight.w800),
                         ),
-                        label: const Text('Open Date'),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: () => _confirmDeleteRecord(rec),
                         style: TextButton.styleFrom(

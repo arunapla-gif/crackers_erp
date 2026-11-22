@@ -884,6 +884,44 @@ class FakeApiClient implements ApiClient {
     'WHITEBOOKS_EMAIL': 'erp@example.com',
   };
 
+  final List<Map<String, dynamic>> auditLogsData = [];
+
+  @override
+  Future<Map<String, dynamic>> getAuditLogs({
+    String module = 'all',
+    String action = 'all',
+    String username = 'all',
+    String search = '',
+    bool onlyFlagged = false,
+    int limit = 100,
+  }) async {
+    final filtered = auditLogsData.where((log) {
+      if (module != 'all' && log['module'] != module) return false;
+      if (action != 'all' && log['action'] != action) return false;
+      if (username != 'all' && log['username'] != username) return false;
+      if (onlyFlagged &&
+          log['isBackdated'] != true &&
+          log['action'] != 'DELETE') {
+        return false;
+      }
+      if (search.isNotEmpty) {
+        final q = search.toLowerCase();
+        final hay =
+            '${log['employeeName'] ?? ''} ${log['username'] ?? ''} ${log['summary'] ?? ''} ${log['targetDate'] ?? ''}'
+                .toLowerCase();
+        if (!hay.contains(q)) return false;
+      }
+      return true;
+    }).toList();
+    final users = auditLogsData
+        .map((l) => (l['username'] ?? '').toString())
+        .where((u) => u.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return {'logs': filtered.take(limit).toList(), 'users': users};
+  }
+
   @override
   Future<Map<String, dynamic>> getInvoice(String number) async {
     return invoicesData.firstWhere(

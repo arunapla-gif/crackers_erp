@@ -253,6 +253,13 @@ ErpRouteMeta resolveRouteMeta(
       section: ErpSection.admin,
     );
   }
+  if (location.startsWith('/audit-logs')) {
+    return const ErpRouteMeta(
+      title: 'Audit Logs',
+      badge: 'AUDIT TRAIL',
+      section: ErpSection.admin,
+    );
+  }
   if (location.startsWith('/eway-bills')) {
     return const ErpRouteMeta(
       title: 'E-Way Bill Fetcher',
@@ -862,6 +869,14 @@ class _ErpAdminStaffShell extends StatelessWidget {
         title: 'User Management',
         subtitle: 'Manage staff access',
         icon: Icons.security_outlined,
+      ),
+    if (user.isAdmin)
+      const ErpNavMenuItem(
+        id: 'audit-logs',
+        path: '/audit-logs',
+        title: 'Audit Logs',
+        subtitle: 'Who changed what',
+        icon: Icons.policy_outlined,
       ),
     if (user.canView('reports'))
       const ErpNavMenuItem(

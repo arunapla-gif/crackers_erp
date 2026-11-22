@@ -1335,6 +1335,114 @@ app.get('/api/payrolls', async (req, res) => {
   }
 });
 
+// --- AUDIT LOGGING HELPERS (Append-Only Anti-Malpractice Trail) ---
+function getTodayIstIsoDate() {
+  const istMs = Date.now() + 330 * 60 * 1000;
+  return new Date(istMs).toISOString().split('T')[0];
+}
+
+function toIsoDateOnly(val) {
+  if (!val) return null;
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  const s = String(val).trim();
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function isBackdatedIsoDate(targetIso) {
+  if (!targetIso) return false;
+  return targetIso < getTodayIstIsoDate();
+}
+
+function extractClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.trim()) {
+    return fwd.split(',')[0].trim();
+  }
+  return req.ip || null;
+}
+
+function simplifyProductionItems(items) {
+  return (items || [])
+    .filter((i) => parseInt(i.quantity || 0, 10) > 0)
+    .map((i) => ({
+      itemName: String(i.itemName || '').trim(),
+      quantity: parseInt(i.quantity || 0, 10),
+    }))
+    .sort((a, b) => a.itemName.localeCompare(b.itemName));
+}
+
+function formatProductionDiff(action, beforeItems, afterItems) {
+  const beforeMap = new Map();
+  for (const i of simplifyProductionItems(beforeItems)) {
+    beforeMap.set(i.itemName, (beforeMap.get(i.itemName) || 0) + i.quantity);
+  }
+  const afterMap = new Map();
+  for (const i of simplifyProductionItems(afterItems)) {
+    afterMap.set(i.itemName, (afterMap.get(i.itemName) || 0) + i.quantity);
+  }
+
+  if (action === 'CREATE') {
+    const parts = [];
+    let total = 0;
+    for (const [name, qty] of afterMap.entries()) {
+      parts.push(`${name}: ${qty}`);
+      total += qty;
+    }
+    return `Created (${total} pcs): ${parts.join(', ')}`;
+  }
+
+  if (action === 'DELETE') {
+    const parts = [];
+    let total = 0;
+    for (const [name, qty] of beforeMap.entries()) {
+      parts.push(`${name}: ${qty}`);
+      total += qty;
+    }
+    return `Deleted (${total} pcs): ${parts.join(', ')}`;
+  }
+
+  const allNames = Array.from(new Set([...beforeMap.keys(), ...afterMap.keys()])).sort();
+  const diffs = [];
+  for (const name of allNames) {
+    const oldQty = beforeMap.get(name) || 0;
+    const newQty = afterMap.get(name) || 0;
+    if (oldQty !== newQty) {
+      const delta = newQty - oldQty;
+      const sign = delta > 0 ? `+${delta}` : `${delta}`;
+      diffs.push(`${name}: ${oldQty} -> ${newQty} (${sign})`);
+    }
+  }
+  return diffs.length > 0 ? diffs.join(', ') : 'Saved without quantity changes';
+}
+
+async function writeAuditLog(tx, req, payload) {
+  const user = req.user || {};
+  const targetDate = toIsoDateOnly(payload.targetDate);
+  const backdated =
+    typeof payload.isBackdated === 'boolean'
+      ? payload.isBackdated
+      : isBackdatedIsoDate(targetDate);
+
+  return tx.auditLog.create({
+    data: {
+      module: payload.module,
+      action: payload.action,
+      recordId: payload.recordId ?? null,
+      targetDate,
+      employeeId: payload.employeeId ?? null,
+      employeeName: payload.employeeName ?? null,
+      userId: user.id ? parseInt(user.id, 10) : null,
+      username: String(user.username || 'unknown'),
+      userRole: String(user.role || 'Unknown'),
+      summary: String(payload.summary || ''),
+      beforeData: payload.beforeData ?? undefined,
+      afterData: payload.afterData ?? undefined,
+      isBackdated: backdated,
+      ipAddress: extractClientIp(req),
+    },
+  });
+}
+
 app.post('/api/payrolls', async (req, res) => {
   if (isSupervisorUser(req) || isRepUser(req)) {
     return res.status(403).json({ error: 'Payroll access restricted.' });
@@ -1345,6 +1453,9 @@ app.post('/api/payrolls', async (req, res) => {
   const { employeeId, month, paymentType, daysWorked, basicSalary, allowance, deduction, netSalary, status, periodStr } = req.body;
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const empBefore = await tx.employee.findUnique({ where: { id: parseInt(employeeId) } });
+      const prevBalance = empBefore ? parseFloat(empBefore.advanceBalance || 0) : 0;
+
       const payroll = await tx.payroll.create({
         data: {
           employeeId: parseInt(employeeId),
@@ -1361,6 +1472,7 @@ app.post('/api/payrolls', async (req, res) => {
       });
 
       const deductAmt = parseFloat(deduction || 0);
+      let newBalance = prevBalance;
       if (deductAmt > 0) {
         // Log it as RECOVERED advance
         await tx.employeeAdvance.create({
@@ -1374,15 +1486,41 @@ app.post('/api/payrolls', async (req, res) => {
         });
 
         // Decrement advance balance
-        const emp = await tx.employee.findUnique({ where: { id: parseInt(employeeId) }});
-        if (emp) {
-          const newBalance = parseFloat(emp.advanceBalance) - deductAmt;
+        if (empBefore) {
+          newBalance = Math.max(0, prevBalance - deductAmt);
           await tx.employee.update({
             where: { id: parseInt(employeeId) },
-            data: { advanceBalance: newBalance >= 0 ? newBalance : 0 }
+            data: { advanceBalance: newBalance }
           });
         }
       }
+
+      const periodLabel = periodStr || month || '';
+      const netVal = parseFloat(netSalary || 0);
+      const basicVal = parseFloat(basicSalary || 0);
+      const allowVal = parseFloat(allowance || 0);
+      await writeAuditLog(tx, req, {
+        module: 'payroll',
+        action: 'CREATE',
+        recordId: payroll.id,
+        targetDate: getTodayIstIsoDate(),
+        employeeId: parseInt(employeeId),
+        employeeName: payroll.employee?.name || empBefore?.name || null,
+        summary: `Payroll ${periodLabel}: Net ₹${netVal.toFixed(2)} (Basic ₹${basicVal.toFixed(2)}, Allow ₹${allowVal.toFixed(2)}, Deduct ₹${deductAmt.toFixed(2)})`,
+        beforeData: { advanceBalance: prevBalance },
+        afterData: {
+          month,
+          periodStr: periodLabel,
+          paymentType: payroll.paymentType,
+          daysWorked: payroll.daysWorked,
+          basicSalary: basicVal,
+          allowance: allowVal,
+          deduction: deductAmt,
+          netSalary: netVal,
+          advanceBalance: newBalance,
+        },
+        isBackdated: false,
+      });
 
       return payroll;
     });
@@ -1447,24 +1585,45 @@ app.post('/api/advances', async (req, res) => {
       return res.status(400).json({ error: 'Valid employeeId and positive amount are required.' });
     }
 
+    const advIsoDate = toIsoDateOnly(date || getTodayIstIsoDate());
     const result = await prisma.$transaction(async (tx) => {
+      const emp = await tx.employee.findUnique({ where: { id: parseInt(employeeId) } });
+      const oldBalance = emp ? parseFloat(emp.advanceBalance || 0) : 0;
+      const newBalance = oldBalance + parsedAmount;
+
       const advance = await tx.employeeAdvance.create({
         data: {
           employeeId: parseInt(employeeId),
-          date: normalizeUtcDate(date || new Date().toISOString().split('T')[0]),
+          date: normalizeUtcDate(advIsoDate),
           type: "GIVEN",
           amount: parsedAmount,
           description: description || "Advance Given"
         }
       });
 
-      const emp = await tx.employee.findUnique({ where: { id: parseInt(employeeId) } });
       if (emp) {
         await tx.employee.update({
           where: { id: parseInt(employeeId) },
-          data: { advanceBalance: parseFloat(emp.advanceBalance) + parsedAmount }
+          data: { advanceBalance: newBalance }
         });
       }
+
+      await writeAuditLog(tx, req, {
+        module: 'advances',
+        action: 'CREATE',
+        recordId: advance.id,
+        targetDate: advIsoDate,
+        employeeId: parseInt(employeeId),
+        employeeName: emp?.name || null,
+        summary: `Advance Given ₹${parsedAmount.toFixed(2)} (${advance.description}) • Balance ₹${oldBalance.toFixed(2)} -> ₹${newBalance.toFixed(2)}`,
+        beforeData: { advanceBalance: oldBalance },
+        afterData: {
+          type: 'GIVEN',
+          amount: parsedAmount,
+          description: advance.description,
+          advanceBalance: newBalance,
+        },
+      });
 
       return advance;
     });
@@ -1550,12 +1709,17 @@ app.post('/api/production/daily', async (req, res) => {
     const allowClientRates = !isSupervisorUser(req);
     const normalizedDate = normalizeUtcDate(date);
 
+    const prodIsoDate = toIsoDateOnly(date);
     const record = await prisma.$transaction(async (tx) => {
       const resolved = await resolveProductionItems(tx, items, allowClientRates);
 
       if (id) {
+        const beforeRec = await tx.dailyProduction.findUnique({
+          where: { id: parseInt(id) },
+          include: { items: true, employee: true }
+        });
         await tx.dailyProductionItem.deleteMany({ where: { dailyProductionId: parseInt(id) } });
-        return tx.dailyProduction.update({
+        const updated = await tx.dailyProduction.update({
           where: { id: parseInt(id) },
           data: {
             date: normalizedDate,
@@ -1565,9 +1729,23 @@ app.post('/api/production/daily', async (req, res) => {
           },
           include: { items: true, employee: true }
         });
+        const beforeItems = simplifyProductionItems(beforeRec?.items);
+        const afterItems = simplifyProductionItems(updated.items);
+        await writeAuditLog(tx, req, {
+          module: 'production',
+          action: 'UPDATE',
+          recordId: updated.id,
+          targetDate: prodIsoDate,
+          employeeId: updated.employeeId,
+          employeeName: updated.employee?.name || beforeRec?.employee?.name || null,
+          summary: formatProductionDiff('UPDATE', beforeItems, afterItems),
+          beforeData: { items: beforeItems },
+          afterData: { items: afterItems },
+        });
+        return updated;
       }
 
-      return tx.dailyProduction.create({
+      const created = await tx.dailyProduction.create({
         data: {
           date: normalizedDate,
           employeeId: parseInt(employeeId),
@@ -1576,6 +1754,19 @@ app.post('/api/production/daily', async (req, res) => {
         },
         include: { items: true, employee: true }
       });
+      const afterItems = simplifyProductionItems(created.items);
+      await writeAuditLog(tx, req, {
+        module: 'production',
+        action: 'CREATE',
+        recordId: created.id,
+        targetDate: prodIsoDate,
+        employeeId: created.employeeId,
+        employeeName: created.employee?.name || null,
+        summary: formatProductionDiff('CREATE', [], afterItems),
+        beforeData: null,
+        afterData: { items: afterItems },
+      });
+      return created;
     });
 
     res.json(sanitizeProductionForRole(record, req));
@@ -1612,12 +1803,13 @@ app.post('/api/production/daily/bulk', async (req, res) => {
         .map((e) => parseInt(e.employeeId))
         .filter((id) => Boolean(id));
 
-      // Optimization: Fetch existing day records for all employees in one query
+      // Optimization: Fetch existing day records (with items & employee for audit diff) in one query
       const allExisting = await tx.dailyProduction.findMany({
         where: {
           employeeId: { in: empIds },
           date: { gte: start, lte: end }
         },
+        include: { items: true, employee: true },
         orderBy: { id: 'asc' }
       });
 
@@ -1629,6 +1821,7 @@ app.post('/api/production/daily/bulk', async (req, res) => {
         existingByEmpId.get(rec.employeeId).push(rec);
       }
 
+      const bulkIsoDate = toIsoDateOnly(date);
       const results = [];
       for (const entry of entries) {
         const empId = parseInt(entry.employeeId);
@@ -1636,11 +1829,25 @@ app.post('/api/production/daily/bulk', async (req, res) => {
 
         const resolved = await resolveProductionItems(tx, entry.items, allowClientRates, preloadedRateMap);
         const existingForDay = existingByEmpId.get(empId) || [];
+        const beforeItems = simplifyProductionItems(
+          existingForDay.flatMap((r) => r.items || [])
+        );
 
         if (resolved.items.length === 0) {
           if (existingForDay.length > 0) {
             await tx.dailyProduction.deleteMany({
               where: { id: { in: existingForDay.map((r) => r.id) } }
+            });
+            await writeAuditLog(tx, req, {
+              module: 'production',
+              action: 'DELETE',
+              recordId: existingForDay[0].id,
+              targetDate: bulkIsoDate,
+              employeeId: empId,
+              employeeName: existingForDay[0].employee?.name || null,
+              summary: formatProductionDiff('DELETE', beforeItems, []),
+              beforeData: { items: beforeItems },
+              afterData: { items: [] },
             });
           }
           continue;
@@ -1663,6 +1870,18 @@ app.post('/api/production/daily/bulk', async (req, res) => {
             },
             include: { items: true, employee: true }
           });
+          const afterItems = simplifyProductionItems(updated.items);
+          await writeAuditLog(tx, req, {
+            module: 'production',
+            action: 'UPDATE',
+            recordId: updated.id,
+            targetDate: bulkIsoDate,
+            employeeId: empId,
+            employeeName: updated.employee?.name || existingForDay[0].employee?.name || null,
+            summary: formatProductionDiff('UPDATE', beforeItems, afterItems),
+            beforeData: { items: beforeItems },
+            afterData: { items: afterItems },
+          });
           results.push(updated);
         } else {
           const created = await tx.dailyProduction.create({
@@ -1673,6 +1892,18 @@ app.post('/api/production/daily/bulk', async (req, res) => {
               items: { create: resolved.items }
             },
             include: { items: true, employee: true }
+          });
+          const afterItems = simplifyProductionItems(created.items);
+          await writeAuditLog(tx, req, {
+            module: 'production',
+            action: 'CREATE',
+            recordId: created.id,
+            targetDate: bulkIsoDate,
+            employeeId: empId,
+            employeeName: created.employee?.name || null,
+            summary: formatProductionDiff('CREATE', [], afterItems),
+            beforeData: null,
+            afterData: { items: afterItems },
           });
           results.push(created);
         }
@@ -1694,8 +1925,83 @@ app.delete('/api/production/daily/:id', async (req, res) => {
     const allowed = await canAccessModule(req, 'production', 'delete');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 
-    await prisma.dailyProduction.delete({ where: { id: parseInt(req.params.id) } });
+    const recId = parseInt(req.params.id);
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.dailyProduction.findUnique({
+        where: { id: recId },
+        include: { items: true, employee: true }
+      });
+      if (!existing) return;
+
+      const beforeItems = simplifyProductionItems(existing.items);
+      await tx.dailyProduction.delete({ where: { id: recId } });
+      await writeAuditLog(tx, req, {
+        module: 'production',
+        action: 'DELETE',
+        recordId: existing.id,
+        targetDate: toIsoDateOnly(existing.date),
+        employeeId: existing.employeeId,
+        employeeName: existing.employee?.name || null,
+        summary: formatProductionDiff('DELETE', beforeItems, []),
+        beforeData: { items: beforeItems },
+        afterData: null,
+      });
+    });
     res.json({ message: 'Daily production deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- ADMIN-ONLY AUDIT LOGS (Read-Only, Strictly No Edit/Delete) ---
+app.get('/api/admin/audit-logs', async (req, res) => {
+  try {
+    if (!req.user || String(req.user.role || '').toLowerCase() !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required to view audit logs.' });
+    }
+
+    const { module: mod, action, username, search, onlyFlagged, limit } = req.query;
+    const take = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 300);
+
+    const where = {};
+    if (mod && mod !== 'all') where.module = String(mod);
+    if (action && action !== 'all') where.action = String(action).toUpperCase();
+    if (username && username !== 'all') where.username = String(username);
+    if (String(onlyFlagged || '').toLowerCase() === 'true') {
+      where.OR = [{ isBackdated: true }, { action: 'DELETE' }];
+    }
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { employeeName: { contains: q, mode: 'insensitive' } },
+            { username: { contains: q, mode: 'insensitive' } },
+            { summary: { contains: q, mode: 'insensitive' } },
+            { targetDate: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    const [logs, distinctUsers] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take,
+      }),
+      prisma.auditLog.findMany({
+        select: { username: true },
+        distinct: ['username'],
+        orderBy: { username: 'asc' },
+      }),
+    ]);
+
+    res.json({
+      logs,
+      users: distinctUsers.map((u) => u.username).filter(Boolean),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
