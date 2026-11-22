@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,7 +24,7 @@ fi
 
 NOTES="Latest stability & feature improvements."
 MANDATORY="false"
-TARGET_PLATFORM="${TARGET_PLATFORM:-}"
+TARGET_PLATFORM="${TARGET_PLATFORM:-android-arm64}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,9 +40,13 @@ while [[ $# -gt 0 ]]; do
       TARGET_PLATFORM="android-arm64"
       shift
       ;;
+    --universal)
+      TARGET_PLATFORM=""
+      shift
+      ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 [--notes \"Release notes\"] [--mandatory] [--arm64]" >&2
+      echo "Usage: $0 [--notes \"Release notes\"] [--mandatory] [--arm64|--universal]" >&2
       exit 1
       ;;
   esac

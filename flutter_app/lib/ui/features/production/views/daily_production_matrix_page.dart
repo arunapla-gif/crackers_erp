@@ -32,13 +32,20 @@ class DailyProductionMatrixPage extends StatefulWidget {
 }
 
 class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
+  static const double _bannerHeight = 36.0;
   static const double _headerHeight = 48.0;
   static const double _workerRowHeight = 54.0;
   static const double _footerHeight = 44.0;
 
   final ScrollController _bodyVScroll = ScrollController();
+  final Map<String, ScrollController> _headerHScrolls =
+      <String, ScrollController>{};
+  final Map<String, ScrollController> _bodyHScrolls =
+      <String, ScrollController>{};
+  bool _isSyncingHScroll = false;
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
+  bool _pendingOnly = false;
 
   final Set<String> _collapsedRoles = <String>{};
   WorkerNameDisplayMode _nameDisplayMode = WorkerNameDisplayMode.tamil;
@@ -49,14 +56,58 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
   String? _focusedKey;
   bool _isNewFocusDigit = true;
 
+  ({ScrollController header, ScrollController body}) _getSyncedHScrolls(
+    String role,
+  ) {
+    if (!_headerHScrolls.containsKey(role)) {
+      final headerCtrl = ScrollController();
+      final bodyCtrl = ScrollController();
+
+      headerCtrl.addListener(() {
+        if (_isSyncingHScroll || !bodyCtrl.hasClients || !headerCtrl.hasClients) {
+          return;
+        }
+        _isSyncingHScroll = true;
+        final target = headerCtrl.offset.clamp(
+          0.0,
+          bodyCtrl.position.maxScrollExtent,
+        );
+        if ((bodyCtrl.offset - target).abs() > 0.5) {
+          bodyCtrl.jumpTo(target);
+        }
+        _isSyncingHScroll = false;
+      });
+
+      bodyCtrl.addListener(() {
+        if (_isSyncingHScroll || !headerCtrl.hasClients || !bodyCtrl.hasClients) {
+          return;
+        }
+        _isSyncingHScroll = true;
+        final target = bodyCtrl.offset.clamp(
+          0.0,
+          headerCtrl.position.maxScrollExtent,
+        );
+        if ((headerCtrl.offset - target).abs() > 0.5) {
+          headerCtrl.jumpTo(target);
+        }
+        _isSyncingHScroll = false;
+      });
+
+      _headerHScrolls[role] = headerCtrl;
+      _bodyHScrolls[role] = bodyCtrl;
+    }
+    return (header: _headerHScrolls[role]!, body: _bodyHScrolls[role]!);
+  }
+
   @override
   void initState() {
     super.initState();
-    if (widget.initialRoleFilter != null) {
-      widget.viewModel.setRoleFilter(widget.initialRoleFilter!);
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (widget.initialRoleFilter != null &&
+          widget.viewModel.selectedRoleFilter != widget.initialRoleFilter) {
+        widget.viewModel.setRoleFilter(widget.initialRoleFilter!);
+      }
       if (widget.authViewModel.currentUser?.canViewProduction == true) {
         if (widget.viewModel.employees.isEmpty) {
           widget.viewModel.loadInitialData();
@@ -68,6 +119,12 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
   @override
   void dispose() {
     _bodyVScroll.dispose();
+    for (final ctrl in _headerHScrolls.values) {
+      ctrl.dispose();
+    }
+    for (final ctrl in _bodyHScrolls.values) {
+      ctrl.dispose();
+    }
     _searchController.dispose();
     for (final node in _cellFocusNodes.values) {
       node.dispose();
@@ -240,6 +297,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
             if (ro != null) {
               _bodyVScroll.position.ensureVisible(
                 ro,
+                alignment: 0.35,
                 duration: const Duration(milliseconds: 140),
               );
             }
@@ -266,6 +324,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
             if (ro != null) {
               _bodyVScroll.position.ensureVisible(
                 ro,
+                alignment: 0.35,
                 duration: const Duration(milliseconds: 140),
               );
             }
@@ -352,6 +411,236 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     }
   }
 
+  Future<void> _openQuickWipPicker() async {
+    _unfocusCurrentCell();
+    final searchController = TextEditingController();
+    final activeRole = widget.viewModel.selectedRoleFilter;
+    final isRoleScoped = activeRole != 'All';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return ListenableBuilder(
+              listenable: widget.viewModel,
+              builder: (ctx, _) {
+                final vm = widget.viewModel;
+                final q = searchController.text.trim().toLowerCase();
+                final items = vm.wipProducts.where((p) {
+                  if (q.isEmpty) return true;
+                  return p.name.toLowerCase().contains(q) ||
+                      p.displayGroup.toLowerCase().contains(q) ||
+                      p.code.toLowerCase().contains(q);
+                }).toList();
+                final currentActive = isRoleScoped
+                    ? vm.getActiveItemsForRole(activeRole)
+                    : vm.activeItemNames;
+
+                return DraggableScrollableSheet(
+                  expand: false,
+                  initialChildSize: 0.72,
+                  minChildSize: 0.45,
+                  maxChildSize: 0.92,
+                  builder: (ctx, scrollController) {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 10),
+                        Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: ErpTheme.slate200,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  isRoleScoped
+                                      ? 'WIP Columns for $activeRole'
+                                      : 'Add / Select WIP Columns',
+                                  style: const TextStyle(
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: ErpTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                child: const Text(
+                                  'Done',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: TextField(
+                            controller: searchController,
+                            onChanged: (_) => setSheetState(() {}),
+                            decoration: InputDecoration(
+                              hintText: 'Search WIP product name or group...',
+                              isDense: true,
+                              prefixIcon: const Icon(Icons.search, size: 18),
+                              suffixIcon: searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        searchController.clear();
+                                        setSheetState(() {});
+                                      },
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: items.isEmpty
+                              ? const ErpEmptyState(
+                                  icon: Icons.inventory_2_outlined,
+                                  title: 'No matching WIP items',
+                                  subtitle:
+                                      'Create WIP products in Product Master.',
+                                )
+                              : ListView.separated(
+                                  controller: scrollController,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    4,
+                                    16,
+                                    20,
+                                  ),
+                                  itemCount: items.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(height: 8),
+                                  itemBuilder: (ctx, idx) {
+                                    final prod = items[idx];
+                                    final isActive =
+                                        currentActive.contains(prod.name);
+                                    final isPinned =
+                                        vm.pinnedItemNames.contains(prod.name);
+                                    final qty = isRoleScoped
+                                        ? vm.getRoleItemTotalQuantity(
+                                            activeRole,
+                                            prod.name,
+                                          )
+                                        : vm.getItemTotalQuantity(prod.name);
+
+                                    return Material(
+                                      color: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: BorderSide(
+                                          color: isActive
+                                              ? ErpTheme.productionAmber
+                                              : ErpTheme.slate200,
+                                        ),
+                                      ),
+                                      child: ListTile(
+                                        dense: true,
+                                        onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          if (isActive) {
+                                            if (qty == 0) {
+                                              if (isRoleScoped) {
+                                                vm.removeActiveItemForRole(
+                                                  activeRole,
+                                                  prod.name,
+                                                );
+                                              } else {
+                                                vm.removeActiveItem(prod.name);
+                                              }
+                                            }
+                                          } else {
+                                            if (isRoleScoped) {
+                                              vm.addActiveItemForRole(
+                                                activeRole,
+                                                prod.name,
+                                              );
+                                            } else {
+                                              vm.addActiveItem(prod.name);
+                                            }
+                                          }
+                                        },
+                                        title: Text(
+                                          prod.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          qty > 0
+                                              ? '${prod.displayGroup} • $qty ${prod.unit} entered'
+                                              : '${prod.displayGroup} • Unit: ${prod.unit}',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: qty > 0
+                                                ? ErpTheme.ordersEmerald
+                                                : ErpTheme.slate500,
+                                          ),
+                                        ),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              tooltip: isPinned
+                                                  ? 'Unpin from favorites'
+                                                  : 'Pin for daily use',
+                                              icon: Icon(
+                                                isPinned
+                                                    ? Icons.star_rounded
+                                                    : Icons.star_outline_rounded,
+                                                size: 20,
+                                                color: isPinned
+                                                    ? ErpTheme.productionAmber
+                                                    : ErpTheme.slate500,
+                                              ),
+                                              onPressed: () =>
+                                                  vm.togglePinnedItem(prod.name),
+                                            ),
+                                            Icon(
+                                              isActive
+                                                  ? Icons.check_box_rounded
+                                                  : Icons
+                                                      .check_box_outline_blank_rounded,
+                                              color: isActive
+                                                  ? ErpTheme.productionAmber
+                                                  : ErpTheme.slate500,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+    searchController.dispose();
+  }
+
   Future<bool> _onWillPop() async {
     if (widget.viewModel.hasUnsavedChanges) {
       final leave = await showDialog<bool>(
@@ -395,7 +684,35 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
       builder: (context, _) {
         final vm = widget.viewModel;
         final items = vm.activeItemNames;
-        final groupedRoles = vm.filteredWorkersByRole;
+        final rawGroupedRoles = vm.filteredWorkersByRole;
+        final focusedEmpId = _focusedKey != null
+            ? int.tryParse(_focusedKey!.split('::').first)
+            : null;
+        var pendingCount = 0;
+        for (final workers in rawGroupedRoles.values) {
+          for (final emp in workers) {
+            if (vm.getWorkerTotalQuantity(emp.id) == 0) {
+              pendingCount++;
+            }
+          }
+        }
+        final groupedRoles = _pendingOnly
+            ? <String, List<Employee>>{
+                for (final entry in rawGroupedRoles.entries)
+                  if (entry.value.any(
+                    (emp) =>
+                        vm.getWorkerTotalQuantity(emp.id) == 0 ||
+                        emp.id == focusedEmpId,
+                  ))
+                    entry.key: entry.value
+                        .where(
+                          (emp) =>
+                              vm.getWorkerTotalQuantity(emp.id) == 0 ||
+                              emp.id == focusedEmpId,
+                        )
+                        .toList(),
+              }
+            : rawGroupedRoles;
         final inrFormat = NumberFormat('#,##,##0', 'en_IN');
         final dateLabel = DateFormat('dd MMM').format(vm.selectedDate);
 
@@ -602,89 +919,188 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                         bottom: BorderSide(color: ErpTheme.slate200),
                       ),
                     ),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: FilterChip(
-                              avatar: const Icon(
-                                Icons.person_add_alt_1_rounded,
-                                size: 13,
-                                color: ErpTheme.slate500,
+                    child: Row(
+                      children: [
+                        Material(
+                          color: ErpTheme.productionAmberSoft,
+                          borderRadius: BorderRadius.circular(8),
+                          child: InkWell(
+                            key: const ValueKey('matrix-quick-add-wip-button'),
+                            onTap: _openQuickWipPicker,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              height: 28,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: ErpTheme.productionAmber
+                                      .withValues(alpha: 0.45),
+                                ),
                               ),
-                              label: const Text('Monthly'),
-                              labelStyle: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: vm.includeMonthlyWorkers
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: vm.includeMonthlyWorkers
-                                    ? ErpTheme.slate900
-                                    : ErpTheme.slate700,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.add_rounded,
+                                    size: 14,
+                                    color: ErpTheme.productionAmber,
+                                  ),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'WIP',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: ErpTheme.productionAmber,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              selected: vm.includeMonthlyWorkers,
-                              onSelected: vm.toggleIncludeMonthlyWorkers,
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
                             ),
                           ),
-                          ...vm.availableRoles.map((role) {
-                            final count = vm.getWorkerCountForRole(role);
-                            final tamil =
-                                DailyProductionViewModel.getRoleTamilName(role);
-                            final isSelected = vm.selectedRoleFilter == role;
-                            final style = role == 'All'
-                                ? (
-                                    bg: ErpTheme.slate100,
-                                    border: ErpTheme.slate400,
-                                    text: ErpTheme.slate900,
-                                    icon: Icons.groups_rounded,
-                                  )
-                                : _getRoleStyle(role);
-                            final label = role == 'All'
-                                ? 'All ($count)'
-                                : (tamil.isNotEmpty
-                                    ? '$role • $tamil ($count)'
-                                    : '$role ($count)');
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: FilterChip(
-                                avatar: Icon(
-                                  style.icon,
-                                  size: 13,
-                                  color: isSelected
-                                      ? style.text
-                                      : ErpTheme.slate500,
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: ErpTheme.slate200,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: FilterChip(
+                                    key: const ValueKey(
+                                      'matrix-pending-only-chip',
+                                    ),
+                                    avatar: Icon(
+                                      Icons.pending_actions_rounded,
+                                      size: 13,
+                                      color: _pendingOnly
+                                          ? ErpTheme.productionAmber
+                                          : ErpTheme.slate500,
+                                    ),
+                                    label: Text('Pending ($pendingCount)'),
+                                    labelStyle: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: _pendingOnly
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: _pendingOnly
+                                          ? ErpTheme.productionAmber
+                                          : ErpTheme.slate700,
+                                    ),
+                                    selected: _pendingOnly,
+                                    selectedColor: ErpTheme.productionAmberSoft,
+                                    checkmarkColor: ErpTheme.productionAmber,
+                                    side: BorderSide(
+                                      color: _pendingOnly
+                                          ? ErpTheme.productionAmber
+                                          : ErpTheme.slate200,
+                                      width: _pendingOnly ? 1.5 : 1.0,
+                                    ),
+                                    onSelected: (val) =>
+                                        setState(() => _pendingOnly = val),
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                  ),
                                 ),
-                                label: Text(label),
-                                labelStyle: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                  color: isSelected
-                                      ? style.text
-                                      : ErpTheme.slate700,
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: FilterChip(
+                                    avatar: const Icon(
+                                      Icons.person_add_alt_1_rounded,
+                                      size: 13,
+                                      color: ErpTheme.slate500,
+                                    ),
+                                    label: const Text('Monthly'),
+                                    labelStyle: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: vm.includeMonthlyWorkers
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: vm.includeMonthlyWorkers
+                                          ? ErpTheme.slate900
+                                          : ErpTheme.slate700,
+                                    ),
+                                    selected: vm.includeMonthlyWorkers,
+                                    onSelected: vm.toggleIncludeMonthlyWorkers,
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                  ),
                                 ),
-                                selected: isSelected,
-                                selectedColor: style.bg,
-                                checkmarkColor: style.text,
-                                side: BorderSide(
-                                  color: isSelected
-                                      ? style.border
-                                      : ErpTheme.slate200,
-                                  width: isSelected ? 1.5 : 1.0,
-                                ),
-                                onSelected: (_) => vm.setRoleFilter(role),
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
+                                ...vm.availableRoles.map((role) {
+                                  final count = vm.getWorkerCountForRole(role);
+                                  final tamil =
+                                      DailyProductionViewModel.getRoleTamilName(
+                                    role,
+                                  );
+                                  final isSelected =
+                                      vm.selectedRoleFilter == role;
+                                  final style = role == 'All'
+                                      ? (
+                                          bg: ErpTheme.slate100,
+                                          border: ErpTheme.slate400,
+                                          text: ErpTheme.slate900,
+                                          icon: Icons.groups_rounded,
+                                        )
+                                      : _getRoleStyle(role);
+                                  final label = role == 'All'
+                                      ? 'All ($count)'
+                                      : (tamil.isNotEmpty
+                                          ? '$role • $tamil ($count)'
+                                          : '$role ($count)');
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: FilterChip(
+                                      avatar: Icon(
+                                        style.icon,
+                                        size: 13,
+                                        color: isSelected
+                                            ? style.text
+                                            : ErpTheme.slate500,
+                                      ),
+                                      label: Text(label),
+                                      labelStyle: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w800
+                                            : FontWeight.w600,
+                                        color: isSelected
+                                            ? style.text
+                                            : ErpTheme.slate700,
+                                      ),
+                                      selected: isSelected,
+                                      selectedColor: style.bg,
+                                      checkmarkColor: style.text,
+                                      side: BorderSide(
+                                        color: isSelected
+                                            ? style.border
+                                            : ErpTheme.slate200,
+                                        width: isSelected ? 1.5 : 1.0,
+                                      ),
+                                      onSelected: (_) => vm.setRoleFilter(role),
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
 
@@ -698,22 +1114,16 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                     final baseItemWidth = isLeftCompact ? 94.0 : 120.0;
                     final totalColWidth = isLeftCompact ? 70.0 : 86.0;
 
-                    final stackedCards = _buildDepartmentStackedCards(
+                    final bodyScroll = _buildDepartmentSliverBody(
                       vm: vm,
                       groupedRoles: groupedRoles,
                       columnMajorKeys: columnMajorKeys,
                       workerColWidth: workerColWidth,
                       baseItemWidth: baseItemWidth,
                       totalColWidth: totalColWidth,
-                      availableWidth: leftPaneWidth,
+                      availableWidth: leftPaneWidth - 14.0,
                       inrFormat: inrFormat,
                       nameDisplayMode: _nameDisplayMode,
-                    );
-
-                    final bodyScroll = SingleChildScrollView(
-                      controller: _bodyVScroll,
-                      padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
-                      child: stackedCards,
                     );
 
                     final rightKeypad = SizedBox(
@@ -757,22 +1167,16 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                   final baseItemWidth = isCompact ? 98.0 : 136.0;
                   final totalColWidth = isCompact ? 72.0 : 92.0;
 
-                  final stackedCards = _buildDepartmentStackedCards(
+                  final bodyScroll = _buildDepartmentSliverBody(
                     vm: vm,
                     groupedRoles: groupedRoles,
                     columnMajorKeys: columnMajorKeys,
                     workerColWidth: workerColWidth,
                     baseItemWidth: baseItemWidth,
                     totalColWidth: totalColWidth,
-                    availableWidth: constraints.maxWidth,
+                    availableWidth: constraints.maxWidth - 14.0,
                     inrFormat: inrFormat,
                     nameDisplayMode: _nameDisplayMode,
-                  );
-
-                  final bodyScroll = SingleChildScrollView(
-                    controller: _bodyVScroll,
-                    padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-                    child: stackedCards,
                   );
 
                   return Column(
@@ -944,7 +1348,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
         ),
         SizedBox(height: spacing),
 
-        // Bottom row: piece counter + Next Worker ↓
+        // Bottom row: piece counter + Prev ↑ + Next Worker ↓
         Row(
           children: [
             Container(
@@ -962,6 +1366,37 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                   fontSize: isSideBySide ? 10.5 : 11,
                   fontWeight: FontWeight.w800,
                   color: ErpTheme.slate700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            SizedBox(
+              height: isSideBySide ? 30 : 34,
+              child: OutlinedButton.icon(
+                key: const ValueKey('matrix-prev-worker-button'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ErpTheme.slate800,
+                  side: const BorderSide(color: ErpTheme.slate200),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSideBySide ? 7 : 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: columnMajorKeys.indexOf(cellKey) > 0
+                    ? () {
+                        _isNewFocusDigit = true;
+                        _focusPrevCell(cellKey, columnMajorKeys);
+                      }
+                    : null,
+                icon: const Icon(Icons.arrow_upward_rounded, size: 14),
+                label: Text(
+                  'Prev',
+                  style: TextStyle(
+                    fontSize: isSideBySide ? 10.5 : 11.5,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
@@ -1101,7 +1536,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     );
   }
 
-  Widget _buildDepartmentStackedCards({
+  Widget _buildDepartmentSliverBody({
     required DailyProductionViewModel vm,
     required Map<String, List<Employee>> groupedRoles,
     required List<String> columnMajorKeys,
@@ -1113,18 +1548,45 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     required WorkerNameDisplayMode nameDisplayMode,
   }) {
     if (groupedRoles.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
-        child: ErpEmptyState(
-          icon: Icons.engineering_outlined,
-          title: 'No Matching Workers',
-          subtitle:
-              'No active contractual workers match the selected role filter or search query.',
-        ),
+      return CustomScrollView(
+        controller: _bodyVScroll,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+              child: _pendingOnly
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const ErpEmptyState(
+                          icon: Icons.check_circle_outline_rounded,
+                          title: 'All Workers Logged!',
+                          subtitle:
+                              'Every worker in this view already has production pieces entered.',
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() => _pendingOnly = false),
+                          icon: const Icon(Icons.groups_rounded, size: 16),
+                          label: const Text('Show All Workers'),
+                        ),
+                      ],
+                    )
+                  : const ErpEmptyState(
+                      icon: Icons.engineering_outlined,
+                      title: 'No Matching Workers',
+                      subtitle:
+                          'No active contractual workers match the selected role filter or search query.',
+                    ),
+            ),
+          ),
+        ],
       );
     }
 
-    final cards = <Widget>[];
+    final slivers = <Widget>[
+      const SliverToBoxAdapter(child: SizedBox(height: 4)),
+    ];
     var isFirst = true;
 
     for (final entry in groupedRoles.entries) {
@@ -1135,37 +1597,114 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
       final roleTotal = vm.getRoleTotalQuantity(role);
       final roleStyle = _getRoleStyle(role);
       final roleTamil = DailyProductionViewModel.getRoleTamilName(role);
+      final hScrolls = _getSyncedHScrolls(role);
 
-      cards.add(
-        _buildDepartmentCard(
-          vm: vm,
-          role: role,
-          roleWorkers: roleWorkers,
-          roleItems: roleItems,
-          roleTotal: roleTotal,
-          roleStyle: roleStyle,
-          roleTamil: roleTamil,
-          isCollapsed: isCollapsed,
-          columnMajorKeys: columnMajorKeys,
-          workerColWidth: workerColWidth,
-          baseItemWidth: baseItemWidth,
-          totalColWidth: totalColWidth,
-          availableWidth: availableWidth,
-          inrFormat: inrFormat,
-          nameDisplayMode: nameDisplayMode,
-          isFirstDepartment: isFirst,
+      final availableRightWidth =
+          (availableWidth - workerColWidth).clamp(0.0, double.infinity);
+      final baseRightWidth = (baseItemWidth * roleItems.length) + totalColWidth;
+      final itemColWidth =
+          roleItems.isNotEmpty && baseRightWidth < availableRightWidth
+              ? baseItemWidth +
+                  ((availableRightWidth - baseRightWidth) / roleItems.length)
+              : baseItemWidth;
+      final rightTrackWidth = (itemColWidth * roleItems.length) + totalColWidth;
+
+      final showColumnHeader = !isCollapsed && roleItems.isNotEmpty;
+      final headerTotalHeight = _bannerHeight +
+          (showColumnHeader ? _headerHeight : 0.0) +
+          (isCollapsed ? 2.0 : 1.0);
+
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+          sliver: SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyMatrixHeaderDelegate(
+                  height: headerTotalHeight,
+                  child: _buildPinnedDepartmentHeader(
+                    vm: vm,
+                    role: role,
+                    roleWorkers: roleWorkers,
+                    roleItems: roleItems,
+                    roleTotal: roleTotal,
+                    roleStyle: roleStyle,
+                    roleTamil: roleTamil,
+                    isCollapsed: isCollapsed,
+                    showColumnHeader: showColumnHeader,
+                    headerHScroll: hScrolls.header,
+                    workerColWidth: workerColWidth,
+                    itemColWidth: itemColWidth,
+                    totalColWidth: totalColWidth,
+                    rightTrackWidth: rightTrackWidth,
+                    inrFormat: inrFormat,
+                    isFirstDepartment: isFirst,
+                  ),
+                ),
+              ),
+              if (!isCollapsed)
+                SliverToBoxAdapter(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                        bottom: Radius.circular(14),
+                      ),
+                      border: Border(
+                        left: BorderSide(color: ErpTheme.slate200),
+                        right: BorderSide(color: ErpTheme.slate200),
+                        bottom: BorderSide(color: ErpTheme.slate200),
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: roleItems.isEmpty
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 20,
+                              horizontal: 16,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'No WIP items active for $role. Select items in the Hub.',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          )
+                        : _buildDepartmentBodyRows(
+                            vm: vm,
+                            role: role,
+                            roleWorkers: roleWorkers,
+                            roleItems: roleItems,
+                            roleTotal: roleTotal,
+                            roleStyle: roleStyle,
+                            bodyHScroll: hScrolls.body,
+                            workerColWidth: workerColWidth,
+                            itemColWidth: itemColWidth,
+                            totalColWidth: totalColWidth,
+                            rightTrackWidth: rightTrackWidth,
+                            inrFormat: inrFormat,
+                            nameDisplayMode: nameDisplayMode,
+                            columnMajorKeys: columnMajorKeys,
+                          ),
+                  ),
+                ),
+            ],
+          ),
         ),
       );
       isFirst = false;
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: cards,
+    return CustomScrollView(
+      controller: _bodyVScroll,
+      slivers: slivers,
     );
   }
 
-  Widget _buildDepartmentCard({
+  Widget _buildPinnedDepartmentHeader({
     required DailyProductionViewModel vm,
     required String role,
     required List<Employee> roleWorkers,
@@ -1174,156 +1713,246 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     required ({Color bg, Color border, Color text, IconData icon}) roleStyle,
     required String roleTamil,
     required bool isCollapsed,
-    required List<String> columnMajorKeys,
+    required bool showColumnHeader,
+    required ScrollController headerHScroll,
     required double workerColWidth,
-    required double baseItemWidth,
+    required double itemColWidth,
     required double totalColWidth,
-    required double availableWidth,
+    required double rightTrackWidth,
     required NumberFormat inrFormat,
-    required WorkerNameDisplayMode nameDisplayMode,
     required bool isFirstDepartment,
   }) {
-    final availableRightWidth =
-        (availableWidth - workerColWidth).clamp(0.0, double.infinity);
-    final baseRightWidth = (baseItemWidth * roleItems.length) + totalColWidth;
-    final itemColWidth =
-        roleItems.isNotEmpty && baseRightWidth < availableRightWidth
-            ? baseItemWidth +
-                ((availableRightWidth - baseRightWidth) / roleItems.length)
-            : baseItemWidth;
-    final rightTrackWidth = (itemColWidth * roleItems.length) + totalColWidth;
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: ErpTheme.slate200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: isCollapsed
+            ? BorderRadius.circular(14)
+            : const BorderRadius.vertical(top: Radius.circular(14)),
+        border: isCollapsed
+            ? Border.all(color: ErpTheme.slate200)
+            : const Border(
+                top: BorderSide(color: ErpTheme.slate200),
+                left: BorderSide(color: ErpTheme.slate200),
+                right: BorderSide(color: ErpTheme.slate200),
+              ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Department Banner
-          InkWell(
-            onTap: () => setState(() {
-              if (isCollapsed) {
-                _collapsedRoles.remove(role);
-              } else {
-                _collapsedRoles.add(role);
-              }
-            }),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: roleStyle.bg,
-                border: Border(
-                  left: BorderSide(color: roleStyle.border, width: 4),
-                  bottom: BorderSide(color: roleStyle.border),
+          // 1. Department Banner
+          Material(
+            color: roleStyle.bg,
+            child: InkWell(
+              onTap: () => setState(() {
+                if (isCollapsed) {
+                  _collapsedRoles.remove(role);
+                } else {
+                  _collapsedRoles.add(role);
+                }
+              }),
+              child: Container(
+                height: _bannerHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: roleStyle.border, width: 4),
+                    bottom: BorderSide(color: roleStyle.border),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isCollapsed
+                          ? Icons.chevron_right_rounded
+                          : Icons.expand_more_rounded,
+                      size: 18,
+                      color: roleStyle.text,
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(roleStyle.icon, size: 15, color: roleStyle.text),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        roleTamil.isNotEmpty
+                            ? '${role.toUpperCase()} • $roleTamil (${roleWorkers.length})'
+                            : '${role.toUpperCase()} (${roleWorkers.length})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: roleStyle.text,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: roleStyle.border),
+                      ),
+                      child: Text(
+                        '${inrFormat.format(roleTotal)} pcs',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: roleStyle.text,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            ),
+          ),
+
+          // 2. Pinned Product Column Headers Row
+          if (showColumnHeader)
+            SizedBox(
+              height: _headerHeight,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    isCollapsed
-                        ? Icons.chevron_right_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: roleStyle.text,
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(roleStyle.icon, size: 15, color: roleStyle.text),
-                  const SizedBox(width: 6),
-                  Expanded(
+                  Container(
+                    width: workerColWidth,
+                    height: _headerHeight,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    alignment: Alignment.centerLeft,
+                    decoration: const BoxDecoration(
+                      color: ErpTheme.slate100,
+                      border: Border(
+                        right: BorderSide(color: ErpTheme.slate200, width: 1.5),
+                        bottom: BorderSide(color: ErpTheme.slate200),
+                      ),
+                    ),
                     child: Text(
-                      roleTamil.isNotEmpty
-                          ? '${role.toUpperCase()} • $roleTamil (${roleWorkers.length})'
-                          : '${role.toUpperCase()} (${roleWorkers.length})',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
+                      isFirstDepartment ? 'WORKERS\n(PINNED)' : 'WORKER',
+                      maxLines: 2,
+                      style: const TextStyle(
+                        fontSize: 10,
                         fontWeight: FontWeight.w900,
-                        color: roleStyle.text,
-                        letterSpacing: 0.2,
+                        color: ErpTheme.slate700,
+                        letterSpacing: 0.4,
+                        height: 1.2,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: roleStyle.border),
-                    ),
-                    child: Text(
-                      '${inrFormat.format(roleTotal)} pcs',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        color: roleStyle.text,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: headerHScroll,
+                      scrollDirection: Axis.horizontal,
+                      child: Container(
+                        width: rightTrackWidth,
+                        height: _headerHeight,
+                        color: ErpTheme.slate100,
+                        child: Row(
+                          children: [
+                            for (final itemName in roleItems) ...[
+                              Builder(
+                                builder: (context) {
+                                  final product =
+                                      vm.findWipProductByName(itemName);
+                                  return Container(
+                                    width: itemColWidth,
+                                    height: _headerHeight,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 4,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      border: Border(
+                                        right: BorderSide(
+                                          color: ErpTheme.slate200,
+                                        ),
+                                        bottom: BorderSide(
+                                          color: ErpTheme.slate200,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          itemName,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w900,
+                                            color: ErpTheme.hrIndigo,
+                                            height: 1.15,
+                                          ),
+                                        ),
+                                        Text(
+                                          product?.unit ?? 'Pcs',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: ErpTheme.slate500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            Container(
+                              width: totalColWidth,
+                              height: _headerHeight,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(color: ErpTheme.slate200),
+                                ),
+                              ),
+                              child: Text(
+                                isFirstDepartment ? 'WORKER\nTOTAL' : 'TOTAL',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: ErpTheme.slate700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-
-          if (!isCollapsed) ...[
-            if (roleItems.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                alignment: Alignment.center,
-                child: Text(
-                  'No WIP items active for $role. Select items in the Hub.',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ErpTheme.slate500,
-                  ),
-                ),
-              )
-            else
-              _buildDepartmentTable(
-                vm: vm,
-                role: role,
-                roleWorkers: roleWorkers,
-                roleItems: roleItems,
-                roleTotal: roleTotal,
-                roleStyle: roleStyle,
-                workerColWidth: workerColWidth,
-                itemColWidth: itemColWidth,
-                totalColWidth: totalColWidth,
-                rightTrackWidth: rightTrackWidth,
-                inrFormat: inrFormat,
-                nameDisplayMode: nameDisplayMode,
-                columnMajorKeys: columnMajorKeys,
-                isFirstDepartment: isFirstDepartment,
-              ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildDepartmentTable({
+  Widget _buildDepartmentBodyRows({
     required DailyProductionViewModel vm,
     required String role,
     required List<Employee> roleWorkers,
     required List<String> roleItems,
     required int roleTotal,
     required ({Color bg, Color border, Color text, IconData icon}) roleStyle,
+    required ScrollController bodyHScroll,
     required double workerColWidth,
     required double itemColWidth,
     required double totalColWidth,
@@ -1331,7 +1960,6 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     required NumberFormat inrFormat,
     required WorkerNameDisplayMode nameDisplayMode,
     required List<String> columnMajorKeys,
-    required bool isFirstDepartment,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1342,29 +1970,6 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                height: _headerHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                alignment: Alignment.centerLeft,
-                decoration: const BoxDecoration(
-                  color: ErpTheme.slate100,
-                  border: Border(
-                    right: BorderSide(color: ErpTheme.slate200, width: 1.5),
-                    bottom: BorderSide(color: ErpTheme.slate200),
-                  ),
-                ),
-                child: Text(
-                  isFirstDepartment ? 'WORKERS\n(PINNED)' : 'WORKER',
-                  maxLines: 2,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    color: ErpTheme.slate700,
-                    letterSpacing: 0.4,
-                    height: 1.2,
-                  ),
-                ),
-              ),
               for (final emp in roleWorkers) ...[
                 Builder(
                   builder: (context) {
@@ -1450,7 +2055,6 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                       color: ErpTheme.slate200,
                       width: 1.5,
                     ),
-                    bottom: const BorderSide(color: ErpTheme.slate200),
                   ),
                 ),
                 child: Text(
@@ -1466,96 +2070,16 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
           ),
         ),
 
-        // Horizontally Scrollable Product Track
+        // Horizontally Scrollable Product Track (synced with pinned header)
         Expanded(
           child: SingleChildScrollView(
+            controller: bodyHScroll,
             scrollDirection: Axis.horizontal,
             child: SizedBox(
               width: rightTrackWidth,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    height: _headerHeight,
-                    color: ErpTheme.slate100,
-                    child: Row(
-                      children: [
-                        for (final itemName in roleItems) ...[
-                          Builder(
-                            builder: (context) {
-                              final product = vm.findWipProductByName(itemName);
-                              return Container(
-                                width: itemColWidth,
-                                height: _headerHeight,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 4,
-                                ),
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    right: BorderSide(
-                                      color: ErpTheme.slate200,
-                                    ),
-                                    bottom: BorderSide(
-                                      color: ErpTheme.slate200,
-                                    ),
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      itemName,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w900,
-                                        color: ErpTheme.hrIndigo,
-                                        height: 1.15,
-                                      ),
-                                    ),
-                                    Text(
-                                      product?.unit ?? 'Pcs',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 8.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: ErpTheme.slate500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                        Container(
-                          width: totalColWidth,
-                          height: _headerHeight,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(color: ErpTheme.slate200),
-                            ),
-                          ),
-                          child: Text(
-                            isFirstDepartment ? 'WORKER\nTOTAL' : 'TOTAL',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              color: ErpTheme.slate700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
                   for (final emp in roleWorkers) ...[
                     Builder(
                       builder: (context) {
@@ -1643,7 +2167,6 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                       color: roleStyle.bg.withValues(alpha: 0.5),
                       border: Border(
                         top: BorderSide(color: roleStyle.border, width: 1.5),
-                        bottom: const BorderSide(color: ErpTheme.slate200),
                       ),
                     ),
                     child: Row(
@@ -1941,5 +2464,33 @@ class _MatrixQtyCellState extends State<_MatrixQtyCell> {
       onEditingComplete: widget.onSubmitNext ?? _focus.nextFocus,
     );
   }
+}
+
+class _StickyMatrixHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _StickyMatrixHeaderDelegate({
+    required this.height,
+    required this.child,
+  });
+
+  final double height;
+  final Widget child;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(covariant _StickyMatrixHeaderDelegate oldDelegate) => true;
 }
 

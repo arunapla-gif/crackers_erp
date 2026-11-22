@@ -10,3 +10,4 @@ crackers_erp_*.html
 key.properties
 *.jks
 *.keystore
+*.apk

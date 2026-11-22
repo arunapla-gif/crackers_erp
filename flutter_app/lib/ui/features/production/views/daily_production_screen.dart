@@ -64,8 +64,10 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     }
   }
 
-  void _openMatrixPage({String? roleFilter}) {
-    Navigator.of(context).push(
+  Future<void> _openMatrixPage({String roleFilter = 'All'}) async {
+    widget.viewModel.setWorkerSearch('');
+    widget.viewModel.setRoleFilter(roleFilter);
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => DailyProductionMatrixPage(
           viewModel: widget.viewModel,
@@ -74,6 +76,23 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
         ),
       ),
     );
+    if (mounted) {
+      widget.viewModel.setWorkerSearch('');
+      widget.viewModel.setRoleFilter('All');
+    }
+  }
+
+  Future<void> _handleSaveFromHub() async {
+    final ok = await widget.viewModel.saveAll();
+    if (!mounted) return;
+    if (ok && widget.viewModel.statusMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.statusMessage!),
+          backgroundColor: ErpTheme.ordersEmerald,
+        ),
+      );
+    }
   }
 
   Future<void> _handleCopyYesterday() async {
@@ -375,6 +394,40 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
       },
     );
     searchController.dispose();
+  }
+
+  Future<void> _confirmRemoveWipItem(
+    String itemName,
+    int itemTotal,
+    String unit,
+  ) async {
+    if (itemTotal <= 0) {
+      widget.viewModel.removeActiveItem(itemName);
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove WIP Product?'),
+        content: Text(
+          'Remove "$itemName" and clear its entered quantities ($itemTotal $unit) for ${widget.viewModel.selectedIsoDate}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: ErpTheme.dangerRose),
+            child: const Text('Remove & Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      widget.viewModel.removeActiveItem(itemName, clearDraft: true);
+    }
   }
 
   Future<void> _confirmDeleteRecord(DailyProductionRecord record) async {
@@ -714,57 +767,118 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     final activeItems = vm.activeItemNames;
     final totalWorkers = vm.filteredWorkers.length;
     final loggedWorkers = vm.activeWorkersLoggedCount;
+    final now = DateTime.now();
+    final todayNormalized = DateTime(now.year, now.month, now.day);
+    final selectedNormalized = DateTime(
+      vm.selectedDate.year,
+      vm.selectedDate.month,
+      vm.selectedDate.day,
+    );
+    final isToday = !selectedNormalized.isBefore(todayNormalized);
+    final friendlyDate = DateFormat('EEE, dd MMM yyyy').format(vm.selectedDate);
 
     return RefreshIndicator(
       onRefresh: vm.refreshAll,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 28),
         children: [
-          // 1. Offline Draft Restoration Notice
-          if (vm.hasRestoredLocalDraft)
+          // 1. Unsaved / Offline Draft Banner with Direct Save Now
+          if (vm.hasUnsavedChanges || vm.hasRestoredLocalDraft)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 color: ErpTheme.productionAmberSoft,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: ErpTheme.productionAmber.withValues(alpha: 0.4),
+                  color: ErpTheme.productionAmber.withValues(alpha: 0.45),
                 ),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
-                    Icons.offline_pin_rounded,
-                    size: 20,
-                    color: ErpTheme.productionAmber,
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.offline_pin_rounded,
+                        size: 20,
+                        color: ErpTheme.productionAmber,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              vm.hasRestoredLocalDraft
+                                  ? 'Unsaved Offline Draft Available'
+                                  : 'Unsaved Production Draft',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.slate900,
+                              ),
+                            ),
+                            Text(
+                              '${inrFormat.format(vm.totalPiecesEntered)} pcs waiting to sync for ${vm.selectedIsoDate}.',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: ErpTheme.slate700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Unsaved Offline Draft Available',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: ErpTheme.slate900,
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        key: const ValueKey('hub-discard-draft-button'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: ErpTheme.slate700,
+                        ),
+                        onPressed: vm.isSaving ? null : vm.discardDraft,
+                        child: const Text('Discard'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        key: const ValueKey('hub-save-draft-button'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: ErpTheme.ordersEmerald,
+                          foregroundColor: Colors.white,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        Text(
-                          'Restored ${vm.totalPiecesEntered} pcs for this date. Open worksheet to save.',
+                        onPressed: vm.isSaving ? null : _handleSaveFromHub,
+                        icon: vm.isSaving
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_rounded, size: 14),
+                        label: Text(
+                          vm.isSaving ? 'Saving...' : 'Save Now',
                           style: const TextStyle(
-                            fontSize: 11,
-                            color: ErpTheme.slate700,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: vm.discardDraft,
-                    child: const Text('Discard'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -783,66 +897,138 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: ErpTheme.productionAmberSoft,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.calendar_month_rounded,
-                              size: 18,
-                              color: ErpTheme.productionAmber,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                vm.selectedIsoDate,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w900,
-                                  color: ErpTheme.slate900,
-                                ),
-                              ),
-                              const Text(
-                                'Daily Production Summary',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: ErpTheme.slate500,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      if (vm.hasUnsavedChanges)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade50,
+                      IconButton(
+                        key: const ValueKey('hub-prev-day-button'),
+                        tooltip: 'Previous Day',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: ErpTheme.slate100,
+                          shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.amber.shade300),
                           ),
-                          child: const Text(
-                            'Draft (Unsaved)',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.amber,
+                        ),
+                        onPressed: vm.isLoading
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                vm.selectDate(
+                                  selectedNormalized.subtract(
+                                    const Duration(days: 1),
+                                  ),
+                                );
+                              },
+                        icon: const Icon(
+                          Icons.chevron_left_rounded,
+                          size: 20,
+                          color: ErpTheme.slate700,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickDate,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isToday ? 'Today • $friendlyDate' : friendlyDate,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: ErpTheme.slate900,
+                                  ),
+                                ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      vm.selectedIsoDate,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: ErpTheme.slate500,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if (vm.hasUnsavedChanges) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.amber.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: Colors.amber.shade300,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Draft',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.amber.shade900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        key: const ValueKey('hub-next-day-button'),
+                        tooltip: 'Next Day',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: isToday
+                              ? ErpTheme.slate50
+                              : ErpTheme.slate100,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: vm.isLoading || isToday
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                vm.selectDate(
+                                  selectedNormalized.add(
+                                    const Duration(days: 1),
+                                  ),
+                                );
+                              },
+                        icon: Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: isToday
+                              ? ErpTheme.slate400
+                              : ErpTheme.slate700,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -916,26 +1102,26 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.inventory_2_outlined,
-                            size: 18,
-                            color: ErpTheme.hrIndigo,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'WIP Products for Today (${activeItems.length})',
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w800,
-                              color: ErpTheme.slate900,
-                            ),
-                          ),
-                        ],
+                      const Icon(
+                        Icons.inventory_2_outlined,
+                        size: 18,
+                        color: ErpTheme.hrIndigo,
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'WIP Products for Today (${activeItems.length})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: ErpTheme.slate900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       FilledButton.tonalIcon(
                         key: const ValueKey('hub-add-wip-button'),
                         style: FilledButton.styleFrom(
@@ -948,7 +1134,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                         onPressed: _openWipItemPicker,
                         icon: const Icon(Icons.add_rounded, size: 16),
                         label: const Text(
-                          '+ Pick Products',
+                          'Pick',
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
@@ -1043,12 +1229,16 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                     color: ErpTheme.productionAmber,
                                   ),
                                 ),
-                              Text(
-                                itemName,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: ErpTheme.slate900,
+                              Flexible(
+                                child: Text(
+                                  itemName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: ErpTheme.slate900,
+                                  ),
                                 ),
                               ),
                               if (itemTotal > 0) ...[
@@ -1074,7 +1264,12 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                               ],
                               const SizedBox(width: 4),
                               InkWell(
-                                onTap: () => vm.removeActiveItem(itemName),
+                                key: ValueKey('hub-remove-wip-$itemName'),
+                                onTap: () => _confirmRemoveWipItem(
+                                  itemName,
+                                  itemTotal,
+                                  product?.unit ?? 'Pcs',
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                                 child: const Padding(
                                   padding: EdgeInsets.all(2),
@@ -1447,12 +1642,16 @@ class _SummaryKpiPill extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: accentColor),
               const SizedBox(width: 6),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: ErpTheme.slate500,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: ErpTheme.slate500,
+                  ),
                 ),
               ),
             ],

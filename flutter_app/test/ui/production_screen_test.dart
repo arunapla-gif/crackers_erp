@@ -469,6 +469,7 @@ void main() {
             'Valayam Contract • வளையம் ஒப்பந்தம் (1)',
           )
           .first;
+      await tester.ensureVisible(valayamTab);
       await tester.tap(valayamTab);
       await tester.pumpAndSettle();
 
@@ -479,6 +480,7 @@ void main() {
 
       // 7. Reset back to All
       final allTab = find.widgetWithText(FilterChip, 'All (3)').first;
+      await tester.ensureVisible(allTab);
       await tester.tap(allTab);
       await tester.pumpAndSettle();
 
@@ -647,14 +649,31 @@ void main() {
       expect(find.textContaining('WIP Products for Today'), findsOneWidget);
       expect(find.byKey(const ValueKey('open-matrix-entry-button')), findsOneWidget);
 
-      // 2. Pick products button exists on Hub
+      // 2. Pick products button and 1-tap prev/next day arrows exist on Hub
       expect(find.byKey(const ValueKey('hub-add-wip-button')), findsOneWidget);
+      final prevDayBtn = find.byKey(const ValueKey('hub-prev-day-button'));
+      final nextDayBtn = find.byKey(const ValueKey('hub-next-day-button'));
+      expect(prevDayBtn, findsOneWidget);
+      expect(nextDayBtn, findsOneWidget);
 
-      // 3. Tap open matrix button -> navigates to fullscreen matrix
+      final initialIso = prodVm.selectedIsoDate;
+      await tester.tap(prevDayBtn);
+      await tester.pumpAndSettle();
+      expect(prodVm.selectedIsoDate, isNot(equals(initialIso)));
+
+      await tester.tap(nextDayBtn);
+      await tester.pumpAndSettle();
+      expect(prodVm.selectedIsoDate, equals(initialIso));
+
+      // 3. Open via a specific department, return to Hub, then tap main CTA -> resets cleanly to All
+      prodVm.setRoleFilter('Packing');
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byKey(const ValueKey('open-matrix-entry-button')));
       await tester.pump();
       await tester.pumpAndSettle();
 
+      expect(prodVm.selectedRoleFilter, equals('All'));
       expect(find.text('WORKERS\n(PINNED)'), findsOneWidget);
       expect(find.text('12cm Electric Sparklers (WIP)'), findsWidgets);
     },
@@ -747,6 +766,13 @@ void main() {
       await tester.tap(find.descendant(of: keypadFinder, matching: find.text('5')));
       await tester.pumpAndSettle();
       expect(prodVm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(25));
+
+      // Prev ↑ jumps back up to emp 12 and lets us adjust its value
+      await tester.tap(find.byKey(const ValueKey('matrix-prev-worker-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: keypadFinder, matching: find.text('+10')));
+      await tester.pumpAndSettle();
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(1560));
 
       // Close keypad via close button
       await tester.tap(find.byTooltip('Done / Close Keypad'));
@@ -841,6 +867,340 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.productionsData.length, equals(2));
+    },
+  );
+
+  testWidgets(
+    'Sticky product column headers stay pinned at top when vertically scrolling through 14+ workers on phone viewport',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.employeesData.clear();
+      for (var i = 1; i <= 16; i++) {
+        api.employeesData.add({
+          'id': 200 + i,
+          'name': 'Worker $i (தொழிலாளர் $i)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        });
+      }
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Capture initial header Y position
+      final headerFinder = find.text('WORKERS\n(PINNED)');
+      expect(headerFinder, findsOneWidget);
+      final initialTop = tester.getTopLeft(headerFinder).dy;
+
+      // Scroll down to bring the last worker into view
+      final lastWorkerFinder = find.text('தொழிலாளர் 16');
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -450));
+      await tester.pumpAndSettle();
+
+      expect(lastWorkerFinder, findsOneWidget);
+      // Sticky header must remain pinned at the top of the scroll viewport
+      expect(headerFinder, findsOneWidget);
+      final afterScrollTop = tester.getTopLeft(headerFinder).dy;
+      expect(afterScrollTop, lessThanOrEqualTo(initialTop));
+      expect(afterScrollTop, greaterThanOrEqualTo(75.0));
+    },
+  );
+
+  testWidgets(
+    'Quick + WIP button inside Screen 2 opens searchable picker and adds a new product column on the spot',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.productsData.add({
+        'id': 99,
+        'name': '10 KVR 48 (WIP)',
+        'code': 'WIP-99',
+        'productType': 'WIP',
+        'group': 'Sparklers',
+        'unit': 'Pcs',
+        'baseRate': 0,
+      });
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Ensure 10 KVR 48 (WIP) is not active yet before testing quick add
+      prodVm.removeActiveItem('10 KVR 48 (WIP)');
+      await tester.pumpAndSettle();
+      expect(prodVm.activeItemNames, isNot(contains('10 KVR 48 (WIP)')));
+
+      // Tap pinned + WIP button inside Screen 2
+      final quickAddBtn = find.byKey(
+        const ValueKey('matrix-quick-add-wip-button'),
+      );
+      expect(quickAddBtn, findsOneWidget);
+      await tester.tap(quickAddBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add / Select WIP Columns'), findsOneWidget);
+      expect(find.text('10 KVR 48 (WIP)'), findsOneWidget);
+
+      // Select the new product and close sheet
+      await tester.tap(find.text('10 KVR 48 (WIP)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // New product is now active in the matrix
+      expect(prodVm.activeItemNames, contains('10 KVR 48 (WIP)'));
+    },
+  );
+
+  testWidgets(
+    'Pending Only filter chip hides already-logged workers and shows remaining unfilled workers',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Log pieces for worker 12 (Selvi), leaving worker 11 (Rajan) unfilled
+      prodVm.setQuantity(12, '12cm Electric Sparklers (WIP)', 40);
+      await tester.pumpAndSettle();
+
+      // Pending chip shows 1 pending worker
+      final pendingChip = find.byKey(const ValueKey('matrix-pending-only-chip'));
+      expect(pendingChip, findsOneWidget);
+      expect(find.text('Pending (1)'), findsOneWidget);
+
+      await tester.tap(pendingChip);
+      await tester.pumpAndSettle();
+
+      // Worker 12 cell is hidden, Worker 11 cell remains visible
+      expect(
+        find.byKey(const ValueKey('matrix_12_12cm Electric Sparklers (WIP)')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('matrix_11_12cm Electric Sparklers (WIP)')),
+        findsOneWidget,
+      );
+
+      // Log worker 11 as well -> shows 'All Workers Logged!'
+      prodVm.setQuantity(11, '12cm Electric Sparklers (WIP)', 20);
+      await tester.pumpAndSettle();
+      expect(find.text('All Workers Logged!'), findsOneWidget);
+
+      // Tap 'Show All Workers' restores both workers
+      await tester.tap(find.text('Show All Workers'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('matrix_12_12cm Electric Sparklers (WIP)')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Hub prompts confirmation before removing a WIP product chip that already has entered quantities',
+    (WidgetTester tester) async {
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      const item = '12cm Electric Sparklers (WIP)';
+      prodVm.setQuantity(12, item, 75);
+      await tester.pumpAndSettle();
+
+      final removeBtn = find.byKey(const ValueKey('hub-remove-wip-$item'));
+      await tester.ensureVisible(removeBtn);
+      await tester.tap(removeBtn);
+      await tester.pumpAndSettle();
+
+      // Confirmation dialog appears instead of immediate deletion
+      expect(find.text('Remove WIP Product?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(prodVm.activeItemNames, contains(item));
+      expect(prodVm.getQuantity(12, item), equals(75));
+
+      // Confirming removes the chip and clears the draft quantity
+      await tester.tap(removeBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove & Clear'));
+      await tester.pumpAndSettle();
+      expect(prodVm.activeItemNames, isNot(contains(item)));
+      expect(prodVm.getQuantity(12, item), equals(0));
+    },
+  );
+
+  testWidgets(
+    'Hub unsaved draft banner provides direct Save Now button to sync without re-entering matrix',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionScreen(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Draft banner hidden when clean
+      expect(find.byKey(const ValueKey('hub-save-draft-button')), findsNothing);
+
+      // Enter draft pieces -> banner appears with Save Now
+      prodVm.setQuantity(12, '12cm Electric Sparklers (WIP)', 60);
+      await tester.pumpAndSettle();
+
+      final saveNowBtn = find.byKey(const ValueKey('hub-save-draft-button'));
+      expect(saveNowBtn, findsOneWidget);
+      expect(find.text('Unsaved Production Draft'), findsOneWidget);
+
+      await tester.tap(saveNowBtn);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Synced directly from Hub and draft banner disappears
+      expect(api.productionsData.length, equals(1));
+      expect(prodVm.hasUnsavedChanges, isFalse);
+      expect(find.byKey(const ValueKey('hub-save-draft-button')), findsNothing);
     },
   );
 }
