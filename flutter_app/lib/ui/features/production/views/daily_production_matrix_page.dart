@@ -272,12 +272,29 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     vm.incrementQuantity(empId, itemName, delta);
   }
 
+  void _scrollNodeIntoView(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = node.context;
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.45,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   FocusNode _focusNodeFor(String key) {
     return _cellFocusNodes.putIfAbsent(key, () {
       final node = FocusNode();
       node.addListener(() {
         if (!mounted) return;
         _updateFocusedKey(key, node.hasFocus);
+        if (node.hasFocus) {
+          _scrollNodeIntoView(node);
+        }
       });
       return node;
     });
@@ -291,19 +308,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
       final nextNode = _cellFocusNodes[nextKey];
       if (nextNode != null) {
         nextNode.requestFocus();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = nextNode.context;
-          if (ctx != null && ctx.mounted && _bodyVScroll.hasClients) {
-            final ro = ctx.findRenderObject();
-            if (ro != null) {
-              _bodyVScroll.position.ensureVisible(
-                ro,
-                alignment: 0.35,
-                duration: const Duration(milliseconds: 140),
-              );
-            }
-          }
-        });
+        _scrollNodeIntoView(nextNode);
         return;
       }
     }
@@ -318,19 +323,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
       final prevNode = _cellFocusNodes[prevKey];
       if (prevNode != null) {
         prevNode.requestFocus();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = prevNode.context;
-          if (ctx != null && ctx.mounted && _bodyVScroll.hasClients) {
-            final ro = ctx.findRenderObject();
-            if (ro != null) {
-              _bodyVScroll.position.ensureVisible(
-                ro,
-                alignment: 0.35,
-                duration: const Duration(milliseconds: 140),
-              );
-            }
-          }
-        });
+        _scrollNodeIntoView(prevNode);
         return;
       }
     }
@@ -961,10 +954,11 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                             ),
                           ),
                         ),
-                        if (widget.authViewModel.currentUser?.canAdd(
-                              'employees',
-                            ) ==
-                            true) ...[
+                        if (vm.temporaryPoolCount > 0 ||
+                            widget.authViewModel.currentUser?.canAdd(
+                                  'employees',
+                                ) ==
+                                true) ...[
                           const SizedBox(width: 6),
                           Material(
                             color: ErpTheme.hrIndigoSoft,
@@ -976,31 +970,51 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                               onTap: () async {
                                 final messenger = ScaffoldMessenger.of(context);
                                 final currentFilter = vm.selectedRoleFilter;
-                                final created = await showQuickTempWorkerSheet(
+                                final canAdd =
+                                    widget.authViewModel.currentUser?.canAdd(
+                                      'employees',
+                                    ) ==
+                                    true;
+                                final result = await showTempRosterSheet(
                                   context,
                                   viewModel: vm,
                                   initialRole: currentFilter == 'All'
                                       ? null
                                       : currentFilter,
+                                  canCreateNew: canAdd,
                                 );
-                                if (created == null || !mounted) return;
+                                if (result == null || !mounted) return;
                                 setState(() {
-                                  _collapsedRoles.remove(created.roleGroup);
+                                  for (final role in result.selectedRoles) {
+                                    _collapsedRoles.remove(role);
+                                  }
                                   _pendingOnly = false;
                                 });
-                                if (vm.selectedRoleFilter != 'All' &&
-                                    vm.selectedRoleFilter.toLowerCase() !=
-                                        created.roleGroup.toLowerCase()) {
-                                  vm.setRoleFilter(created.roleGroup);
-                                }
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Added ${created.displayEnglishName} (TEMP) to ${created.roleGroup}. Ready for entry.',
+                                if (result.createdWorker != null) {
+                                  final created = result.createdWorker!;
+                                  if (vm.selectedRoleFilter != 'All' &&
+                                      vm.selectedRoleFilter.toLowerCase() !=
+                                          created.roleGroup.toLowerCase()) {
+                                    vm.setRoleFilter(created.roleGroup);
+                                  }
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Added ${created.displayEnglishName} (TEMP) to ${created.roleGroup}. Ready for entry.',
+                                      ),
+                                      backgroundColor: ErpTheme.ordersEmerald,
                                     ),
-                                    backgroundColor: ErpTheme.ordersEmerald,
-                                  ),
-                                );
+                                  );
+                                } else if (result.rosterUpdated) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Today's temp roster updated (${result.selectedCount} checked in).",
+                                      ),
+                                      backgroundColor: ErpTheme.ordersEmerald,
+                                    ),
+                                  );
+                                }
                               },
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
@@ -1016,18 +1030,22 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                     ),
                                   ),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      Icons.person_add_alt_1_rounded,
+                                      vm.temporaryPoolCount > 0
+                                          ? Icons.how_to_reg_rounded
+                                          : Icons.person_add_alt_1_rounded,
                                       size: 13,
                                       color: ErpTheme.hrIndigo,
                                     ),
-                                    SizedBox(width: 3),
+                                    const SizedBox(width: 3),
                                     Text(
-                                      'Temp',
-                                      style: TextStyle(
+                                      vm.temporaryPoolCount > 0
+                                          ? 'Temp (${vm.selectedTempCountForDate}/${vm.temporaryPoolCount})'
+                                          : 'Temp',
+                                      style: const TextStyle(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w900,
                                         color: ErpTheme.hrIndigo,

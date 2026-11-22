@@ -40,6 +40,8 @@ class DailyProductionViewModel extends ChangeNotifier {
   // Map<employeeId, Map<itemName, qty>>
   Map<int, Map<String, int>> _baselineByEmp = <int, Map<String, int>>{};
   Map<int, Map<String, int>> _draftByEmp = <int, Map<String, int>>{};
+  // On-demand Temp Roster: Map<isoDate, Set<employeeId>>
+  final Map<String, Set<int>> _selectedTempIdsByDate = <String, Set<int>>{};
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -137,11 +139,82 @@ class DailyProductionViewModel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   String? get statusMessage => _statusMessage;
 
-  List<Employee> get activeWorkers {
+  List<Employee> get _eligibleActiveEmployees {
     final active = _employees.where((e) => e.isActive).toList();
     if (_includeMonthlyWorkers) return active;
     final contractual = active.where((e) => e.isContractual).toList();
     return contractual.isNotEmpty ? contractual : active;
+  }
+
+  /// All active temporary workers in the pool (for the On-Demand Temp Roster picker).
+  List<Employee> get allTemporaryWorkers {
+    final temps = _employees
+        .where((e) => e.isActive && e.isTemporary)
+        .toList();
+    temps.sort((a, b) {
+      final roleCmp = compareRoles(a.roleGroup, b.roleGroup);
+      if (roleCmp != 0) return roleCmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return temps;
+  }
+
+  /// Whether a temporary worker is included on the currently selected date's roster
+  /// (either explicitly checked in or already having saved/draft pieces for this date).
+  bool isTempWorkerOnTodayRoster(int employeeId) {
+    final manualIds = _selectedTempIdsByDate[selectedIsoDate];
+    if (manualIds != null && manualIds.contains(employeeId)) return true;
+    final draftItems = _draftByEmp[employeeId];
+    if (draftItems != null && draftItems.values.any((q) => q > 0)) return true;
+    final baseItems = _baselineByEmp[employeeId];
+    if (baseItems != null && baseItems.values.any((q) => q > 0)) return true;
+    return false;
+  }
+
+  /// Whether a temporary worker has saved or draft pieces on the selected date
+  /// (locked onto the roster until cleared).
+  bool tempWorkerHasPiecesForDate(int employeeId) {
+    final draftItems = _draftByEmp[employeeId];
+    if (draftItems != null && draftItems.values.any((q) => q > 0)) return true;
+    final baseItems = _baselineByEmp[employeeId];
+    if (baseItems != null && baseItems.values.any((q) => q > 0)) return true;
+    return false;
+  }
+
+  Set<int> get selectedTempIdsForDate {
+    final ids = <int>{};
+    for (final emp in allTemporaryWorkers) {
+      if (isTempWorkerOnTodayRoster(emp.id)) {
+        ids.add(emp.id);
+      }
+    }
+    return ids;
+  }
+
+  int get temporaryPoolCount => allTemporaryWorkers.length;
+
+  int get selectedTempCountForDate => selectedTempIdsForDate.length;
+
+  void addTempWorkerToDateRoster(int employeeId) {
+    final set = _selectedTempIdsByDate.putIfAbsent(
+      selectedIsoDate,
+      () => <int>{},
+    );
+    if (set.add(employeeId)) {
+      _safeNotify();
+    }
+  }
+
+  void setTempRosterForDate(Set<int> employeeIds) {
+    _selectedTempIdsByDate[selectedIsoDate] = Set<int>.from(employeeIds);
+    _safeNotify();
+  }
+
+  List<Employee> get activeWorkers {
+    return _eligibleActiveEmployees.where((e) {
+      if (!e.isTemporary) return true;
+      return isTempWorkerOnTodayRoster(e.id);
+    }).toList();
   }
 
   /// Canonical factory roles in fixed sequence: Tape, Chemical, Valayam Contract.
@@ -650,6 +723,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     _activeItemsByRole.clear();
     _baselineByEmp = <int, Map<String, int>>{};
     _draftByEmp = <int, Map<String, int>>{};
+    _selectedTempIdsByDate.clear();
     _isLoading = false;
     _isSaving = false;
     _hasRestoredLocalDraft = false;
@@ -905,6 +979,9 @@ class DailyProductionViewModel extends ChangeNotifier {
         ..add(saved)
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _employees = updated;
+      _selectedTempIdsByDate
+          .putIfAbsent(selectedIsoDate, () => <int>{})
+          .add(saved.id);
       if (!saved.isContractual && !_includeMonthlyWorkers) {
         _includeMonthlyWorkers = true;
       }

@@ -370,7 +370,7 @@ void main() {
           'name': 'Abi (அபி)',
           'role': 'Tape',
           'paymentType': 'Contractual',
-          'employmentType': 'Temporary',
+          'employmentType': 'Regular',
           'unit': 'Unit 1',
           'status': 'Active',
           'advanceBalance': '0.00',
@@ -1283,7 +1283,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Save
-      await tester.tap(find.byKey(const ValueKey('quick-temp-save-button')));
+      final saveBtn = find.byKey(const ValueKey('quick-temp-save-button'));
+      await tester.ensureVisible(saveBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(saveBtn);
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -1301,6 +1304,183 @@ void main() {
         isTrue,
       );
       expect(find.textContaining('TEMP'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'On-Demand Temp Roster hides absent temp workers by default and lets supervisor check in only who arrived today',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.employeesData.addAll([
+        {
+          'id': 301,
+          'name': 'TempRavi (டெம்ப் ரவி)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Temporary',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+        {
+          'id': 302,
+          'name': 'TempSuresh (டெம்ப் சுரேஷ்)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Temporary',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        },
+      ]);
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Absent temp workers are hidden from today's Matrix by default
+      expect(prodVm.temporaryPoolCount, equals(2));
+      expect(prodVm.selectedTempCountForDate, equals(0));
+      expect(prodVm.activeWorkers.any((e) => e.id == 301), isFalse);
+      expect(prodVm.activeWorkers.any((e) => e.id == 302), isFalse);
+      expect(find.text('Temp (0/2)'), findsOneWidget);
+
+      // Open On-Demand Temp Roster sheet
+      await tester.tap(
+        find.byKey(const ValueKey('matrix-quick-add-temp-worker-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text("Today's Temp Roster"), findsOneWidget);
+      expect(find.byKey(const ValueKey('temp-roster-item-301')), findsOneWidget);
+      expect(find.byKey(const ValueKey('temp-roster-item-302')), findsOneWidget);
+
+      // Tick only TempRavi (301) and apply
+      await tester.tap(find.byKey(const ValueKey('temp-roster-item-301')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('temp-roster-apply-button')));
+      await tester.pumpAndSettle();
+
+      // Only TempRavi (301) is now visible in today's Matrix; TempSuresh (302) remains hidden
+      expect(prodVm.selectedTempCountForDate, equals(1));
+      expect(prodVm.activeWorkers.any((e) => e.id == 301), isTrue);
+      expect(prodVm.activeWorkers.any((e) => e.id == 302), isFalse);
+      expect(find.text('Temp (1/2)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Tapping Next in Matrix scrolls viewport vertically to follow the focused worker row',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.employeesData.clear();
+      for (var i = 1; i <= 16; i++) {
+        final padded = i.toString().padLeft(2, '0');
+        api.employeesData.add({
+          'id': 400 + i,
+          'name': 'Worker $padded (தொழிலாளர் $padded)',
+          'role': 'Tape',
+          'paymentType': 'Contractual',
+          'employmentType': 'Regular',
+          'status': 'Active',
+          'advanceBalance': '0.00',
+        });
+      }
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Tap first worker's cell to focus & open docked keypad
+      final firstCell = find.byKey(
+        const ValueKey('matrix_401_12cm Electric Sparklers (WIP)'),
+      );
+      expect(firstCell, findsOneWidget);
+      await tester.tap(firstCell);
+      await tester.pumpAndSettle();
+
+      final customScrollView = tester.widget<CustomScrollView>(
+        find.byType(CustomScrollView),
+      );
+      final initialOffset = customScrollView.controller!.offset;
+
+      // Tap Next 10 times to advance down to Worker 11
+      final nextBtn = find.byKey(const ValueKey('matrix-next-worker-button'));
+      for (var step = 0; step < 10; step++) {
+        await tester.tap(nextBtn);
+        await tester.pumpAndSettle();
+      }
+
+      // Vertical scroll offset must have advanced significantly so Worker 11 stays visible
+      final scrolledOffset = customScrollView.controller!.offset;
+      expect(scrolledOffset, greaterThan(initialOffset + 100));
+
+      // Worker 11's cell is visibly inside the viewport above the docked keypad
+      final targetCell = find.byKey(
+        const ValueKey('matrix_411_12cm Electric Sparklers (WIP)'),
+      );
+      final cellRect = tester.getRect(targetCell);
+      final keypadRect = tester.getRect(
+        find.byKey(const ValueKey('matrix-docked-keypad')),
+      );
+      expect(cellRect.bottom, lessThanOrEqualTo(keypadRect.top + 4));
+      expect(cellRect.top, greaterThan(0));
     },
   );
 }

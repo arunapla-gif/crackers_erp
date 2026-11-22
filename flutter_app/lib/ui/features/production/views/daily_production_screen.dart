@@ -1317,8 +1317,9 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                     ),
                   ),
                 ),
-                if (widget.authViewModel.currentUser?.canAdd('employees') ==
-                    true) ...[
+                if (vm.temporaryPoolCount > 0 ||
+                    widget.authViewModel.currentUser?.canAdd('employees') ==
+                        true) ...[
                   const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     key: const ValueKey('hub-quick-add-temp-worker-button'),
@@ -1333,25 +1334,48 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                     ),
                     onPressed: () async {
                       final messenger = ScaffoldMessenger.of(context);
-                      final created = await showQuickTempWorkerSheet(
+                      final canAdd =
+                          widget.authViewModel.currentUser?.canAdd(
+                            'employees',
+                          ) ==
+                          true;
+                      final result = await showTempRosterSheet(
                         context,
                         viewModel: vm,
+                        canCreateNew: canAdd,
                       );
-                      if (created != null && mounted) {
+                      if (result == null || !mounted) return;
+                      if (result.createdWorker != null) {
                         messenger.showSnackBar(
                           SnackBar(
                             content: Text(
-                              'Added temporary worker ${created.displayEnglishName} (${created.roleGroup}).',
+                              'Added temporary worker ${result.createdWorker!.displayEnglishName} (${result.createdWorker!.roleGroup}).',
+                            ),
+                            backgroundColor: ErpTheme.ordersEmerald,
+                          ),
+                        );
+                      } else if (result.rosterUpdated) {
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              "Updated today's temp roster (${result.selectedCount} checked in).",
                             ),
                             backgroundColor: ErpTheme.ordersEmerald,
                           ),
                         );
                       }
                     },
-                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 15),
-                    label: const Text(
-                      '+ Temp Worker',
-                      style: TextStyle(
+                    icon: Icon(
+                      vm.temporaryPoolCount > 0
+                          ? Icons.how_to_reg_rounded
+                          : Icons.person_add_alt_1_rounded,
+                      size: 15,
+                    ),
+                    label: Text(
+                      vm.temporaryPoolCount > 0
+                          ? 'Temp (${vm.selectedTempCountForDate}/${vm.temporaryPoolCount})'
+                          : '+ Temp Worker',
+                      style: const TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
                       ),
