@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/domain/models/daily_production.dart';
+import 'package:crackers_erp/domain/models/wip_product.dart';
 import 'package:crackers_erp/ui/core/adaptive_shell.dart';
 import 'package:crackers_erp/ui/core/erp_crud_widgets.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
@@ -180,6 +181,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) {
+        var selectedCategory = 'All';
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return ListenableBuilder(
@@ -187,12 +189,50 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
               builder: (ctx, _) {
                 final vm = widget.viewModel;
                 final q = searchController.text.trim().toLowerCase();
-                final items = vm.wipProducts.where((p) {
+                final allSorted = vm.sortedWipProducts;
+                final categories = <String>{
+                  for (final p in allSorted)
+                    if ((p.category ?? '').trim().isNotEmpty)
+                      p.category!.trim(),
+                }.toList()
+                  ..sort(DailyProductionViewModel.compareRoles);
+
+                final items = allSorted.where((p) {
+                  if (selectedCategory != 'All' &&
+                      (p.category ?? '').trim().toLowerCase() !=
+                          selectedCategory.toLowerCase()) {
+                    return false;
+                  }
                   if (q.isEmpty) return true;
                   return p.name.toLowerCase().contains(q) ||
+                      (p.category ?? '').toLowerCase().contains(q) ||
+                      (p.subCategory ?? '').toLowerCase().contains(q) ||
                       p.displayGroup.toLowerCase().contains(q) ||
                       p.code.toLowerCase().contains(q);
                 }).toList();
+
+                final entries = <Object>[];
+                String? lastGroupKey;
+                for (final prod in items) {
+                  final cat = (prod.category ?? '').trim();
+                  final sub = (prod.subCategory ?? '').trim();
+                  final groupLabel = selectedCategory != 'All'
+                      ? (sub.isNotEmpty ? sub : 'General')
+                      : [
+                          if (cat.isNotEmpty) cat,
+                          if (sub.isNotEmpty) sub,
+                        ].isEmpty
+                          ? 'General WIP'
+                          : [
+                              if (cat.isNotEmpty) cat,
+                              if (sub.isNotEmpty) sub,
+                            ].join(' • ');
+                  if (groupLabel != lastGroupKey) {
+                    entries.add(groupLabel);
+                    lastGroupKey = groupLabel;
+                  }
+                  entries.add(prod);
+                }
 
                 return DraggableScrollableSheet(
                   expand: false,
@@ -240,7 +280,8 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                             controller: searchController,
                             onChanged: (_) => setSheetState(() {}),
                             decoration: InputDecoration(
-                              hintText: 'Search WIP product name or group...',
+                              hintText:
+                                  'Search WIP product, count, or category...',
                               prefixIcon: const Icon(Icons.search),
                               suffixIcon: searchController.text.isNotEmpty
                                   ? IconButton(
@@ -254,6 +295,43 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                             ),
                           ),
                         ),
+                        if (categories.length > 1) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 34,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: ChoiceChip(
+                                    label: Text('All (${allSorted.length})'),
+                                    selected: selectedCategory == 'All',
+                                    visualDensity: VisualDensity.compact,
+                                    onSelected: (_) => setSheetState(
+                                      () => selectedCategory = 'All',
+                                    ),
+                                  ),
+                                ),
+                                for (final cat in categories)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                      label: Text(cat),
+                                      selected: selectedCategory == cat,
+                                      visualDensity: VisualDensity.compact,
+                                      onSelected: (_) => setSheetState(
+                                        () => selectedCategory = cat,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         Expanded(
                           child: items.isEmpty
@@ -271,11 +349,53 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                     16,
                                     24,
                                   ),
-                                  itemCount: items.length,
+                                  itemCount: entries.length,
                                   separatorBuilder: (_, _) =>
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                   itemBuilder: (ctx, idx) {
-                                    final prod = items[idx];
+                                    final entry = entries[idx];
+                                    if (entry is String) {
+                                      return Padding(
+                                        padding: EdgeInsets.only(
+                                          top: idx == 0 ? 2 : 8,
+                                          bottom: 2,
+                                          left: 2,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: ErpTheme.hrIndigoSoft,
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                entry.toUpperCase(),
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: ErpTheme.hrIndigo,
+                                                  letterSpacing: 0.4,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Expanded(
+                                              child: Divider(
+                                                height: 1,
+                                                color: ErpTheme.slate200,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                    final prod = entry as WipProduct;
                                     final isActive = vm.activeItemNames.contains(
                                       prod.name,
                                     );

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
+import 'package:crackers_erp/domain/models/wip_product.dart';
 import 'package:crackers_erp/ui/core/erp_status_widgets.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
@@ -34,7 +35,7 @@ class DailyProductionMatrixPage extends StatefulWidget {
 
 class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
   static const double _bannerHeight = 36.0;
-  static const double _headerHeight = 48.0;
+  static const double _headerHeight = 58.0;
   static const double _workerRowHeight = 54.0;
   static const double _footerHeight = 44.0;
 
@@ -419,6 +420,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        var showAllCategories = false;
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return ListenableBuilder(
@@ -426,15 +428,51 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
               builder: (ctx, _) {
                 final vm = widget.viewModel;
                 final q = searchController.text.trim().toLowerCase();
-                final items = vm.wipProducts.where((p) {
+                final allSorted = vm.sortedWipProducts;
+                final roleMatched = isRoleScoped
+                    ? allSorted
+                        .where((p) => vm.doesWipProductMatchRole(p, activeRole))
+                        .toList()
+                    : allSorted;
+                final basePool =
+                    (isRoleScoped && !showAllCategories && roleMatched.isNotEmpty)
+                        ? roleMatched
+                        : allSorted;
+                final items = basePool.where((p) {
                   if (q.isEmpty) return true;
                   return p.name.toLowerCase().contains(q) ||
+                      (p.category ?? '').toLowerCase().contains(q) ||
+                      (p.subCategory ?? '').toLowerCase().contains(q) ||
                       p.displayGroup.toLowerCase().contains(q) ||
                       p.code.toLowerCase().contains(q);
                 }).toList();
                 final currentActive = isRoleScoped
                     ? vm.getActiveItemsForRole(activeRole)
                     : vm.activeItemNames;
+
+                // Build grouped list entries: String header or WipProduct item
+                final entries = <Object>[];
+                String? lastGroupKey;
+                for (final prod in items) {
+                  final cat = (prod.category ?? '').trim();
+                  final sub = (prod.subCategory ?? '').trim();
+                  final groupLabel = (isRoleScoped && !showAllCategories)
+                      ? (sub.isNotEmpty ? sub : 'General')
+                      : [
+                          if (cat.isNotEmpty) cat,
+                          if (sub.isNotEmpty) sub,
+                        ].isEmpty
+                          ? 'General WIP'
+                          : [
+                              if (cat.isNotEmpty) cat,
+                              if (sub.isNotEmpty) sub,
+                            ].join(' • ');
+                  if (groupLabel != lastGroupKey) {
+                    entries.add(groupLabel);
+                    lastGroupKey = groupLabel;
+                  }
+                  entries.add(prod);
+                }
 
                 return DraggableScrollableSheet(
                   expand: false,
@@ -469,6 +507,25 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                   ),
                                 ),
                               ),
+                              if (isRoleScoped &&
+                                  roleMatched.length < allSorted.length)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: FilterChip(
+                                    label: const Text(
+                                      'All Categories',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    selected: showAllCategories,
+                                    visualDensity: VisualDensity.compact,
+                                    onSelected: (v) => setSheetState(
+                                      () => showAllCategories = v,
+                                    ),
+                                  ),
+                                ),
                               TextButton(
                                 onPressed: () => Navigator.of(ctx).pop(),
                                 child: const Text(
@@ -485,7 +542,7 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                             controller: searchController,
                             onChanged: (_) => setSheetState(() {}),
                             decoration: InputDecoration(
-                              hintText: 'Search WIP product name or group...',
+                              hintText: 'Search WIP product, count, or category...',
                               isDense: true,
                               prefixIcon: const Icon(Icons.search, size: 18),
                               suffixIcon: searchController.text.isNotEmpty
@@ -517,11 +574,53 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                     16,
                                     20,
                                   ),
-                                  itemCount: items.length,
+                                  itemCount: entries.length,
                                   separatorBuilder: (_, _) =>
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                   itemBuilder: (ctx, idx) {
-                                    final prod = items[idx];
+                                    final entry = entries[idx];
+                                    if (entry is String) {
+                                      return Padding(
+                                        padding: EdgeInsets.only(
+                                          top: idx == 0 ? 2 : 8,
+                                          bottom: 2,
+                                          left: 2,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: ErpTheme.hrIndigoSoft,
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                entry.toUpperCase(),
+                                                style: const TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: ErpTheme.hrIndigo,
+                                                  letterSpacing: 0.4,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Expanded(
+                                              child: Divider(
+                                                height: 1,
+                                                color: ErpTheme.slate200,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                    final prod = entry as WipProduct;
                                     final isActive =
                                         currentActive.contains(prod.name);
                                     final isPinned =
@@ -1976,34 +2075,67 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                         ),
                                       ),
                                     ),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          itemName,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w900,
-                                            color: ErpTheme.hrIndigo,
-                                            height: 1.15,
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          if (product?.subCategory != null &&
+                                              product!
+                                                  .subCategory!
+                                                  .trim()
+                                                  .isNotEmpty)
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                bottom: 2,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 4,
+                                                    vertical: 0.5,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: ErpTheme
+                                                    .productionAmberSoft,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                product.subCategory!.trim(),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 8.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color:
+                                                      ErpTheme.productionAmber,
+                                                  height: 1.1,
+                                                ),
+                                              ),
+                                            ),
+                                          Text(
+                                            itemName,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w900,
+                                              color: ErpTheme.hrIndigo,
+                                              height: 1.1,
+                                            ),
                                           ),
-                                        ),
-                                        Text(
-                                          product?.unit ?? 'Pcs',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 8.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: ErpTheme.slate500,
+                                          Text(
+                                            product?.unit ?? 'Pcs',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w700,
+                                              color: ErpTheme.slate500,
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
+                                        ],
+                                      ),
                                   );
                                 },
                               ),

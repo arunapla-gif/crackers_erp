@@ -132,7 +132,7 @@ void main() {
 
       // Focus first cell (Packing -> emp 12), use +10, Next -> emp 11 (+25), Next -> Col 2 emp 12 (+50)
       final cellFinder = find.byKey(
-        const ValueKey('matrix_12_12cm Electric Sparklers (WIP)'),
+        const ValueKey('matrix_12_Ground Chakkar Big (WIP)'),
       );
       await tester.ensureVisible(cellFinder);
       await tester.pumpAndSettle();
@@ -142,19 +142,19 @@ void main() {
       expect(find.text('+10'), findsOneWidget);
       await tester.tap(find.text('+10'));
       await tester.pumpAndSettle();
-      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(10));
+      expect(prodVm.getQuantity(12, 'Ground Chakkar Big (WIP)'), equals(10));
 
       await tester.tap(find.text('Next ↓'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('+25'));
       await tester.pumpAndSettle();
-      expect(prodVm.getQuantity(11, '12cm Electric Sparklers (WIP)'), equals(25));
+      expect(prodVm.getQuantity(11, 'Ground Chakkar Big (WIP)'), equals(25));
 
       await tester.tap(find.text('Next ↓'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('+50'));
       await tester.pumpAndSettle();
-      expect(prodVm.getQuantity(12, 'Ground Chakkar Big (WIP)'), equals(50));
+      expect(prodVm.getQuantity(12, '12cm Electric Sparklers (WIP)'), equals(50));
 
       // Close keypad via close button
       await tester.tap(find.byTooltip('Done / Close Keypad'));
@@ -1125,6 +1125,7 @@ void main() {
 
       final removeBtn = find.byKey(const ValueKey('hub-remove-wip-$item'));
       await tester.ensureVisible(removeBtn);
+      await tester.pumpAndSettle();
       await tester.tap(removeBtn);
       await tester.pumpAndSettle();
 
@@ -1481,6 +1482,161 @@ void main() {
       );
       expect(cellRect.bottom, lessThanOrEqualTo(keypadRect.top + 4));
       expect(cellRect.top, greaterThan(0));
+    },
+  );
+
+  testWidgets(
+    'Tape WIP items match category Tape and organize strictly by 400, 600, 700, 800 COUNT sub-category order',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = FakeApiClient();
+      api.employeesData
+        ..clear()
+        ..addAll([
+          {
+            'id': 501,
+            'name': 'Muthu (முத்து)',
+            'role': 'Tape',
+            'paymentType': 'Contractual',
+            'employmentType': 'Regular',
+            'status': 'Active',
+            'advanceBalance': '0.00',
+          },
+          {
+            'id': 502,
+            'name': 'Raja (ராஜா)',
+            'role': 'Chemical',
+            'paymentType': 'Contractual',
+            'employmentType': 'Regular',
+            'status': 'Active',
+            'advanceBalance': '0.00',
+          },
+        ]);
+
+      // Deliberately scrambled order in DB response
+      api.productsData
+        ..clear()
+        ..addAll([
+          {
+            'id': 901,
+            'code': 'WIP-800',
+            'name': 'Red Tape Roll',
+            'type': 'WIP',
+            'category': 'Tape',
+            'subCategory': '800 COUNT',
+            'unit': 'Pcs',
+            'boxesPerCase': 1,
+            'status': 'Active',
+          },
+          {
+            'id': 902,
+            'code': 'WIP-CHEM',
+            'name': 'Silver Dip Mix',
+            'type': 'WIP',
+            'category': 'Chemical',
+            'subCategory': 'DIPPING',
+            'unit': 'Pcs',
+            'boxesPerCase': 1,
+            'status': 'Active',
+          },
+          {
+            'id': 903,
+            'code': 'WIP-600',
+            'name': 'Green Tape Roll',
+            'type': 'WIP',
+            'category': 'Tape',
+            'subCategory': '600 COUNT',
+            'unit': 'Pcs',
+            'boxesPerCase': 1,
+            'status': 'Active',
+          },
+          {
+            'id': 904,
+            'code': 'WIP-400',
+            'name': 'Blue Tape Roll',
+            'type': 'WIP',
+            'category': 'Tape',
+            'subCategory': '400 COUNT',
+            'unit': 'Pcs',
+            'boxesPerCase': 1,
+            'status': 'Active',
+          },
+          {
+            'id': 905,
+            'code': 'WIP-700',
+            'name': 'Yellow Tape Roll',
+            'type': 'WIP',
+            'category': 'Tape',
+            'subCategory': '700 COUNT',
+            'unit': 'Pcs',
+            'boxesPerCase': 1,
+            'status': 'Active',
+          },
+        ]);
+
+      final storage = InMemoryLocalStorageService();
+      final authVm = AuthViewModel(
+        authRepository: AuthRepository(apiClient: api, storage: storage),
+      );
+      await authVm.login(username: 'supervisor1', pin: '1234');
+
+      final prodVm = DailyProductionViewModel(
+        productionRepository: ProductionRepository(
+          apiClient: api,
+          storage: storage,
+        ),
+        employeeRepository: EmployeeRepository(apiClient: api),
+      );
+      addTearDown(prodVm.dispose);
+      addTearDown(authVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: DailyProductionMatrixPage(
+            viewModel: prodVm,
+            authViewModel: authVm,
+            initialRoleFilter: 'Tape',
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Tape role gets ONLY Tape category items, strictly ordered 400 -> 600 -> 700 -> 800 COUNT
+      expect(
+        prodVm.getActiveItemsForRole('Tape'),
+        equals([
+          'Blue Tape Roll',
+          'Green Tape Roll',
+          'Yellow Tape Roll',
+          'Red Tape Roll',
+        ]),
+      );
+      expect(
+        prodVm.getActiveItemsForRole('Chemical'),
+        equals(['Silver Dip Mix']),
+      );
+
+      // Sub-category badges render in sticky column headers
+      expect(find.text('400 COUNT'), findsWidgets);
+      expect(find.text('600 COUNT'), findsWidgets);
+
+      // Open + WIP picker for Tape -> shows 400, 600, 700, 800 COUNT section headers (and hides Chemical by default)
+      await tester.tap(
+        find.byKey(const ValueKey('matrix-quick-add-wip-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('400 COUNT'), findsWidgets);
+      expect(find.text('600 COUNT'), findsWidgets);
+      expect(find.text('700 COUNT'), findsWidgets);
+      expect(find.text('800 COUNT'), findsWidgets);
+      expect(find.text('Silver Dip Mix'), findsNothing);
     },
   );
 }

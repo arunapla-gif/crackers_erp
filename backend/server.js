@@ -514,7 +514,11 @@ app.get('/api/products', async (req, res) => {
     if (isSupervisorUser(req)) {
       const wipProducts = await prisma.product.findMany({
         where: { type: 'WIP' },
-        orderBy: { name: 'asc' }
+        orderBy: [
+          { category: 'asc' },
+          { subCategory: 'asc' },
+          { name: 'asc' }
+        ]
       });
       return res.json(
         wipProducts.map((p) => ({

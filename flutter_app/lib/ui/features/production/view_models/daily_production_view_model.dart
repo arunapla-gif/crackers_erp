@@ -79,9 +79,11 @@ class DailyProductionViewModel extends ChangeNotifier {
     if (!list.contains(itemName)) {
       list.add(itemName);
     }
+    sortItemNamesByCategoryOrder(list);
     if (!_activeItemNames.contains(itemName)) {
       _activeItemNames.add(itemName);
     }
+    sortItemNamesByCategoryOrder(_activeItemNames);
     _safeNotify();
   }
 
@@ -223,6 +225,125 @@ class DailyProductionViewModel extends ChangeNotifier {
     'Chemical',
     'Valayam Contract',
   ];
+
+  /// Natural numeric comparator so "400 COUNT" < "600 COUNT" < "700 COUNT" < "800 COUNT" < "1000 COUNT".
+  static final RegExp _naturalTokenRegex = RegExp(r'(\d+|\D+)');
+
+  static int compareNatural(String a, String b) {
+    final cleanA = a.trim().toLowerCase();
+    final cleanB = b.trim().toLowerCase();
+    if (cleanA == cleanB) return 0;
+    if (cleanA.isEmpty) return 1;
+    if (cleanB.isEmpty) return -1;
+
+    final tokensA = _naturalTokenRegex
+        .allMatches(cleanA)
+        .map((m) => m.group(0)!)
+        .toList();
+    final tokensB = _naturalTokenRegex
+        .allMatches(cleanB)
+        .map((m) => m.group(0)!)
+        .toList();
+
+    final minLen =
+        tokensA.length < tokensB.length ? tokensA.length : tokensB.length;
+    for (var i = 0; i < minLen; i++) {
+      final tA = tokensA[i];
+      final tB = tokensB[i];
+      if (tA == tB) continue;
+      final numA = int.tryParse(tA);
+      final numB = int.tryParse(tB);
+      if (numA != null && numB != null) {
+        final cmp = numA.compareTo(numB);
+        if (cmp != 0) return cmp;
+      }
+      return tA.compareTo(tB);
+    }
+    return tokensA.length.compareTo(tokensB.length);
+  }
+
+  /// Sorts WIP products by Category (canonical roles first, empty last),
+  /// then Sub-Category in natural numeric order (e.g. 400 COUNT, 600 COUNT, 700 COUNT, 800 COUNT),
+  /// then Product Name in natural numeric order.
+  static int compareWipProducts(WipProduct a, WipProduct b) {
+    final catA = (a.category ?? '').trim();
+    final catB = (b.category ?? '').trim();
+    if (catA.isEmpty != catB.isEmpty) {
+      return catA.isEmpty ? 1 : -1;
+    }
+    if (catA.isNotEmpty) {
+      final catCmp = compareRoles(catA, catB);
+      if (catCmp != 0) return catCmp;
+    }
+
+    final subA = (a.subCategory ?? '').trim();
+    final subB = (b.subCategory ?? '').trim();
+    if (subA.isEmpty != subB.isEmpty) {
+      return subA.isEmpty ? 1 : -1;
+    }
+    if (subA.isNotEmpty) {
+      final subCmp = compareNatural(subA, subB);
+      if (subCmp != 0) return subCmp;
+    }
+
+    return compareNatural(a.name, b.name);
+  }
+
+  /// Returns active WIP products ordered by Category -> Sub-Category (natural) -> Name.
+  List<WipProduct> get sortedWipProducts {
+    final list = List<WipProduct>.from(_wipProducts);
+    list.sort(compareWipProducts);
+    return list;
+  }
+
+  static List<String> _keywordsForRole(String role) {
+    final cleanRole = role.trim().toLowerCase();
+    if (cleanRole == 'tape') {
+      return const ['tape', 'டேப்'];
+    } else if (cleanRole == 'chemical') {
+      return const ['chemical', 'dipping', 'கெமிக்கல்', 'டீப்பிங்'];
+    } else if (cleanRole == 'valayam contract' || cleanRole == 'valayam') {
+      return const ['valayam', 'ring', 'வளையம்'];
+    } else if (cleanRole == 'box packing' || cleanRole == 'packing') {
+      return const ['packing', 'pack', 'box', 'பேக்கிங்'];
+    } else if (cleanRole == 'rolling') {
+      return const ['rolling', 'roll', 'ரோலிங்'];
+    } else if (cleanRole == 'filling') {
+      return const ['filling', 'fill', 'ஃபில்லிங்'];
+    }
+    return [cleanRole];
+  }
+
+  /// Matches a WIP product to a worker department/role:
+  /// If the product has a `category` set in DB, matches strictly on `category`
+  /// (so `category = Tape` goes to Tape workers). Falls back to name/subCategory
+  /// keywords only when `category` is blank.
+  bool doesWipProductMatchRole(WipProduct prod, String role) {
+    final cleanRole = role.trim().toLowerCase();
+    if (cleanRole.isEmpty || cleanRole == 'all') return true;
+    final keywords = _keywordsForRole(cleanRole);
+    final catLower = (prod.category ?? '').trim().toLowerCase();
+    if (catLower.isNotEmpty) {
+      if (catLower == cleanRole) return true;
+      return keywords.any((kw) => catLower.contains(kw) || cleanRole.contains(catLower));
+    }
+    final nameLower = prod.name.toLowerCase();
+    final subLower = (prod.subCategory ?? '').toLowerCase();
+    return keywords.any((kw) => nameLower.contains(kw) || subLower.contains(kw));
+  }
+
+  void sortItemNamesByCategoryOrder(List<String> names) {
+    names.sort((a, b) {
+      final prodA = findWipProductByName(a);
+      final prodB = findWipProductByName(b);
+      if (prodA != null && prodB != null) {
+        return compareWipProducts(prodA, prodB);
+      }
+      if (prodA != null) return -1;
+      if (prodB != null) return 1;
+      return compareNatural(a, b);
+    });
+  }
 
   /// Strict comparator that prioritizes canonical factory roles, then sorts alphabetically.
   static int compareRoles(String a, String b) {
@@ -378,7 +499,9 @@ class DailyProductionViewModel extends ChangeNotifier {
         _productionRepository.fetchDailyProductions(limit: 40),
       ]);
 
-      _wipProducts = results[0] as List<WipProduct>;
+      final fetchedWip = List<WipProduct>.from(results[0] as List<WipProduct>)
+        ..sort(compareWipProducts);
+      _wipProducts = fetchedWip;
       _employees = results[1] as List<Employee>;
       _dateRecords = results[2] as List<DailyProductionRecord>;
       _recentHistory = results[3] as List<DailyProductionRecord>;
@@ -554,6 +677,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     if (!_activeItemNames.contains(itemName)) {
       _activeItemNames.add(itemName);
     }
+    sortItemNamesByCategoryOrder(_activeItemNames);
     if (_selectedRoleFilter != 'All') {
       addActiveItemForRole(_selectedRoleFilter, itemName);
     } else {
@@ -563,6 +687,7 @@ class DailyProductionViewModel extends ChangeNotifier {
           if (!list.contains(itemName)) {
             list.add(itemName);
           }
+          sortItemNamesByCategoryOrder(list);
         }
       }
     }
@@ -784,51 +909,26 @@ class DailyProductionViewModel extends ChangeNotifier {
       }
     }
 
-    // 2. Keyword-based matching
-    List<String> keywords = [];
-    if (cleanRole == 'tape') {
-      keywords = ['tape', 'டேப்'];
-    } else if (cleanRole == 'chemical') {
-      keywords = ['chemical', 'dipping', 'கெமிக்கல்', 'டீப்பிங்'];
-    } else if (cleanRole == 'valayam contract' || cleanRole == 'valayam') {
-      keywords = ['valayam', 'ring', 'வளையம்'];
-    } else if (cleanRole == 'box packing' || cleanRole == 'packing') {
-      keywords = ['packing', 'pack', 'box', 'பேக்கிங்'];
-    } else if (cleanRole == 'rolling') {
-      keywords = ['rolling', 'roll', 'ரோலிங்'];
-    } else if (cleanRole == 'filling') {
-      keywords = ['filling', 'fill', 'ஃபில்லிங்'];
-    } else {
-      keywords = [cleanRole];
-    }
-
-    for (final prod in _wipProducts.where((p) => p.isActive)) {
-      final nameLower = prod.name.toLowerCase();
-      final catLower = (prod.category ?? '').toLowerCase();
-      final subLower = (prod.subCategory ?? '').toLowerCase();
-      final matches = keywords.any(
-        (kw) =>
-            nameLower.contains(kw) ||
-            catLower.contains(kw) ||
-            subLower.contains(kw),
-      );
-      if (matches && !items.contains(prod.name)) {
+    // 2. Category-based matching in natural sub-category order
+    for (final prod in sortedWipProducts.where((p) => p.isActive)) {
+      if (doesWipProductMatchRole(prod, role) && !items.contains(prod.name)) {
         items.add(prod.name);
       }
     }
 
-    // 3. Fallback: if no keyword matched, use pinned items or first active WIP products
+    // 3. Fallback: if no category matched, use pinned items or first active WIP products
     if (items.isEmpty) {
       for (final pinned in _pinnedItemNames) {
         if (!items.contains(pinned)) items.add(pinned);
       }
       if (items.isEmpty) {
-        for (final prod in _wipProducts.where((p) => p.isActive).take(2)) {
+        for (final prod in sortedWipProducts.where((p) => p.isActive).take(2)) {
           if (!items.contains(prod.name)) items.add(prod.name);
         }
       }
     }
 
+    sortItemNamesByCategoryOrder(items);
     return items;
   }
 
@@ -861,6 +961,7 @@ class DailyProductionViewModel extends ChangeNotifier {
     _activeItemNames
       ..clear()
       ..addAll(allItems);
+    sortItemNamesByCategoryOrder(_activeItemNames);
   }
 
   void _persistDraftSnapshot() {
