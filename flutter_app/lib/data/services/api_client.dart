@@ -162,7 +162,10 @@ class HttpApiClient implements ApiClient {
   final http.Client _client;
 
   Uri _buildUri(String path, [Map<String, String>? queryParameters]) {
-    final base = _baseUrlProvider();
+    final rawBase = _baseUrlProvider().trim();
+    final base = rawBase.isEmpty
+        ? '/api'
+        : (rawBase.endsWith('/') ? rawBase.substring(0, rawBase.length - 1) : rawBase);
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     final uri = Uri.parse('$base$normalizedPath');
     if (queryParameters == null || queryParameters.isEmpty) return uri;
