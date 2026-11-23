@@ -1020,6 +1020,18 @@ class DailyProductionViewModel extends ChangeNotifier {
     return clone;
   }
 
+  /// Fetches daily production records across a date range (e.g., Mon-Sat) for Weekly PDF reports.
+  Future<List<DailyProductionRecord>> fetchProductionRange({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    return _productionRepository.fetchDailyProductions(
+      startDate: toIsoCalendarDate(startDate),
+      endDate: toIsoCalendarDate(endDate),
+      limit: 500,
+    );
+  }
+
   /// Quickly registers a walk-in Temporary worker directly from Daily Production
   /// without exposing any wage or salary fields.
   Future<Employee?> addQuickTemporaryWorker({

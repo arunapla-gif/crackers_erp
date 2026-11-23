@@ -152,6 +152,330 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
     );
   }
 
+  Future<void> _openWeeklyPdfSheet() async {
+    final vm = widget.viewModel;
+    final anchor = DateTime(
+      vm.selectedDate.year,
+      vm.selectedDate.month,
+      vm.selectedDate.day,
+    );
+    // Default to Monday -> Saturday of the selected date's week
+    DateTime mondayOf(DateTime d) =>
+        d.subtract(Duration(days: d.weekday - DateTime.monday));
+    var startDate = mondayOf(anchor);
+    var endDate = startDate.add(const Duration(days: 5));
+    var isGenerating = false;
+    String? sheetError;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final fmt = DateFormat('EEE, dd MMM yyyy');
+            final dayCount = endDate.difference(startDate).inDays + 1;
+
+            Future<void> pickStart() async {
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: startDate,
+                firstDate: DateTime(2023),
+                lastDate: DateTime.now(),
+              );
+              if (picked == null) return;
+              setSheetState(() {
+                startDate = picked;
+                if (endDate.isBefore(startDate)) {
+                  endDate = startDate.add(const Duration(days: 5));
+                }
+                sheetError = null;
+              });
+            }
+
+            Future<void> pickEnd() async {
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: endDate.isBefore(startDate) ? startDate : endDate,
+                firstDate: startDate,
+                lastDate: DateTime.now().add(const Duration(days: 7)),
+              );
+              if (picked == null) return;
+              setSheetState(() {
+                endDate = picked;
+                sheetError = null;
+              });
+            }
+
+            Future<void> generate() async {
+              if (isGenerating) return;
+              if (endDate.difference(startDate).inDays > 13) {
+                setSheetState(
+                  () => sheetError = 'Please select up to 14 days at a time.',
+                );
+                return;
+              }
+              setSheetState(() {
+                isGenerating = true;
+                sheetError = null;
+              });
+              try {
+                final records = await vm.fetchProductionRange(
+                  startDate: startDate,
+                  endDate: endDate,
+                );
+                final pdfBytes = await buildWeeklyProductionPdf(
+                  vm: vm,
+                  startDate: startDate,
+                  endDate: endDate,
+                  records: records,
+                );
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                final startStr = DateFormat('yyyy-MM-dd').format(startDate);
+                final endStr = DateFormat('yyyy-MM-dd').format(endDate);
+                await Printing.layoutPdf(
+                  name: 'Weekly_Production_${startStr}_to_$endStr.pdf',
+                  onLayout: (_) async => pdfBytes,
+                );
+              } catch (e) {
+                if (!ctx.mounted) return;
+                setSheetState(() {
+                  isGenerating = false;
+                  sheetError = 'Could not generate weekly PDF: $e';
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                14,
+                20,
+                MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: ErpTheme.slate200,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: ErpTheme.hrIndigoSoft,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.calendar_view_week_rounded,
+                          color: ErpTheme.hrIndigo,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Weekly Production PDF',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.slate900,
+                              ),
+                            ),
+                            Text(
+                              'Day-by-day totals + item breakdown (Tamil & English, no rates)',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        onPressed: isGenerating
+                            ? null
+                            : () => Navigator.of(ctx).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      ActionChip(
+                        key: const ValueKey('weekly-pdf-this-week'),
+                        label: const Text(
+                          'This Week (Mon–Sat)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        onPressed: isGenerating
+                            ? null
+                            : () {
+                                final mon = mondayOf(DateTime.now());
+                                setSheetState(() {
+                                  startDate = mon;
+                                  endDate = mon.add(const Duration(days: 5));
+                                  sheetError = null;
+                                });
+                              },
+                      ),
+                      ActionChip(
+                        key: const ValueKey('weekly-pdf-last-week'),
+                        label: const Text(
+                          'Last Week (Mon–Sat)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        onPressed: isGenerating
+                            ? null
+                            : () {
+                                final lastMon = mondayOf(
+                                  DateTime.now(),
+                                ).subtract(const Duration(days: 7));
+                                setSheetState(() {
+                                  startDate = lastMon;
+                                  endDate = lastMon.add(
+                                    const Duration(days: 5),
+                                  );
+                                  sheetError = null;
+                                });
+                              },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: isGenerating ? null : pickStart,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'From Date',
+                              isDense: true,
+                              prefixIcon: Icon(
+                                Icons.calendar_today_outlined,
+                                size: 16,
+                              ),
+                            ),
+                            child: Text(
+                              fmt.format(startDate),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InkWell(
+                          onTap: isGenerating ? null : pickEnd,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'To Date',
+                              isDense: true,
+                              prefixIcon: Icon(
+                                Icons.event_outlined,
+                                size: 16,
+                              ),
+                            ),
+                            child: Text(
+                              fmt.format(endDate),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (sheetError != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      sheetError!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: ErpTheme.dangerRose,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 48,
+                    child: FilledButton.icon(
+                      key: const ValueKey('weekly-pdf-generate-button'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: ErpTheme.hrIndigo,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: isGenerating ? null : generate,
+                      icon: isGenerating
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                      label: Text(
+                        isGenerating
+                            ? 'Generating Weekly PDF...'
+                            : 'Generate Weekly PDF ($dayCount Days)',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _handleExportCsv() {
     final vm = widget.viewModel;
     final csvData = vm.generateCsv();
@@ -1593,7 +1917,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
           ],
           const SizedBox(height: 12),
 
-          // 6. Quick Utility Buttons (Copy Yesterday, Print PDF, Export CSV)
+          // 6. Quick Utility Buttons (Daily PDF, Weekly PDF, Copy Prev, Export CSV)
           Card(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -1601,81 +1925,117 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
             ),
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('hub-daily-pdf-button'),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _handlePrintWorksheet,
+                          icon: const Icon(
+                            Icons.print_rounded,
+                            size: 15,
+                            color: ErpTheme.hrIndigo,
+                          ),
+                          label: const Text(
+                            'Daily PDF',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
-                      onPressed: _handleCopyYesterday,
-                      icon: const Icon(
-                        Icons.content_copy_rounded,
-                        size: 15,
-                        color: ErpTheme.productionAmber,
-                      ),
-                      label: const Text(
-                        'Copy Prev',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          key: const ValueKey('hub-weekly-pdf-button'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: ErpTheme.hrIndigoSoft,
+                            foregroundColor: ErpTheme.hrIndigo,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _openWeeklyPdfSheet,
+                          icon: const Icon(
+                            Icons.calendar_view_week_rounded,
+                            size: 15,
+                          ),
+                          label: const Text(
+                            'Weekly PDF',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _handleCopyYesterday,
+                          icon: const Icon(
+                            Icons.content_copy_rounded,
+                            size: 15,
+                            color: ErpTheme.productionAmber,
+                          ),
+                          label: const Text(
+                            'Copy Prev',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
-                      onPressed: _handlePrintWorksheet,
-                      icon: const Icon(
-                        Icons.print_rounded,
-                        size: 15,
-                        color: ErpTheme.hrIndigo,
-                      ),
-                      label: const Text(
-                        'Print PDF',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _handleExportCsv,
+                          icon: const Icon(
+                            Icons.table_chart_rounded,
+                            size: 15,
+                            color: ErpTheme.ordersEmerald,
+                          ),
+                          label: const Text(
+                            'Export CSV',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      onPressed: _handleExportCsv,
-                      icon: const Icon(
-                        Icons.table_chart_rounded,
-                        size: 15,
-                        color: ErpTheme.ordersEmerald,
-                      ),
-                      label: const Text(
-                        'Export CSV',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
                 ],
               ),
