@@ -66,7 +66,7 @@ class DailyProductionViewModel extends ChangeNotifier {
   Map<String, List<String>> get activeItemsByRole => Map.unmodifiable(_activeItemsByRole);
 
   List<String> getActiveItemsForRole(String role) {
-    if (_activeItemsByRole.containsKey(role) && _activeItemsByRole[role]!.isNotEmpty) {
+    if (_activeItemsByRole.containsKey(role)) {
       return List.unmodifiable(_activeItemsByRole[role]!);
     }
     final derived = _deriveActiveItemsForRole(role);
@@ -651,6 +651,7 @@ class DailyProductionViewModel extends ChangeNotifier {
       currentMap[itemName] = cleanQty;
       if (!_activeItemNames.contains(itemName)) {
         _activeItemNames.add(itemName);
+        sortItemNamesByCategoryOrder(_activeItemNames);
       }
       final emp = _employees.cast<Employee?>().firstWhere(
         (e) => e?.id == employeeId,
@@ -660,6 +661,7 @@ class DailyProductionViewModel extends ChangeNotifier {
         final list = _activeItemsByRole.putIfAbsent(emp.roleGroup, () => <String>[]);
         if (!list.contains(itemName)) {
           list.add(itemName);
+          sortItemNamesByCategoryOrder(list);
         }
       }
     }
@@ -680,16 +682,22 @@ class DailyProductionViewModel extends ChangeNotifier {
     sortItemNamesByCategoryOrder(_activeItemNames);
     if (_selectedRoleFilter != 'All') {
       addActiveItemForRole(_selectedRoleFilter, itemName);
-    } else {
-      for (final role in availableRoles) {
-        if (role != 'All') {
-          final list = _activeItemsByRole.putIfAbsent(role, () => <String>[]);
-          if (!list.contains(itemName)) {
-            list.add(itemName);
-          }
-          sortItemNamesByCategoryOrder(list);
-        }
+      return;
+    }
+
+    final roles = availableRoles.where((r) => r != 'All').toList();
+    final prod = findWipProductByName(itemName);
+    final matchedRoles = prod != null
+        ? roles.where((r) => doesWipProductMatchRole(prod, r)).toList()
+        : const <String>[];
+    final targetRoles = matchedRoles.isNotEmpty ? matchedRoles : roles;
+
+    for (final role in targetRoles) {
+      final list = _activeItemsByRole.putIfAbsent(role, () => <String>[]);
+      if (!list.contains(itemName)) {
+        list.add(itemName);
       }
+      sortItemNamesByCategoryOrder(list);
     }
     _safeNotify();
   }
@@ -720,9 +728,6 @@ class DailyProductionViewModel extends ChangeNotifier {
       next.remove(itemName);
     } else {
       next.add(itemName);
-      if (!_activeItemNames.contains(itemName)) {
-        _activeItemNames.add(itemName);
-      }
     }
     _pinnedItemNames = next;
     _safeNotify();
@@ -893,7 +898,8 @@ class DailyProductionViewModel extends ChangeNotifier {
     final cleanRole = role.trim().toLowerCase();
     final items = <String>[];
 
-    // 1. Logged quantities for this role
+    // Only auto-select WIP items that already have saved/draft quantities for this date.
+    // On a fresh day, all WIP items start unselected so the supervisor picks only what is running.
     final workersInRole = activeWorkers.where(
       (e) => e.roleGroup.trim().toLowerCase() == cleanRole,
     );
@@ -905,25 +911,6 @@ class DailyProductionViewModel extends ChangeNotifier {
           if (entry.value > 0 && !items.contains(entry.key)) {
             items.add(entry.key);
           }
-        }
-      }
-    }
-
-    // 2. Category-based matching in natural sub-category order
-    for (final prod in sortedWipProducts.where((p) => p.isActive)) {
-      if (doesWipProductMatchRole(prod, role) && !items.contains(prod.name)) {
-        items.add(prod.name);
-      }
-    }
-
-    // 3. Fallback: if no category matched, use pinned items or first active WIP products
-    if (items.isEmpty) {
-      for (final pinned in _pinnedItemNames) {
-        if (!items.contains(pinned)) items.add(pinned);
-      }
-      if (items.isEmpty) {
-        for (final prod in sortedWipProducts.where((p) => p.isActive).take(2)) {
-          if (!items.contains(prod.name)) items.add(prod.name);
         }
       }
     }
@@ -944,17 +931,9 @@ class DailyProductionViewModel extends ChangeNotifier {
     for (final list in _activeItemsByRole.values) {
       allItems.addAll(list);
     }
-    for (final pinned in _pinnedItemNames) {
-      allItems.add(pinned);
-    }
     for (final empItems in _draftByEmp.values) {
       for (final entry in empItems.entries) {
         if (entry.value > 0) allItems.add(entry.key);
-      }
-    }
-    if (allItems.isEmpty) {
-      for (final p in _wipProducts.where((p) => p.isActive).take(3)) {
-        allItems.add(p.name);
       }
     }
 

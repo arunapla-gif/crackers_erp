@@ -26,13 +26,13 @@ void main() {
 
     tearDown(() => vm.dispose());
 
-    test('loads only WIP products and Contractual workers by default', () async {
+    test('loads only WIP products and Contractual workers by default with 0 items pre-selected', () async {
       await vm.loadInitialData();
 
       expect(vm.wipProducts.length, equals(2));
       expect(vm.wipProducts.any((p) => p.type == 'Finished Goods'), isFalse);
       expect(vm.activeWorkers.length, equals(2)); // Excludes Monthly employee #13
-      expect(vm.activeItemNames.length, equals(2));
+      expect(vm.activeItemNames, isEmpty);
     });
 
     test('persists local draft on quantity change and saves via bulk API', () async {
@@ -247,7 +247,13 @@ void main() {
 
       await vm.loadInitialData();
 
-      // Check smart initial mapping
+      // Fresh day starts completely unselected; picking items routes strictly to matching department
+      expect(vm.getActiveItemsForRole('Tape'), isEmpty);
+      expect(vm.getActiveItemsForRole('Chemical'), isEmpty);
+
+      vm.addActiveItem('10 KVR 48 Tape');
+      vm.addActiveItem('Red Dipping Chemical');
+
       final tapeItems = vm.getActiveItemsForRole('Tape');
       final chemItems = vm.getActiveItemsForRole('Chemical');
       expect(tapeItems.contains('10 KVR 48 Tape'), isTrue);

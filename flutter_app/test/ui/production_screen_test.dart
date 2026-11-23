@@ -47,10 +47,15 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Screen 1: Hub appears with summary and Open Matrix Entry button
+      // Screen 1: Hub appears with 0 WIP items pre-selected and Open Matrix Entry button
       expect(find.text('Daily Production Hub'), findsOneWidget);
+      expect(prodVm.activeItemNames, isEmpty);
       expect(find.byKey(const ValueKey('open-matrix-entry-button')), findsOneWidget);
       expect(find.textContaining('₹'), findsNothing);
+
+      // Supervisor selects today's WIP item before entering Matrix
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
+      await tester.pumpAndSettle();
 
       // Tap Open Matrix Entry button -> navigates to Screen 2 (Fullscreen Matrix)
       await tester.tap(find.byKey(const ValueKey('open-matrix-entry-button')));
@@ -123,6 +128,11 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      // Supervisor selects today's WIP items
+      prodVm.addActiveItem('Ground Chakkar Big (WIP)');
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // Supervisor sees Dedicated Matrix directly on screen without extra filters
@@ -208,6 +218,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // By default in Matrix, displays Tamil worker name 'முத்து'
@@ -309,6 +322,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // Check fixed role chips with Tamil labels and counts in Matrix
@@ -423,6 +439,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // 1. Verify Category Tabs in Matrix toolbar
@@ -554,6 +573,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
+      await tester.pumpAndSettle();
+
       // 1. Verify Category Tabs in Matrix toolbar
       expect(find.widgetWithText(FilterChip, 'All (17)'), findsOneWidget);
       expect(find.widgetWithText(FilterChip, 'Tape • டேப் (14)'), findsOneWidget);
@@ -665,7 +687,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(prodVm.selectedIsoDate, equals(initialIso));
 
-      // 3. Open via a specific department, return to Hub, then tap main CTA -> resets cleanly to All
+      // 3. Pick a WIP item, open via a specific department, return to Hub, then tap main CTA -> resets cleanly to All
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       prodVm.setRoleFilter('Packing');
       await tester.pumpAndSettle();
 
@@ -714,6 +737,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // Tap cell for emp 12 (Packing)
@@ -821,6 +847,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
+      await tester.pumpAndSettle();
+
       // Zero rupees
       expect(find.textContaining('₹'), findsNothing);
 
@@ -918,6 +947,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // Capture initial header Y position
@@ -1048,6 +1080,9 @@ void main() {
         ),
       );
       await tester.pump();
+      await tester.pumpAndSettle();
+
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
       await tester.pumpAndSettle();
 
       // Log pieces for worker 12 (Selvi), leaving worker 11 (Rajan) unfilled
@@ -1448,6 +1483,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
+      prodVm.addActiveItem('12cm Electric Sparklers (WIP)');
+      await tester.pumpAndSettle();
+
       // Tap first worker's cell to focus & open docked keypad
       final firstCell = find.byKey(
         const ValueKey('matrix_401_12cm Electric Sparklers (WIP)'),
@@ -1607,29 +1645,16 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      // Tape role gets ONLY Tape category items, strictly ordered 400 -> 600 -> 700 -> 800 COUNT
-      expect(
-        prodVm.getActiveItemsForRole('Tape'),
-        equals([
-          'Blue Tape Roll',
-          'Green Tape Roll',
-          'Yellow Tape Roll',
-          'Red Tape Roll',
-        ]),
+      // Fresh day starts completely unselected -> empty prompt with 1-tap Pick WIP button
+      expect(prodVm.getActiveItemsForRole('Tape'), isEmpty);
+      expect(prodVm.getActiveItemsForRole('Chemical'), isEmpty);
+      final emptyPickBtn = find.byKey(
+        const ValueKey('matrix-empty-pick-wip-Tape'),
       );
-      expect(
-        prodVm.getActiveItemsForRole('Chemical'),
-        equals(['Silver Dip Mix']),
-      );
+      expect(emptyPickBtn, findsOneWidget);
 
-      // Sub-category badges render in sticky column headers
-      expect(find.text('400 COUNT'), findsWidgets);
-      expect(find.text('600 COUNT'), findsWidgets);
-
-      // Open + WIP picker for Tape -> shows 400, 600, 700, 800 COUNT section headers (and hides Chemical by default)
-      await tester.tap(
-        find.byKey(const ValueKey('matrix-quick-add-wip-button')),
-      );
+      // Tap Pick WIP Items for Tape -> shows ONLY Tape items grouped under 400, 600, 700, 800 COUNT
+      await tester.tap(emptyPickBtn);
       await tester.pumpAndSettle();
 
       expect(find.text('400 COUNT'), findsWidgets);
@@ -1637,6 +1662,24 @@ void main() {
       expect(find.text('700 COUNT'), findsWidgets);
       expect(find.text('800 COUNT'), findsWidgets);
       expect(find.text('Silver Dip Mix'), findsNothing);
+
+      // Select 800 COUNT item first, then 400 COUNT item -> Matrix orders them 400 COUNT before 800 COUNT
+      await tester.tap(find.text('Red Tape Roll'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Blue Tape Roll'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(
+        prodVm.getActiveItemsForRole('Tape'),
+        equals(['Blue Tape Roll', 'Red Tape Roll']),
+      );
+      expect(prodVm.getActiveItemsForRole('Chemical'), isEmpty);
+
+      // Sub-category badges render in sticky column headers
+      expect(find.text('400 COUNT'), findsWidgets);
+      expect(find.text('800 COUNT'), findsWidgets);
     },
   );
 }

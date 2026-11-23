@@ -406,10 +406,10 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
     }
   }
 
-  Future<void> _openQuickWipPicker() async {
+  Future<void> _openQuickWipPicker({String? targetRole}) async {
     _unfocusCurrentCell();
     final searchController = TextEditingController();
-    final activeRole = widget.viewModel.selectedRoleFilter;
+    final activeRole = targetRole ?? widget.viewModel.selectedRoleFilter;
     final isRoleScoped = activeRole != 'All';
 
     await showModalBottomSheet<void>(
@@ -1857,16 +1857,42 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                     child: roleItems.isEmpty
                         ? Container(
                             padding: const EdgeInsets.symmetric(
-                              vertical: 20,
+                              vertical: 18,
                               horizontal: 16,
                             ),
                             alignment: Alignment.center,
-                            child: Text(
-                              'No WIP items active for $role. Select items in the Hub.',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: ErpTheme.slate500,
-                              ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'No WIP items selected for $role yet.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: ErpTheme.slate500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                FilledButton.tonalIcon(
+                                  key: ValueKey('matrix-empty-pick-wip-$role'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor:
+                                        ErpTheme.productionAmberSoft,
+                                    foregroundColor: ErpTheme.productionAmber,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () =>
+                                      _openQuickWipPicker(targetRole: role),
+                                  icon: const Icon(Icons.add_rounded, size: 16),
+                                  label: Text(
+                                    'Pick WIP Items for $role',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           )
                         : _buildDepartmentBodyRows(
