@@ -16,7 +16,7 @@ pw.Font? _cachedTamilBold;
 
 /// Loads bundled NotoSansTamil fonts so Tamil worker & department names render
 /// cleanly in offline PDFs on both Android and Web.
-Future<pw.ThemeData> _loadProductionPdfTheme() async {
+Future<pw.ThemeData> loadTamilPdfTheme() async {
   if (_cachedTamilRegular == null) {
     try {
       final regData = await rootBundle.load(
@@ -143,7 +143,7 @@ String _formatPdfWorkerName(Employee emp) {
 
 /// Builds a clean printable daily production sheet without any wage/rupee information.
 Future<Uint8List> buildDailyProductionPdf(DailyProductionViewModel vm) async {
-  final theme = await _loadProductionPdfTheme();
+  final theme = await loadTamilPdfTheme();
   final doc = pw.Document(theme: theme);
   final dateStr = DateFormat('EEE, dd MMM yyyy').format(vm.selectedDate);
   final groupedRoles = vm.filteredWorkersByRole;
@@ -419,7 +419,7 @@ Future<Uint8List> buildWeeklyProductionPdf({
   required DateTime endDate,
   required List<DailyProductionRecord> records,
 }) async {
-  final theme = await _loadProductionPdfTheme();
+  final theme = await loadTamilPdfTheme();
   final doc = pw.Document(theme: theme);
   final numFmt = NumberFormat('#,##,##0', 'en_IN');
 

@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:crackers_erp/core/theme/erp_theme.dart';
 import 'package:crackers_erp/data/repositories/auth_repository.dart';
 import 'package:crackers_erp/data/repositories/employee_repository.dart';
+import 'package:crackers_erp/data/repositories/payroll_repository.dart';
 import 'package:crackers_erp/data/repositories/production_repository.dart';
 import 'package:crackers_erp/domain/models/daily_production.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
+import 'package:crackers_erp/ui/features/hr/view_models/payroll_view_model.dart';
+import 'package:crackers_erp/ui/features/hr/views/payroll_pdf.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_pdf.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_screen.dart';
@@ -194,6 +197,60 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('weekly-pdf-last-week')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Generate Weekly PDF (6 Days)'), findsOneWidget);
+    },
+  );
+
+  test(
+    'buildConsolidatedPayrollPdf generates Landscape A4 wage sheet with Tamil names, separate dept tables, and hides absent temp workers',
+    () async {
+      final api = FakeApiClient();
+      api.employeesData
+        ..clear()
+        ..addAll([
+          {
+            'id': 601,
+            'name': 'Manimegalai (மணிமேகலை)',
+            'role': 'Tape',
+            'paymentType': 'Contractual',
+            'employmentType': 'Regular',
+            'status': 'Active',
+            'advanceBalance': '500.00',
+            'salary': 0,
+          },
+          {
+            'id': 602,
+            'name': 'AbsentTemp (ஆப்சென்ட்)',
+            'role': 'Tape',
+            'paymentType': 'Contractual',
+            'employmentType': 'Temporary',
+            'status': 'Active',
+            'advanceBalance': '0.00',
+            'salary': 0,
+          },
+          {
+            'id': 603,
+            'name': 'Muniyasamy (முனியசாமி)',
+            'role': 'Chemical',
+            'paymentType': 'Monthly',
+            'employmentType': 'Regular',
+            'status': 'Active',
+            'advanceBalance': '0.00',
+            'salary': 12000,
+          },
+        ]);
+
+      final payrollVm = PayrollViewModel(
+        employeeRepository: EmployeeRepository(apiClient: api),
+        payrollRepository: PayrollRepository(apiClient: api),
+      );
+      addTearDown(payrollVm.dispose);
+      await payrollVm.loadAll();
+
+      payrollVm.updateRow(601, basicSalary: 2400, deduction: 200);
+
+      final bytes = await buildConsolidatedPayrollPdf(payrollVm);
+      expect(bytes.length, greaterThan(1000));
+      expect(latin1.decode(bytes.take(5).toList()), equals('%PDF-'));
     },
   );
 }
