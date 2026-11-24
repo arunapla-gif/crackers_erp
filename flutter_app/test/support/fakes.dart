@@ -190,6 +190,15 @@ class FakeApiClient implements ApiClient {
   Map<String, dynamic>? ewayBillReportOverride;
   int? lastEwayBillDaysRequested;
 
+  // Stage 2 & 3 Packing & Factory Dispatch in-memory state
+  final Map<int, int> packingLooseBoxesByProduct = <int, int>{};
+  final Map<int, Map<int, int>> godownCartonsByGodownAndProduct =
+      <int, Map<int, int>>{};
+  final List<Map<String, dynamic>> packingEntriesData =
+      <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> factoryDispatchesData =
+      <Map<String, dynamic>>[];
+
   Map<String, dynamic> legacyAnalyticsData = {
     'financials': {
       'totalPurchases': 0,
@@ -1214,4 +1223,351 @@ class FakeApiClient implements ApiClient {
   @override
   Future<List<dynamic>> getLegacyPayrollProducts() async =>
       legacyPayrollProductsData;
+
+  Map<String, dynamic> _ensureFakeFactoryGodown() {
+    final existing = godownsData.where(
+      (g) => (g['name'] ?? '').toString().trim().toLowerCase() ==
+          'factory ready stock',
+    );
+    if (existing.isNotEmpty) return existing.first;
+    final created = {'id': godownsData.length + 101, 'name': 'Factory Ready Stock'};
+    godownsData.insert(0, created);
+    return created;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPackingSummary() async {
+    final factoryG = _ensureFakeFactoryGodown();
+    final factoryId = factoryG['id'] as int;
+    final invProducts = productsData
+        .where((p) => (p['type'] ?? 'INV').toString().toUpperCase() == 'INV')
+        .toList();
+
+    final summaryProducts = invProducts.map((p) {
+      final pid = p['id'] as int;
+      final bpc = ((p['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
+      final loose = packingLooseBoxesByProduct[pid] ?? 0;
+      final godownCartons = <String, int>{};
+      var totalCartons = 0;
+      for (final g in godownsData) {
+        final gid = g['id'] as int;
+        final qty = godownCartonsByGodownAndProduct[gid]?[pid] ?? 0;
+        if (qty > 0) {
+          godownCartons[g['name'].toString()] = qty;
+          totalCartons += qty;
+        }
+      }
+      final factoryCartons =
+          godownCartonsByGodownAndProduct[factoryId]?[pid] ?? 0;
+      final ready = loose ~/ bpc;
+      final rem = loose % bpc;
+      return {
+        'id': pid,
+        'code': p['code'] ?? 'GAR$pid',
+        'name': p['name'] ?? 'Product $pid',
+        'category': p['category'] ?? 'Garlands',
+        'subCategory': p['subCategory'],
+        'boxesPerCase': bpc,
+        'unit': p['unit'] ?? 'Case',
+        'packUnit': p['pack_unit'] ?? 'Box',
+        'looseInnerBoxes': loose,
+        'factoryCartons': factoryCartons,
+        'godownCartons': godownCartons,
+        'totalCartons': totalCartons,
+        'readyToSealCartons': ready,
+        'neededForNextCarton': rem == 0 ? bpc : bpc - rem,
+      };
+    }).toList();
+
+    return {
+      'factoryGodownId': factoryId,
+      'godowns': godownsData
+          .map((g) => {'id': g['id'], 'name': g['name']})
+          .toList(),
+      'products': summaryProducts,
+      'recentEntries': List<Map<String, dynamic>>.from(packingEntriesData),
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> recordInnerBoxPacking(
+    Map<String, dynamic> payload,
+  ) async {
+    final pid = (payload['productId'] as num).toInt();
+    final packed = (payload['innerBoxesPacked'] as num).toInt();
+    final damaged = (payload['damagedBoxes'] as num?)?.toInt() ?? 0;
+    final autoSeal = payload['autoSealCartons'] == true;
+    final prod = productsData.firstWhere((p) => p['id'] == pid);
+    final bpc = ((prod['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
+    final date = (payload['date'] ?? DateTime.now().toIso8601String()).toString();
+
+    final prevLoose = packingLooseBoxesByProduct[pid] ?? 0;
+    final looseAfterInner = prevLoose + packed;
+    packingLooseBoxesByProduct[pid] = looseAfterInner;
+
+    final innerEntry = {
+      'id': packingEntriesData.length + 1,
+      'date': date,
+      'entryType': 'INNER_BOX',
+      'productId': pid,
+      'productCode': prod['code'] ?? '',
+      'productName': prod['name'] ?? '',
+      'subCategory': prod['subCategory'],
+      'innerBoxesPacked': packed,
+      'damagedBoxes': damaged,
+      'masterCartonsSealed': 0,
+      'boxesPerCase': bpc,
+      'innerBoxesConsumed': 0,
+      'looseRemainingAfter': looseAfterInner,
+      'targetGodownName': null,
+      'remarks': payload['remarks'],
+      'createdBy': 'supervisor',
+      'createdAt': DateTime.now().toIso8601String(),
+    };
+    packingEntriesData.insert(0, innerEntry);
+
+    var sealedCartons = 0;
+    var consumed = 0;
+    var finalLoose = looseAfterInner;
+    String? targetGodownName;
+
+    if (autoSeal && looseAfterInner >= bpc) {
+      sealedCartons = looseAfterInner ~/ bpc;
+      consumed = sealedCartons * bpc;
+      finalLoose = looseAfterInner - consumed;
+      packingLooseBoxesByProduct[pid] = finalLoose;
+
+      final factoryG = _ensureFakeFactoryGodown();
+      final factoryId = factoryG['id'] as int;
+      targetGodownName = factoryG['name'].toString();
+      final map = godownCartonsByGodownAndProduct.putIfAbsent(
+        factoryId,
+        () => <int, int>{},
+      );
+      map[pid] = (map[pid] ?? 0) + sealedCartons;
+
+      packingEntriesData.insert(0, {
+        'id': packingEntriesData.length + 1,
+        'date': date,
+        'entryType': 'MASTER_CARTON',
+        'productId': pid,
+        'productCode': prod['code'] ?? '',
+        'productName': prod['name'] ?? '',
+        'subCategory': prod['subCategory'],
+        'innerBoxesPacked': 0,
+        'damagedBoxes': 0,
+        'masterCartonsSealed': sealedCartons,
+        'boxesPerCase': bpc,
+        'innerBoxesConsumed': consumed,
+        'looseRemainingAfter': finalLoose,
+        'targetGodownName': targetGodownName,
+        'remarks': payload['remarks'] ?? 'Auto-sealed',
+        'createdBy': 'supervisor',
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+    }
+
+    return {
+      'innerEntry': innerEntry,
+      'productName': prod['name'],
+      'boxesPerCase': bpc,
+      'sealedCartons': sealedCartons,
+      'consumedBoxes': consumed,
+      'looseRemainingAfter': finalLoose,
+      'targetGodownName': targetGodownName,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> sealMasterCartons(
+    Map<String, dynamic> payload,
+  ) async {
+    final pid = (payload['productId'] as num).toInt();
+    final cartons = (payload['masterCartonsSealed'] as num).toInt();
+    final prod = productsData.firstWhere((p) => p['id'] == pid);
+    final bpc = ((prod['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
+    final prevLoose = packingLooseBoxesByProduct[pid] ?? 0;
+    final consumed = cartons * bpc;
+    if (consumed > prevLoose) {
+      throw ApiException('Not enough loose inner boxes.', statusCode: 400);
+    }
+    final remaining = prevLoose - consumed;
+    packingLooseBoxesByProduct[pid] = remaining;
+
+    final factoryG = _ensureFakeFactoryGodown();
+    final targetGId =
+        (payload['targetGodownId'] as num?)?.toInt() ?? (factoryG['id'] as int);
+    final targetG = godownsData.firstWhere((g) => g['id'] == targetGId);
+    final map = godownCartonsByGodownAndProduct.putIfAbsent(
+      targetGId,
+      () => <int, int>{},
+    );
+    map[pid] = (map[pid] ?? 0) + cartons;
+
+    final entry = {
+      'id': packingEntriesData.length + 1,
+      'date': (payload['date'] ?? DateTime.now().toIso8601String()).toString(),
+      'entryType': 'MASTER_CARTON',
+      'productId': pid,
+      'productCode': prod['code'] ?? '',
+      'productName': prod['name'] ?? '',
+      'subCategory': prod['subCategory'],
+      'innerBoxesPacked': 0,
+      'damagedBoxes': 0,
+      'masterCartonsSealed': cartons,
+      'boxesPerCase': bpc,
+      'innerBoxesConsumed': consumed,
+      'looseRemainingAfter': remaining,
+      'targetGodownName': targetG['name'],
+      'remarks': payload['remarks'],
+      'createdBy': 'supervisor',
+      'createdAt': DateTime.now().toIso8601String(),
+    };
+    packingEntriesData.insert(0, entry);
+
+    return {
+      'entry': entry,
+      'productName': prod['name'],
+      'boxesPerCase': bpc,
+      'sealedCartons': cartons,
+      'consumedBoxes': consumed,
+      'looseRemainingAfter': remaining,
+      'targetGodownName': targetG['name'],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getFactoryDispatches() async {
+    _ensureFakeFactoryGodown();
+    final stockByGodown = <String, List<Map<String, dynamic>>>{};
+    for (final g in godownsData) {
+      final gid = g['id'] as int;
+      final list = <Map<String, dynamic>>[];
+      final byProd = godownCartonsByGodownAndProduct[gid] ?? const {};
+      byProd.forEach((pid, qty) {
+        if (qty <= 0) return;
+        final matches = productsData.where((p) => p['id'] == pid);
+        if (matches.isEmpty) return;
+        final prod = matches.first;
+        list.add({
+          'productId': pid,
+          'code': prod['code'] ?? '',
+          'name': prod['name'] ?? '',
+          'subCategory': prod['subCategory'],
+          'boxesPerCase': (prod['boxesPerCase'] as num?)?.toInt() ?? 1,
+          'availableCartons': qty,
+        });
+      });
+      stockByGodown['$gid'] = list;
+    }
+
+    return {
+      'dispatches': List<Map<String, dynamic>>.from(factoryDispatchesData),
+      'godowns': godownsData
+          .map((g) => {'id': g['id'], 'name': g['name']})
+          .toList(),
+      'transporters': transportersData
+          .map((t) => {'id': t['id'], 'name': t['name'], 'city': t['city']})
+          .toList(),
+      'vehicles': vehiclesData
+          .map(
+            (v) => {
+              'id': v['id'],
+              'no': v['no'],
+              'name': v['name'],
+              'drivers': v['drivers'] ?? <dynamic>[],
+            },
+          )
+          .toList(),
+      'stockByGodown': stockByGodown,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> createFactoryDispatch(
+    Map<String, dynamic> payload,
+  ) async {
+    final destType = (payload['destinationType'] ?? 'GODOWN').toString();
+    final fromId = (payload['fromGodownId'] as num).toInt();
+    final toId = (payload['toGodownId'] as num?)?.toInt();
+    final fromG = godownsData.firstWhere((g) => g['id'] == fromId);
+    final toG = toId != null
+        ? godownsData.firstWhere((g) => g['id'] == toId)
+        : null;
+
+    final rawItems = payload['items'] as List<dynamic>;
+    final resolvedItems = <Map<String, dynamic>>[];
+    var totalCartons = 0;
+    var totalBoxes = 0;
+
+    final srcMap = godownCartonsByGodownAndProduct.putIfAbsent(
+      fromId,
+      () => <int, int>{},
+    );
+
+    for (final raw in rawItems) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final pid = (m['productId'] as num).toInt();
+      final cartons = (m['cartons'] as num).toInt();
+      final avail = srcMap[pid] ?? 0;
+      if (cartons > avail) {
+        throw ApiException('Insufficient stock.', statusCode: 400);
+      }
+      final prod = productsData.firstWhere((p) => p['id'] == pid);
+      final bpc = ((prod['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
+      srcMap[pid] = avail - cartons;
+      if (destType == 'GODOWN' && toId != null) {
+        final dstMap = godownCartonsByGodownAndProduct.putIfAbsent(
+          toId,
+          () => <int, int>{},
+        );
+        dstMap[pid] = (dstMap[pid] ?? 0) + cartons;
+      }
+      totalCartons += cartons;
+      totalBoxes += cartons * bpc;
+      resolvedItems.add({
+        'id': resolvedItems.length + 1,
+        'productId': pid,
+        'productName': prod['name'],
+        'subCategory': prod['subCategory'],
+        'cartons': cartons,
+        'boxesPerCase': bpc,
+        'totalBoxes': cartons * bpc,
+      });
+    }
+
+    String? transporterName = payload['transporterName']?.toString();
+    if (payload['transporterId'] != null) {
+      final tid = (payload['transporterId'] as num).toInt();
+      final found = transportersData.where((t) => t['id'] == tid);
+      if (found.isNotEmpty) transporterName = found.first['name'].toString();
+    }
+
+    final nextId = factoryDispatchesData.length + 1;
+    final challanNo = 'DC-${nextId.toString().padLeft(4, '0')}';
+    final record = {
+      'id': nextId,
+      'challanNo': challanNo,
+      'date': (payload['date'] ?? DateTime.now().toIso8601String()).toString(),
+      'destinationType': destType,
+      'fromGodownId': fromId,
+      'fromGodownName': fromG['name'],
+      'toGodownId': toG?['id'],
+      'toGodownName': toG?['name'],
+      'transporterId': payload['transporterId'],
+      'transporterName': transporterName,
+      'customerName': payload['customerName'],
+      'lrNumber': payload['lrNumber'],
+      'vehicleNo': payload['vehicleNo'],
+      'driverName': payload['driverName'],
+      'remarks': payload['remarks'],
+      'totalCartons': totalCartons,
+      'totalBoxes': totalBoxes,
+      'createdBy': 'supervisor',
+      'createdAt': DateTime.now().toIso8601String(),
+      'items': resolvedItems,
+    };
+    factoryDispatchesData.insert(0, record);
+    return record;
+  }
 }

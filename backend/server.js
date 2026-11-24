@@ -277,7 +277,9 @@ const SUPERVISOR_MODULE_ACTIONS = {
   employees: ['view', 'add', 'edit'],
   advances: ['view', 'add'],
   factory_orders: ['view'],
-  products_wip: ['view']
+  products_wip: ['view'],
+  packing: ['view', 'add'],
+  dispatch: ['view', 'add']
 };
 
 const canAccessModule = async (req, mod, action = 'view') => {
@@ -2957,6 +2959,604 @@ app.post('/api/sales-orders/:id/status', requireAdmin, async (req, res) => {
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// Stage 2: Inner Box Packing & Master Carton Sealing (Supervisor + Admin)
+// Stage 3: Factory Dispatch to Own Godown / Transporter (Supervisor + Admin)
+// Zero-rupee secrecy enforced for Supervisor on all responses.
+// ============================================================================
+
+async function ensureFactoryReadyGodown(tx) {
+  let godown = await tx.godown.findFirst({
+    where: { name: { equals: 'Factory Ready Stock', mode: 'insensitive' } }
+  });
+  if (!godown) {
+    godown = await tx.godown.create({ data: { name: 'Factory Ready Stock' } });
+  }
+  return godown;
+}
+
+async function adjustStockLedgerCartons(tx, { godownId, productId, productName, deltaCartons }) {
+  const existing = await tx.stockLedger.findUnique({
+    where: { godownId_product: { godownId, product: productName } }
+  });
+  if (existing) {
+    const nextQty = existing.qty + deltaCartons;
+    if (nextQty < 0) {
+      throw new Error(`Insufficient stock for ${productName}. Available: ${existing.qty} cartons.`);
+    }
+    return tx.stockLedger.update({
+      where: { id: existing.id },
+      data: {
+        qty: nextQty,
+        productId: existing.productId || productId || null
+      }
+    });
+  } else {
+    if (deltaCartons < 0) {
+      throw new Error(`Insufficient stock for ${productName}. Available: 0 cartons.`);
+    }
+    return tx.stockLedger.create({
+      data: {
+        godownId,
+        productId: productId || null,
+        product: productName,
+        qty: deltaCartons,
+        value: 0,
+        avgRate: 0
+      }
+    });
+  }
+}
+
+app.get('/api/packing/summary', async (req, res) => {
+  try {
+    const allowed = await canAccessModule(req, 'packing', 'view');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const [products, godowns, ledger, recentEntries] = await Promise.all([
+      prisma.product.findMany({
+        where: { type: 'INV', status: 'Active' },
+        include: {
+          factoryAlias: { select: { id: true, code: true, name: true, subCategory: true } },
+          packingBalance: true
+        },
+        orderBy: [{ category: 'asc' }, { subCategory: 'asc' }, { code: 'asc' }]
+      }),
+      prisma.godown.findMany({ orderBy: { id: 'asc' } }),
+      prisma.stockLedger.findMany({ include: { godown: true } }),
+      prisma.packingEntry.findMany({
+        include: { product: { select: { id: true, code: true, name: true, subCategory: true } } },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: 40
+      })
+    ]);
+
+    const factoryGodown = godowns.find(
+      (g) => String(g.name).trim().toLowerCase() === 'factory ready stock'
+    );
+
+    const stockByProdName = new Map();
+    for (const row of ledger) {
+      const key = String(row.product || '').trim().toLowerCase();
+      if (!stockByProdName.has(key)) stockByProdName.set(key, {});
+      stockByProdName.get(key)[row.godown.name] = row.qty;
+    }
+
+    const summaryProducts = products.map((p) => {
+      const boxesPerCase = Math.max(1, parseInt(p.boxesPerCase || 1, 10));
+      const looseInnerBoxes = p.packingBalance?.looseInnerBoxes || 0;
+      const godownCartons = stockByProdName.get(String(p.name).trim().toLowerCase()) || {};
+      const factoryCartons = factoryGodown ? (godownCartons[factoryGodown.name] || 0) : 0;
+      const totalCartons = Object.values(godownCartons).reduce((sum, q) => sum + Number(q || 0), 0);
+      const readyToSealCartons = Math.floor(looseInnerBoxes / boxesPerCase);
+      const remainder = looseInnerBoxes % boxesPerCase;
+      const neededForNextCarton = remainder === 0 ? boxesPerCase : boxesPerCase - remainder;
+
+      return {
+        id: p.id,
+        code: p.code,
+        name: p.name,
+        category: p.category,
+        subCategory: p.subCategory,
+        boxesPerCase,
+        unit: p.unit || 'Case',
+        packUnit: p.pack_unit || 'Box',
+        wipProductId: p.factoryAlias?.id || null,
+        wipCode: p.factoryAlias?.code || null,
+        wipName: p.factoryAlias?.name || null,
+        looseInnerBoxes,
+        factoryCartons,
+        godownCartons,
+        totalCartons,
+        readyToSealCartons,
+        neededForNextCarton
+      };
+    });
+
+    res.json({
+      factoryGodownId: factoryGodown?.id || null,
+      godowns: godowns.map((g) => ({ id: g.id, name: g.name })),
+      products: summaryProducts,
+      recentEntries: recentEntries.map((e) => ({
+        id: e.id,
+        date: e.date,
+        entryType: e.entryType,
+        productId: e.productId,
+        productCode: e.product?.code || '',
+        productName: e.product?.name || '',
+        subCategory: e.product?.subCategory || null,
+        innerBoxesPacked: e.innerBoxesPacked,
+        damagedBoxes: e.damagedBoxes,
+        masterCartonsSealed: e.masterCartonsSealed,
+        boxesPerCase: e.boxesPerCase,
+        innerBoxesConsumed: e.innerBoxesConsumed,
+        looseRemainingAfter: e.looseRemainingAfter,
+        targetGodownName: e.targetGodownName,
+        remarks: e.remarks,
+        createdBy: e.createdBy,
+        createdAt: e.createdAt
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/packing/inner-boxes', async (req, res) => {
+  try {
+    const allowed = await canAccessModule(req, 'packing', 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const { date, productId, innerBoxesPacked, damagedBoxes = 0, autoSealCartons = false, remarks } = req.body || {};
+    const prodId = parseInt(productId, 10);
+    const packedQty = parseInt(innerBoxesPacked, 10);
+    const damagedQty = Math.max(0, parseInt(damagedBoxes || 0, 10));
+
+    if (!Number.isFinite(prodId) || !Number.isFinite(packedQty) || packedQty <= 0) {
+      return res.status(400).json({ error: 'Valid product and inner box quantity (> 0) are required.' });
+    }
+
+    const entryDate = date ? normalizeUtcDate(date) : normalizeUtcDate(new Date());
+    const isoDate = toIsoDateOnly(entryDate);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({ where: { id: prodId } });
+      if (!product) throw new Error('Finished product not found.');
+      const boxesPerCase = Math.max(1, parseInt(product.boxesPerCase || 1, 10));
+
+      const prevBalance = await tx.packingBalance.upsert({
+        where: { productId: prodId },
+        update: {},
+        create: { productId: prodId, looseInnerBoxes: 0 }
+      });
+
+      const looseAfterInner = prevBalance.looseInnerBoxes + packedQty;
+      let finalLoose = looseAfterInner;
+      let sealedCartons = 0;
+      let consumedBoxes = 0;
+      let targetGodownName = null;
+
+      await tx.packingBalance.update({
+        where: { productId: prodId },
+        data: { looseInnerBoxes: looseAfterInner }
+      });
+
+      const innerEntry = await tx.packingEntry.create({
+        data: {
+          date: entryDate,
+          entryType: 'INNER_BOX',
+          productId: prodId,
+          innerBoxesPacked: packedQty,
+          damagedBoxes: damagedQty,
+          boxesPerCase,
+          looseRemainingAfter: looseAfterInner,
+          remarks: remarks ? String(remarks).trim() : null,
+          createdBy: req.user?.username || 'unknown'
+        }
+      });
+
+      await writeAuditLog(tx, req, {
+        module: 'packing',
+        action: 'CREATE',
+        recordId: innerEntry.id,
+        targetDate: isoDate,
+        summary: `Inner packed ${packedQty} boxes of ${product.name}${damagedQty > 0 ? ` (${damagedQty} damaged)` : ''} — Loose balance: ${looseAfterInner}`,
+        beforeData: { productName: product.name, looseInnerBoxes: prevBalance.looseInnerBoxes },
+        afterData: { productName: product.name, innerBoxesPacked: packedQty, damagedBoxes: damagedQty, looseInnerBoxes: looseAfterInner }
+      });
+
+      let cartonEntry = null;
+      if (autoSealCartons && looseAfterInner >= boxesPerCase) {
+        sealedCartons = Math.floor(looseAfterInner / boxesPerCase);
+        consumedBoxes = sealedCartons * boxesPerCase;
+        finalLoose = looseAfterInner - consumedBoxes;
+
+        const factoryGodown = await ensureFactoryReadyGodown(tx);
+        targetGodownName = factoryGodown.name;
+
+        await tx.packingBalance.update({
+          where: { productId: prodId },
+          data: { looseInnerBoxes: finalLoose }
+        });
+
+        await adjustStockLedgerCartons(tx, {
+          godownId: factoryGodown.id,
+          productId: prodId,
+          productName: product.name,
+          deltaCartons: sealedCartons
+        });
+
+        cartonEntry = await tx.packingEntry.create({
+          data: {
+            date: entryDate,
+            entryType: 'MASTER_CARTON',
+            productId: prodId,
+            masterCartonsSealed: sealedCartons,
+            boxesPerCase,
+            innerBoxesConsumed: consumedBoxes,
+            looseRemainingAfter: finalLoose,
+            targetGodownId: factoryGodown.id,
+            targetGodownName: factoryGodown.name,
+            remarks: remarks ? String(remarks).trim() : 'Auto-sealed during inner packing',
+            createdBy: req.user?.username || 'unknown'
+          }
+        });
+
+        await writeAuditLog(tx, req, {
+          module: 'packing',
+          action: 'CREATE',
+          recordId: cartonEntry.id,
+          targetDate: isoDate,
+          summary: `Sealed ${sealedCartons} Master Cartons (${consumedBoxes} boxes @ ${boxesPerCase}/case) of ${product.name} -> ${factoryGodown.name} (${finalLoose} loose left)`,
+          beforeData: { productName: product.name, looseInnerBoxes: looseAfterInner },
+          afterData: { productName: product.name, masterCartonsSealed: sealedCartons, innerBoxesConsumed: consumedBoxes, looseInnerBoxes: finalLoose, targetGodown: factoryGodown.name }
+        });
+      }
+
+      return {
+        innerEntry,
+        cartonEntry,
+        productName: product.name,
+        boxesPerCase,
+        sealedCartons,
+        consumedBoxes,
+        looseRemainingAfter: finalLoose,
+        targetGodownName
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/packing/master-cartons', async (req, res) => {
+  try {
+    const allowed = await canAccessModule(req, 'packing', 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const { date, productId, masterCartonsSealed, targetGodownId, remarks } = req.body || {};
+    const prodId = parseInt(productId, 10);
+    const cartonsQty = parseInt(masterCartonsSealed, 10);
+
+    if (!Number.isFinite(prodId) || !Number.isFinite(cartonsQty) || cartonsQty <= 0) {
+      return res.status(400).json({ error: 'Valid product and Master Carton count (> 0) are required.' });
+    }
+
+    const entryDate = date ? normalizeUtcDate(date) : normalizeUtcDate(new Date());
+    const isoDate = toIsoDateOnly(entryDate);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({ where: { id: prodId } });
+      if (!product) throw new Error('Finished product not found.');
+      const boxesPerCase = Math.max(1, parseInt(product.boxesPerCase || 1, 10));
+
+      const prevBalance = await tx.packingBalance.upsert({
+        where: { productId: prodId },
+        update: {},
+        create: { productId: prodId, looseInnerBoxes: 0 }
+      });
+
+      const consumedBoxes = cartonsQty * boxesPerCase;
+      if (consumedBoxes > prevBalance.looseInnerBoxes) {
+        const maxCartons = Math.floor(prevBalance.looseInnerBoxes / boxesPerCase);
+        throw new Error(
+          `Not enough loose inner boxes for ${product.name}. Need ${consumedBoxes} boxes, have ${prevBalance.looseInnerBoxes} (max ${maxCartons} cartons).`
+        );
+      }
+
+      const targetGodown = targetGodownId
+        ? await tx.godown.findUnique({ where: { id: parseInt(targetGodownId, 10) } })
+        : await ensureFactoryReadyGodown(tx);
+      if (!targetGodown) throw new Error('Target godown not found.');
+
+      const remainingLoose = prevBalance.looseInnerBoxes - consumedBoxes;
+
+      await tx.packingBalance.update({
+        where: { productId: prodId },
+        data: { looseInnerBoxes: remainingLoose }
+      });
+
+      await adjustStockLedgerCartons(tx, {
+        godownId: targetGodown.id,
+        productId: prodId,
+        productName: product.name,
+        deltaCartons: cartonsQty
+      });
+
+      const entry = await tx.packingEntry.create({
+        data: {
+          date: entryDate,
+          entryType: 'MASTER_CARTON',
+          productId: prodId,
+          masterCartonsSealed: cartonsQty,
+          boxesPerCase,
+          innerBoxesConsumed: consumedBoxes,
+          looseRemainingAfter: remainingLoose,
+          targetGodownId: targetGodown.id,
+          targetGodownName: targetGodown.name,
+          remarks: remarks ? String(remarks).trim() : null,
+          createdBy: req.user?.username || 'unknown'
+        }
+      });
+
+      await writeAuditLog(tx, req, {
+        module: 'packing',
+        action: 'CREATE',
+        recordId: entry.id,
+        targetDate: isoDate,
+        summary: `Sealed ${cartonsQty} Master Cartons (${consumedBoxes} boxes @ ${boxesPerCase}/case) of ${product.name} -> ${targetGodown.name} (${remainingLoose} loose left)`,
+        beforeData: { productName: product.name, looseInnerBoxes: prevBalance.looseInnerBoxes },
+        afterData: { productName: product.name, masterCartonsSealed: cartonsQty, innerBoxesConsumed: consumedBoxes, looseInnerBoxes: remainingLoose, targetGodown: targetGodown.name }
+      });
+
+      return {
+        entry,
+        productName: product.name,
+        boxesPerCase,
+        sealedCartons: cartonsQty,
+        consumedBoxes,
+        looseRemainingAfter: remainingLoose,
+        targetGodownName: targetGodown.name
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/factory-dispatches', async (req, res) => {
+  try {
+    const allowed = await canAccessModule(req, 'dispatch', 'view');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const [dispatches, godowns, transporters, vehicles, products, ledger] = await Promise.all([
+      prisma.factoryDispatch.findMany({
+        include: { items: true },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        take: 60
+      }),
+      prisma.godown.findMany({ orderBy: { id: 'asc' } }),
+      prisma.transporter.findMany({ where: { status: 'Active' }, orderBy: { name: 'asc' } }),
+      prisma.vehicle.findMany({ orderBy: { no: 'asc' } }),
+      prisma.product.findMany({
+        where: { type: 'INV', status: 'Active' },
+        select: { id: true, code: true, name: true, subCategory: true, boxesPerCase: true }
+      }),
+      prisma.stockLedger.findMany({ where: { qty: { gt: 0 } } })
+    ]);
+
+    const prodByName = new Map(products.map((p) => [String(p.name).trim().toLowerCase(), p]));
+    const stockByGodown = {};
+    for (const g of godowns) {
+      stockByGodown[String(g.id)] = [];
+    }
+    for (const row of ledger) {
+      const prod = prodByName.get(String(row.product).trim().toLowerCase());
+      if (!prod) continue;
+      const gKey = String(row.godownId);
+      if (!stockByGodown[gKey]) stockByGodown[gKey] = [];
+      stockByGodown[gKey].push({
+        productId: prod.id,
+        code: prod.code,
+        name: prod.name,
+        subCategory: prod.subCategory,
+        boxesPerCase: Math.max(1, parseInt(prod.boxesPerCase || 1, 10)),
+        availableCartons: row.qty
+      });
+    }
+
+    res.json({
+      dispatches,
+      godowns: godowns.map((g) => ({ id: g.id, name: g.name })),
+      transporters: transporters.map((t) => ({ id: t.id, name: t.name, city: t.city })),
+      vehicles: vehicles.map((v) => ({ id: v.id, no: v.no, name: v.name, drivers: v.drivers || [] })),
+      stockByGodown
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/factory-dispatches', async (req, res) => {
+  try {
+    const allowed = await canAccessModule(req, 'dispatch', 'add');
+    if (!allowed) return res.status(403).json({ error: 'Access denied.' });
+
+    const {
+      date,
+      destinationType,
+      fromGodownId,
+      toGodownId,
+      transporterId,
+      transporterName,
+      customerName,
+      lrNumber,
+      vehicleNo,
+      driverName,
+      remarks,
+      items
+    } = req.body || {};
+
+    const cleanDestType = String(destinationType || '').trim().toUpperCase();
+    if (cleanDestType !== 'GODOWN' && cleanDestType !== 'TRANSPORTER') {
+      return res.status(400).json({ error: 'Destination type must be GODOWN or TRANSPORTER.' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Add at least one finished product to dispatch.' });
+    }
+
+    const srcGodownId = parseInt(fromGodownId, 10);
+    if (!Number.isFinite(srcGodownId)) {
+      return res.status(400).json({ error: 'Source godown is required.' });
+    }
+
+    const entryDate = date ? normalizeUtcDate(date) : normalizeUtcDate(new Date());
+    const isoDate = toIsoDateOnly(entryDate);
+
+    const created = await prisma.$transaction(async (tx) => {
+      const fromGodown = await tx.godown.findUnique({ where: { id: srcGodownId } });
+      if (!fromGodown) throw new Error('Source godown not found.');
+
+      let destGodown = null;
+      let resolvedTransporterId = null;
+      let resolvedTransporterName = null;
+
+      if (cleanDestType === 'GODOWN') {
+        const destId = parseInt(toGodownId, 10);
+        if (!Number.isFinite(destId) || destId === srcGodownId) {
+          throw new Error('Select a different destination godown.');
+        }
+        destGodown = await tx.godown.findUnique({ where: { id: destId } });
+        if (!destGodown) throw new Error('Destination godown not found.');
+      } else {
+        if (transporterId) {
+          const t = await tx.transporter.findUnique({ where: { id: parseInt(transporterId, 10) } });
+          if (t) {
+            resolvedTransporterId = t.id;
+            resolvedTransporterName = t.name;
+          }
+        }
+        if (!resolvedTransporterName) {
+          resolvedTransporterName = String(transporterName || '').trim();
+        }
+        if (!resolvedTransporterName) {
+          throw new Error('Transporter name is required.');
+        }
+      }
+
+      // Resolve and validate every item against StockLedger
+      const resolvedItems = [];
+      let totalCartons = 0;
+      let totalBoxes = 0;
+
+      for (const raw of items) {
+        const pId = parseInt(raw.productId, 10);
+        const cartons = parseInt(raw.cartons, 10);
+        if (!Number.isFinite(pId) || !Number.isFinite(cartons) || cartons <= 0) {
+          throw new Error('Every dispatch row must have a valid product and carton count (> 0).');
+        }
+        const prod = await tx.product.findUnique({ where: { id: pId } });
+        if (!prod) throw new Error(`Product #${pId} not found.`);
+
+        const boxesPerCase = Math.max(1, parseInt(prod.boxesPerCase || 1, 10));
+        const rowBoxes = cartons * boxesPerCase;
+
+        await adjustStockLedgerCartons(tx, {
+          godownId: fromGodown.id,
+          productId: prod.id,
+          productName: prod.name,
+          deltaCartons: -cartons
+        });
+
+        if (cleanDestType === 'GODOWN' && destGodown) {
+          await adjustStockLedgerCartons(tx, {
+            godownId: destGodown.id,
+            productId: prod.id,
+            productName: prod.name,
+            deltaCartons: cartons
+          });
+        }
+
+        totalCartons += cartons;
+        totalBoxes += rowBoxes;
+        resolvedItems.push({
+          productId: prod.id,
+          productName: prod.name,
+          subCategory: prod.subCategory || null,
+          cartons,
+          boxesPerCase,
+          totalBoxes: rowBoxes
+        });
+      }
+
+      // Generate sequential Challan No (DC-0001, DC-0002...)
+      const lastDispatch = await tx.factoryDispatch.findFirst({
+        orderBy: { id: 'desc' },
+        select: { id: true }
+      });
+      const nextNum = (lastDispatch?.id || 0) + 1;
+      const challanNo = `DC-${String(nextNum).padStart(4, '0')}`;
+
+      const dispatch = await tx.factoryDispatch.create({
+        data: {
+          challanNo,
+          date: entryDate,
+          destinationType: cleanDestType,
+          fromGodownId: fromGodown.id,
+          fromGodownName: fromGodown.name,
+          toGodownId: destGodown?.id || null,
+          toGodownName: destGodown?.name || null,
+          transporterId: resolvedTransporterId,
+          transporterName: resolvedTransporterName,
+          customerName: customerName ? String(customerName).trim() : null,
+          lrNumber: lrNumber ? String(lrNumber).trim() : null,
+          vehicleNo: vehicleNo ? String(vehicleNo).trim() : null,
+          driverName: driverName ? String(driverName).trim() : null,
+          remarks: remarks ? String(remarks).trim() : null,
+          totalCartons,
+          totalBoxes,
+          createdBy: req.user?.username || 'unknown',
+          items: { create: resolvedItems }
+        },
+        include: { items: true }
+      });
+
+      const destLabel = cleanDestType === 'GODOWN'
+        ? `Godown: ${destGodown.name}`
+        : `Transporter: ${resolvedTransporterName}${lrNumber ? ` (LR: ${lrNumber})` : ''}`;
+
+      await writeAuditLog(tx, req, {
+        module: 'dispatch',
+        action: 'CREATE',
+        recordId: dispatch.id,
+        targetDate: isoDate,
+        summary: `${challanNo}: Dispatched ${totalCartons} cartons (${totalBoxes} boxes) from ${fromGodown.name} -> ${destLabel}`,
+        afterData: {
+          challanNo,
+          destinationType: cleanDestType,
+          fromGodown: fromGodown.name,
+          destination: destLabel,
+          vehicleNo: dispatch.vehicleNo,
+          driverName: dispatch.driverName,
+          totalCartons,
+          totalBoxes,
+          items: resolvedItems.map((i) => ({ product: i.productName, cartons: i.cartons }))
+        }
+      });
+
+      return dispatch;
+    });
+
+    res.json(created);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

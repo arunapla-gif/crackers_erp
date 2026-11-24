@@ -211,6 +211,20 @@ ErpRouteMeta resolveRouteMeta(
       section: ErpSection.production,
     );
   }
+  if (location.startsWith('/packing')) {
+    return const ErpRouteMeta(
+      title: 'Packing & Master Cartons',
+      badge: 'PACKING',
+      section: ErpSection.production,
+    );
+  }
+  if (location.startsWith('/factory-dispatch')) {
+    return const ErpRouteMeta(
+      title: 'Factory Dispatch',
+      badge: 'GATE PASS & DISPATCH',
+      section: ErpSection.production,
+    );
+  }
   if (location.startsWith('/machines')) {
     return const ErpRouteMeta(
       title: 'Processing Master',
@@ -383,8 +397,10 @@ class _SupervisorShellScaffold extends StatelessWidget {
   final DailyProductionViewModel productionViewModel;
 
   int get _selectedIndex {
-    if (location.startsWith('/employees')) return 1;
-    if (location.startsWith('/factory-orders')) return 2;
+    if (location.startsWith('/packing')) return 1;
+    if (location.startsWith('/factory-dispatch')) return 2;
+    if (location.startsWith('/employees')) return 3;
+    if (location.startsWith('/factory-orders')) return 4;
     return 0;
   }
 
@@ -393,8 +409,12 @@ class _SupervisorShellScaffold extends StatelessWidget {
       case 0:
         context.go('/production');
       case 1:
-        context.go('/employees');
+        context.go('/packing');
       case 2:
+        context.go('/factory-dispatch');
+      case 3:
+        context.go('/employees');
+      case 4:
         context.go('/factory-orders');
     }
   }
@@ -534,6 +554,22 @@ class _SupervisorShellScaffold extends StatelessWidget {
                       label: const Text('Production'),
                     ),
                     const NavigationRailDestination(
+                      icon: Icon(Icons.all_inbox_outlined),
+                      selectedIcon: Icon(
+                        Icons.all_inbox_rounded,
+                        color: ErpTheme.productionAmberDark,
+                      ),
+                      label: Text('Packing'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.local_shipping_outlined),
+                      selectedIcon: Icon(
+                        Icons.local_shipping_rounded,
+                        color: ErpTheme.salesBlueDark,
+                      ),
+                      label: Text('Dispatch'),
+                    ),
+                    const NavigationRailDestination(
                       icon: Icon(Icons.groups_outlined),
                       selectedIcon: Icon(
                         Icons.groups,
@@ -581,12 +617,28 @@ class _SupervisorShellScaffold extends StatelessWidget {
                 label: 'Production',
               ),
               const NavigationDestination(
+                icon: Icon(Icons.all_inbox_outlined),
+                selectedIcon: Icon(
+                  Icons.all_inbox_rounded,
+                  color: ErpTheme.productionAmberDark,
+                ),
+                label: 'Packing',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.local_shipping_outlined),
+                selectedIcon: Icon(
+                  Icons.local_shipping_rounded,
+                  color: ErpTheme.salesBlueDark,
+                ),
+                label: 'Dispatch',
+              ),
+              const NavigationDestination(
                 icon: Icon(Icons.groups_outlined),
                 selectedIcon: Icon(
                   Icons.groups,
                   color: ErpTheme.hrIndigo,
                 ),
-                label: 'Workers & Adv',
+                label: 'Workers',
               ),
               const NavigationDestination(
                 icon: Icon(Icons.inventory_2_outlined),
@@ -815,6 +867,22 @@ class _ErpAdminStaffShell extends StatelessWidget {
         title: 'Production Entry',
         subtitle: 'Log daily production',
         icon: Icons.precision_manufacturing_outlined,
+      ),
+    if (user.canView('packing'))
+      const ErpNavMenuItem(
+        id: 'packing',
+        path: '/packing',
+        title: 'Packing & Cartons',
+        subtitle: 'Inner boxes & master cartons',
+        icon: Icons.all_inbox_outlined,
+      ),
+    if (user.canView('dispatch'))
+      const ErpNavMenuItem(
+        id: 'factory-dispatch',
+        path: '/factory-dispatch',
+        title: 'Factory Dispatch',
+        subtitle: 'Godown transfer & Gate Pass',
+        icon: Icons.local_shipping_outlined,
       ),
     if (user.canView('machines'))
       const ErpNavMenuItem(

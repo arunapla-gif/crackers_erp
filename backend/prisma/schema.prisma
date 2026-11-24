@@ -54,6 +54,8 @@ model Product {
   factoryAlias   Product?        @relation("FactoryMapping", fields: [factoryAliasId], references: [id])
   aliases        Product[]       @relation("FactoryMapping")
   customerPrices CustomerPrice[]
+  packingBalance PackingBalance?
+  packingEntries PackingEntry[]
 
   @@schema("crackers")
 }
@@ -757,5 +759,81 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([username, createdAt])
   @@index([employeeId])
+  @@schema("crackers")
+}
+
+model PackingBalance {
+  id              Int      @id @default(autoincrement())
+  productId       Int      @unique
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  looseInnerBoxes Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@schema("crackers")
+}
+
+model PackingEntry {
+  id                  Int      @id @default(autoincrement())
+  date                DateTime
+  entryType           String   // "INNER_BOX" or "MASTER_CARTON"
+  productId           Int
+  product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  innerBoxesPacked    Int      @default(0)
+  damagedBoxes        Int      @default(0)
+  masterCartonsSealed Int      @default(0)
+  boxesPerCase        Int      @default(1)
+  innerBoxesConsumed  Int      @default(0)
+  looseRemainingAfter Int      @default(0)
+  targetGodownId      Int?
+  targetGodownName    String?
+  remarks             String?
+  createdBy           String?
+  createdAt           DateTime @default(now())
+
+  @@index([date])
+  @@index([productId, date])
+  @@schema("crackers")
+}
+
+model FactoryDispatch {
+  id                Int                   @id @default(autoincrement())
+  challanNo         String                @unique
+  date              DateTime
+  destinationType   String                // "GODOWN" or "TRANSPORTER"
+  fromGodownId      Int
+  fromGodownName    String
+  toGodownId        Int?
+  toGodownName      String?
+  transporterId     Int?
+  transporterName   String?
+  customerName      String?
+  lrNumber          String?
+  vehicleNo         String?
+  driverName        String?
+  remarks           String?
+  totalCartons      Int                   @default(0)
+  totalBoxes        Int                   @default(0)
+  createdBy         String?
+  items             FactoryDispatchItem[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([date])
+  @@index([destinationType, date])
+  @@schema("crackers")
+}
+
+model FactoryDispatchItem {
+  id           Int             @id @default(autoincrement())
+  dispatchId   Int
+  dispatch     FactoryDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  productId    Int?
+  productName  String
+  subCategory  String?
+  cartons      Int
+  boxesPerCase Int             @default(1)
+  totalBoxes   Int             @default(0)
+
+  @@index([dispatchId])
   @@schema("crackers")
 }

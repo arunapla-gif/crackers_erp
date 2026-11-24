@@ -100,6 +100,18 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
           bg: const Color(0xFFE0F2FE),
           fg: const Color(0xFF0369A1),
         );
+      case 'packing':
+        return (
+          label: 'PACKING',
+          bg: ErpTheme.godownTealSoft,
+          fg: ErpTheme.godownTealDark,
+        );
+      case 'dispatch':
+        return (
+          label: 'DISPATCH',
+          bg: ErpTheme.salesBlueSoft,
+          fg: ErpTheme.salesBlueDark,
+        );
       default:
         return (
           label: module.toUpperCase(),
@@ -284,6 +296,8 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                           for (final mod in const [
                             ('all', 'All Modules'),
                             ('production', 'Production'),
+                            ('packing', 'Packing'),
+                            ('dispatch', 'Dispatch'),
                             ('advances', 'Advances'),
                             ('payroll', 'Payroll'),
                             ('employees', 'Employees'),

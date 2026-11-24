@@ -127,6 +127,17 @@ abstract class ApiClient {
     required String endDate,
   });
 
+  // Stage 2: Packing & Master Cartons + Stage 3: Factory Dispatch
+  Future<Map<String, dynamic>> getPackingSummary();
+  Future<Map<String, dynamic>> recordInnerBoxPacking(
+    Map<String, dynamic> payload,
+  );
+  Future<Map<String, dynamic>> sealMasterCartons(Map<String, dynamic> payload);
+  Future<Map<String, dynamic>> getFactoryDispatches();
+  Future<Map<String, dynamic>> createFactoryDispatch(
+    Map<String, dynamic> payload,
+  );
+
   // Legacy Archive APIs
   Future<Map<String, dynamic>> getLegacyAnalytics();
   Future<List<dynamic>> getLegacyAnalyticsProducts();
@@ -882,6 +893,54 @@ class HttpApiClient implements ApiClient {
         'startDate': startDate,
         'endDate': endDate,
       },
+    );
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPackingSummary() async {
+    final res = await _send(method: 'GET', path: '/packing/summary');
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> recordInnerBoxPacking(
+    Map<String, dynamic> payload,
+  ) async {
+    final res = await _send(
+      method: 'POST',
+      path: '/packing/inner-boxes',
+      body: payload,
+    );
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> sealMasterCartons(
+    Map<String, dynamic> payload,
+  ) async {
+    final res = await _send(
+      method: 'POST',
+      path: '/packing/master-cartons',
+      body: payload,
+    );
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getFactoryDispatches() async {
+    final res = await _send(method: 'GET', path: '/factory-dispatches');
+    return _asMap(res);
+  }
+
+  @override
+  Future<Map<String, dynamic>> createFactoryDispatch(
+    Map<String, dynamic> payload,
+  ) async {
+    final res = await _send(
+      method: 'POST',
+      path: '/factory-dispatches',
+      body: payload,
     );
     return _asMap(res);
   }

@@ -38,12 +38,19 @@ class UserAccount {
   bool get canViewEmployees =>
       isAdmin || isSupervisor || _hasPermission('employees', 'view');
   bool get canViewFactoryOrders => isAdmin || isSupervisor;
+  bool get canViewPacking =>
+      isAdmin || isSupervisor || _hasPermission('packing', 'view');
+  bool get canViewDispatch =>
+      isAdmin || isSupervisor || _hasPermission('dispatch', 'view');
 
   /// Matches React Header.jsx / Dashboard.jsx RBAC semantics.
   bool canView(String module) {
     if (isAdmin) return true;
     if (isSupervisor) {
-      return module == 'production' || module == 'employees';
+      return module == 'production' ||
+          module == 'employees' ||
+          module == 'packing' ||
+          module == 'dispatch';
     }
     if (isRep) return false;
     return _hasPermission(module, 'view');
@@ -52,7 +59,11 @@ class UserAccount {
   bool canAdd(String module) {
     if (isAdmin) return true;
     if (isSupervisor) {
-      return module == 'production' || module == 'employees' || module == 'advances';
+      return module == 'production' ||
+          module == 'employees' ||
+          module == 'advances' ||
+          module == 'packing' ||
+          module == 'dispatch';
     }
     if (isRep) return false;
     return _hasPermission(module, 'add');
@@ -105,7 +116,11 @@ class UserAccount {
           canView('materials'));
 
   bool get showProductionSection =>
-      !isRep && (canView('production') || canView('machines'));
+      !isRep &&
+      (canView('production') ||
+          canView('packing') ||
+          canView('dispatch') ||
+          canView('machines'));
 
   bool get showHrSection =>
       !isRep && (isAdmin || canView('employees') || canView('payroll'));

@@ -51,8 +51,12 @@ import 'package:crackers_erp/ui/features/masters/views/supplier_master_screen.da
 import 'package:crackers_erp/ui/features/masters/views/transporter_master_screen.dart';
 import 'package:crackers_erp/ui/features/masters/views/vehicle_master_screen.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
+import 'package:crackers_erp/ui/features/production/view_models/factory_dispatch_view_model.dart';
+import 'package:crackers_erp/ui/features/production/view_models/packing_view_model.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_matrix_page.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_screen.dart';
+import 'package:crackers_erp/ui/features/production/views/factory_dispatch_screen.dart';
+import 'package:crackers_erp/ui/features/production/views/packing_screen.dart';
 import 'package:crackers_erp/ui/features/sales/view_models/billing_history_view_model.dart';
 import 'package:crackers_erp/ui/features/sales/view_models/billing_view_model.dart';
 import 'package:crackers_erp/ui/features/sales/view_models/pending_orders_view_model.dart';
@@ -93,6 +97,8 @@ class AppRouter {
     required this.ewayBillReportViewModel,
     required this.legacyViewModel,
     this.auditLogViewModel,
+    this.packingViewModel,
+    this.factoryDispatchViewModel,
   }) {
     router = GoRouter(
       initialLocation: _defaultHomePath(),
@@ -200,6 +206,22 @@ class AppRouter {
                 authViewModel: authViewModel,
               ),
             ),
+            if (packingViewModel != null)
+              GoRoute(
+                path: '/packing',
+                builder: (context, state) => PackingScreen(
+                  viewModel: packingViewModel!,
+                  authViewModel: authViewModel,
+                ),
+              ),
+            if (factoryDispatchViewModel != null)
+              GoRoute(
+                path: '/factory-dispatch',
+                builder: (context, state) => FactoryDispatchScreen(
+                  viewModel: factoryDispatchViewModel!,
+                  authViewModel: authViewModel,
+                ),
+              ),
 
             // Masters
             GoRoute(
@@ -348,6 +370,8 @@ class AppRouter {
   final EwayBillReportViewModel ewayBillReportViewModel;
   final LegacyViewModel legacyViewModel;
   final AuditLogViewModel? auditLogViewModel;
+  final PackingViewModel? packingViewModel;
+  final FactoryDispatchViewModel? factoryDispatchViewModel;
   late final GoRouter router;
 
   String _defaultHomePath() {
@@ -366,6 +390,9 @@ class AppRouter {
     if (user.isAdmin) return true;
     if (user.isSupervisor) {
       return loc == '/production' ||
+          loc.startsWith('/production/') ||
+          loc == '/packing' ||
+          loc == '/factory-dispatch' ||
           loc == '/employees' ||
           loc == '/factory-orders';
     }
@@ -389,6 +416,8 @@ class AppRouter {
     if (loc.startsWith('/transfers')) return user.canView('transfers');
     if (loc.startsWith('/materials')) return user.canView('materials');
     if (loc.startsWith('/production')) return user.canView('production');
+    if (loc.startsWith('/packing')) return user.canView('packing');
+    if (loc.startsWith('/factory-dispatch')) return user.canView('dispatch');
     if (loc.startsWith('/machines')) return user.canView('machines');
     if (loc.startsWith('/employees')) return user.canView('employees');
     if (loc.startsWith('/payroll')) return user.canView('payroll');

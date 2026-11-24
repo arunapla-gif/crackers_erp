@@ -11,6 +11,7 @@ import 'data/repositories/factory_order_repository.dart';
 import 'data/repositories/inventory_repository.dart';
 import 'data/repositories/legacy_repository.dart';
 import 'data/repositories/master_repository.dart';
+import 'data/repositories/packing_dispatch_repository.dart';
 import 'data/repositories/payroll_repository.dart';
 import 'data/repositories/production_repository.dart';
 import 'data/repositories/sales_order_repository.dart';
@@ -40,6 +41,8 @@ import 'ui/features/masters/view_models/supplier_master_view_model.dart';
 import 'ui/features/masters/view_models/transporter_master_view_model.dart';
 import 'ui/features/masters/view_models/vehicle_master_view_model.dart';
 import 'ui/features/production/view_models/daily_production_view_model.dart';
+import 'ui/features/production/view_models/factory_dispatch_view_model.dart';
+import 'ui/features/production/view_models/packing_view_model.dart';
 import 'ui/features/sales/view_models/billing_history_view_model.dart';
 import 'ui/features/sales/view_models/billing_view_model.dart';
 import 'ui/features/sales/view_models/pending_orders_view_model.dart';
@@ -69,6 +72,9 @@ Future<void> main() async {
   final productionRepository = ProductionRepository(
     apiClient: apiClient,
     storage: storage,
+  );
+  final packingDispatchRepository = PackingDispatchRepository(
+    apiClient: apiClient,
   );
   final employeeRepository = EmployeeRepository(apiClient: apiClient);
   final factoryOrderRepository = FactoryOrderRepository(apiClient: apiClient);
@@ -121,6 +127,12 @@ Future<void> main() async {
   final productionViewModel = DailyProductionViewModel(
     productionRepository: productionRepository,
     employeeRepository: employeeRepository,
+  );
+  final packingViewModel = PackingViewModel(
+    repository: packingDispatchRepository,
+  );
+  final factoryDispatchViewModel = FactoryDispatchViewModel(
+    repository: packingDispatchRepository,
   );
   final employeesViewModel = EmployeesAdvancesViewModel(
     employeeRepository: employeeRepository,
@@ -182,6 +194,8 @@ Future<void> main() async {
       productMasterViewModel.reset();
       materialMasterViewModel.reset();
       productionViewModel.reset();
+      packingViewModel.reset();
+      factoryDispatchViewModel.reset();
       employeesViewModel.reset();
       factoryOrdersViewModel.reset();
       purchaseViewModel.reset();
@@ -214,6 +228,8 @@ Future<void> main() async {
     productMasterViewModel: productMasterViewModel,
     materialMasterViewModel: materialMasterViewModel,
     productionViewModel: productionViewModel,
+    packingViewModel: packingViewModel,
+    factoryDispatchViewModel: factoryDispatchViewModel,
     employeesViewModel: employeesViewModel,
     factoryOrdersViewModel: factoryOrdersViewModel,
     purchaseViewModel: purchaseViewModel,
