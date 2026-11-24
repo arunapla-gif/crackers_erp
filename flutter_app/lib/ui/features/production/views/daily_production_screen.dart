@@ -777,7 +777,7 @@ class _DailyProductionScreenState extends State<DailyProductionScreen> {
                                           ),
                                         ),
                                         subtitle: Text(
-                                          '${prod.displayGroup} • Unit: ${prod.unit}',
+                                          prod.displayGroup,
                                           style: const TextStyle(
                                             fontSize: 12,
                                             color: ErpTheme.slate500,

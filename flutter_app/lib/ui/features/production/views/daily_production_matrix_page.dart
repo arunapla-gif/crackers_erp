@@ -677,8 +677,8 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                         ),
                                         subtitle: Text(
                                           qty > 0
-                                              ? '${prod.displayGroup} • $qty ${prod.unit} entered'
-                                              : '${prod.displayGroup} • Unit: ${prod.unit}',
+                                              ? '${prod.displayGroup} • $qty entered'
+                                              : prod.displayGroup,
                                           style: TextStyle(
                                             fontSize: 11.5,
                                             color: qty > 0
@@ -2144,20 +2144,10 @@ class _DailyProductionMatrixPageState extends State<DailyProductionMatrixPage> {
                                             overflow: TextOverflow.ellipsis,
                                             textAlign: TextAlign.center,
                                             style: const TextStyle(
-                                              fontSize: 10,
+                                              fontSize: 11,
                                               fontWeight: FontWeight.w900,
                                               color: ErpTheme.hrIndigo,
-                                              height: 1.1,
-                                            ),
-                                          ),
-                                          Text(
-                                            product?.unit ?? 'Pcs',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 8,
-                                              fontWeight: FontWeight.w700,
-                                              color: ErpTheme.slate500,
+                                              height: 1.15,
                                             ),
                                           ),
                                         ],
