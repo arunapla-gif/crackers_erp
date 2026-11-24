@@ -257,12 +257,22 @@ class PayrollViewModel extends ChangeNotifier {
         if (existing == null) continue;
 
         final prodQuantities = <String, int>{};
-        final groupedByDay = <String, ({DateTime date, double total, Map<String, int> items})>{};
+        final groupedByDay =
+            <
+              String,
+              ({
+                DateTime date,
+                double total,
+                Map<String, ({int qty, double rate, double total})> items,
+              })
+            >{};
 
         for (final log in entry.result.details) {
           final dayKey = log.isoDate;
           final currentDay = groupedByDay[dayKey];
-          final itemsMap = currentDay?.items ?? <String, int>{};
+          final itemsMap =
+              currentDay?.items ??
+              <String, ({int qty, double rate, double total})>{};
           final nextTotal = (currentDay?.total ?? 0.0) + log.totalAmount;
 
           for (final item in log.items) {
@@ -270,7 +280,17 @@ class PayrollViewModel extends ChangeNotifier {
             allProducts.add(item.itemName);
             prodQuantities[item.itemName] =
                 (prodQuantities[item.itemName] ?? 0) + item.quantity;
-            itemsMap[item.itemName] = (itemsMap[item.itemName] ?? 0) + item.quantity;
+            final prev = itemsMap[item.itemName];
+            final nextQty = (prev?.qty ?? 0) + item.quantity;
+            final nextItemTotal = (prev?.total ?? 0.0) + item.total;
+            final effectiveRate = item.pieceRate > 0
+                ? item.pieceRate
+                : (prev?.rate ?? 0.0);
+            itemsMap[item.itemName] = (
+              qty: nextQty,
+              rate: effectiveRate,
+              total: nextItemTotal,
+            );
           }
 
           groupedByDay[dayKey] = (
@@ -289,7 +309,11 @@ class PayrollViewModel extends ChangeNotifier {
                 .map(
                   (itemEntry) => PayrollDailyLogItem(
                     itemName: itemEntry.key,
-                    quantity: itemEntry.value,
+                    quantity: itemEntry.value.qty,
+                    pieceRate: itemEntry.value.rate,
+                    total: double.parse(
+                      itemEntry.value.total.toStringAsFixed(2),
+                    ),
                   ),
                 )
                 .toList(),

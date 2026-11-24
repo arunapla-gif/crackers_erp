@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
@@ -7,438 +6,586 @@ import 'package:pdf/widgets.dart' as pw;
 
 import 'package:crackers_erp/core/utils/tamil_transliteration.dart';
 import 'package:crackers_erp/domain/models/employee.dart';
+import 'package:crackers_erp/domain/models/json_helpers.dart';
+import 'package:crackers_erp/domain/models/payroll.dart';
 import 'package:crackers_erp/ui/features/hr/view_models/payroll_view_model.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_pdf.dart';
 
-String _rs(num amount) {
-  final fmt = NumberFormat('#,##,##0.00', 'en_IN').format(amount);
-  return 'Rs. $fmt';
-}
+String _amt(num amount) => amount.toStringAsFixed(2);
 
-String _num(num value) => NumberFormat('#,##,##0', 'en_IN').format(value);
+String _qty(num value) => NumberFormat('#,##0', 'en_IN').format(value);
 
-String _deptTitle(String role) {
-  final tamil = DailyProductionViewModel.getRoleTamilName(role);
-  if (tamil.isNotEmpty) {
-    return shapeTamilForPdf('${role.toUpperCase()} • $tamil');
-  }
-  return shapeTamilForPdf(role.toUpperCase());
-}
-
-String _workerLabel(Employee emp) {
+String _workerHeaderLabel(Employee emp) {
   final bilingual = emp.formattedName(WorkerNameDisplayMode.both);
-  final suffix = emp.isTemporary ? ' [TEMP]' : '';
-  return shapeTamilForPdf('$bilingual$suffix');
+  final role = emp.roleGroup;
+  final tempTag = emp.isTemporary ? ' [TEMP]' : '';
+  return shapeTamilForPdf('$bilingual ($role)$tempTag');
 }
 
-/// Builds a Landscape A4 Admin Weekly Wage & Payout Report PDF with:
-/// - Offline NotoSansTamil font + Tamil vowel-sign shaping
-/// - Separate clean tables per department (Tape, Chemical, Valayam Contract, etc.)
-/// - Department-scoped WIP product columns in natural numeric order (400/600/700/800 COUNT)
-/// - Absent Temporary workers (0 pieces & 0 wages) automatically hidden
-/// - Dedicated Signature column for Saturday cash disbursement
-Future<Uint8List> buildConsolidatedPayrollPdf(PayrollViewModel vm) async {
+/// Builds the Landscape A4 **WAGES ITEMIZED REPORT** matching Arunachala Agencies'
+/// weekly ledger layout:
+/// - Columns: `#` | `Employee name / Product name` | `Day 1..Day 7` |
+///   `Wages / Qty` | `Deduct / Rate/Per` | `Amount / Amount` | `Signature`
+/// - When [showItemRates] is `false` (Standard Payout Sheet): product rows show
+///   daily quantities and weekly Qty only, keeping Rate/Per & line Amount blank.
+/// - When [showItemRates] is `true` (Detailed Audit Sheet): product rows also
+///   show each item's Rate/Per and rupee Amount subtotal.
+/// - Offline NotoSansTamil font + Tamil vowel-sign shaping; keeps each worker's
+///   rows together on one page; auto-hides absent Temporary workers.
+Future<Uint8List> buildConsolidatedPayrollPdf(
+  PayrollViewModel vm, {
+  bool showItemRates = false,
+  String companyName = 'ARUNACHALA AGENCIES',
+}) async {
   final theme = await loadTamilPdfTheme();
   final doc = pw.Document(theme: theme);
-  final periodStr = (vm.startDate != null && vm.endDate != null)
-      ? '${DateFormat('EEE, dd MMM yyyy').format(vm.startDate!)} to ${DateFormat('EEE, dd MMM yyyy').format(vm.endDate!)}'
-      : (vm.payoutDate != null
-            ? DateFormat('EEE, dd MMM yyyy').format(vm.payoutDate!)
-            : DateFormat('EEE, dd MMM yyyy').format(DateTime.now()));
-  final payoutStr = vm.payoutDate != null
-      ? DateFormat('EEE, dd MMM yyyy').format(vm.payoutDate!)
-      : DateFormat('EEE, dd MMM yyyy').format(DateTime.now());
 
-  // Order departments canonically (Tape -> Chemical -> Valayam Contract -> others)
-  final orderedRoles = SplayTreeMap<String, List<Employee>>(
-    DailyProductionViewModel.compareRoles,
-  );
-  for (final entry in vm.employeesByRole.entries) {
-    orderedRoles[entry.key] = List<Employee>.from(entry.value)
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  // Build exact date columns from startDate..endDate (up to 7-10 days; default 7-day cycle)
+  final DateTime rangeEnd = vm.endDate ?? vm.payoutDate ?? DateTime.now();
+  final DateTime rangeStart =
+      vm.startDate ?? rangeEnd.subtract(const Duration(days: 6));
+  final startOnly = DateTime(rangeStart.year, rangeStart.month, rangeStart.day);
+  final endOnly = DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day);
+
+  final dates = <DateTime>[];
+  var cursor = startOnly;
+  while (!cursor.isAfter(endOnly) && dates.length < 10) {
+    dates.add(cursor);
+    cursor = cursor.add(const Duration(days: 1));
   }
+  if (dates.isEmpty) {
+    dates.add(startOnly);
+  }
+  final isoDates = dates.map(toIsoCalendarDate).toList();
+
+  final fromStr = DateFormat('dd-MM-yyyy').format(startOnly);
+  final toStr = DateFormat('dd-MM-yyyy').format(endOnly);
+  final reportTitle = showItemRates
+      ? 'WAGES ITEMIZED REPORT (WITH ITEM RATES) FROM $fromStr - TO $toStr'
+      : 'WAGES ITEMIZED REPORT FROM $fromStr - TO $toStr';
+
+  // Sort employees canonically by department then name; filter out absent temp workers
+  final visibleRows = <({Employee emp, PayrollWorksheetRow row})>[];
+  final sortedEmps = List<Employee>.from(vm.employees)
+    ..sort((a, b) {
+      final roleCmp = DailyProductionViewModel.compareRoles(
+        a.roleGroup,
+        b.roleGroup,
+      );
+      if (roleCmp != 0) return roleCmp;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
+  for (final emp in sortedEmps) {
+    final row = vm.rowFor(emp.id);
+    if (row == null) continue;
+    final hasQty =
+        row.productQuantities.values.any((q) => q > 0) ||
+        row.dailyLogs.any((d) => d.items.any((i) => i.quantity > 0));
+    final hasMoney =
+        row.basicSalary != 0 ||
+        row.allowance != 0 ||
+        row.deduction != 0 ||
+        row.netSalary != 0;
+    if (emp.isTemporary && !hasQty && !hasMoney) continue;
+    visibleRows.add((emp: emp, row: row));
+  }
+
+  // Fixed proportional column widths shared by header, every worker block, and grand total
+  final colWidths = <int, pw.TableColumnWidth>{
+    0: const pw.FixedColumnWidth(24), // Serial #
+    1: const pw.FlexColumnWidth(3.0), // Employee / Product name
+  };
+  for (var i = 0; i < dates.length; i++) {
+    colWidths[2 + i] = const pw.FixedColumnWidth(42);
+  }
+  final summaryStart = 2 + dates.length;
+  colWidths[summaryStart] = const pw.FixedColumnWidth(58); // Wages / Qty
+  colWidths[summaryStart + 1] = const pw.FixedColumnWidth(56); // Deduct / Rate
+  colWidths[summaryStart + 2] = const pw.FixedColumnWidth(62); // Amount
+  colWidths[summaryStart + 3] = const pw.FlexColumnWidth(1.55); // Signature
+
+  const gridBorder = pw.BorderSide(color: PdfColors.grey600, width: 0.6);
+  const innerLine = pw.BorderSide(color: PdfColors.grey400, width: 0.4);
 
   pw.Widget cell(
     String text, {
     bool bold = false,
     pw.TextAlign align = pw.TextAlign.left,
+    double fontSize = 8,
     PdfColor? color,
-    PdfColor? fill,
-    double fontSize = 7.5,
+    pw.EdgeInsets padding = const pw.EdgeInsets.symmetric(
+      horizontal: 4,
+      vertical: 2.5,
+    ),
   }) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      color: fill,
+    return pw.Padding(
+      padding: padding,
       child: pw.Text(
         text,
         textAlign: align,
         style: pw.TextStyle(
           fontSize: fontSize,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
-          color: color ?? PdfColors.grey900,
+          color: color ?? PdfColors.black,
         ),
       ),
     );
   }
 
-  var grandBasic = 0.0;
-  var grandAllowance = 0.0;
+  pw.Widget buildTableHeader() {
+    return pw.Table(
+      columnWidths: colWidths,
+      border: const pw.TableBorder(
+        top: gridBorder,
+        bottom: gridBorder,
+        left: gridBorder,
+        right: gridBorder,
+        verticalInside: gridBorder,
+      ),
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          children: [
+            cell('', bold: true, align: pw.TextAlign.center),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 4,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Employee name',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Product name',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...dates.map(
+              (d) => cell(
+                DateFormat('dd-MM').format(d),
+                bold: true,
+                align: pw.TextAlign.center,
+                fontSize: 8,
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 4,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'Wages',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Qty',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 4,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'Deduct',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Rate/Per',
+                    style: const pw.TextStyle(
+                      fontSize: 7.5,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 4,
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'Amount',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Amount',
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            cell(
+              'Signature',
+              bold: true,
+              align: pw.TextAlign.center,
+              fontSize: 8.5,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  var grandWages = 0.0;
   var grandDeduction = 0.0;
   var grandNet = 0.0;
-  var grandWorkersCount = 0;
 
-  final departmentWidgets = <pw.Widget>[];
+  final workerBlocks = <pw.Widget>[];
 
-  for (final roleEntry in orderedRoles.entries) {
-    final role = roleEntry.key;
-    final allEmps = roleEntry.value;
+  for (var idx = 0; idx < visibleRows.length; idx++) {
+    final entry = visibleRows[idx];
+    final emp = entry.emp;
+    final row = entry.row;
+    final serialNo = idx + 1;
 
-    // Hide absent Temporary workers with 0 pieces and 0 wages/deductions
-    final visibleEmps = <Employee>[];
-    for (final emp in allEmps) {
-      final row = vm.rowFor(emp.id);
-      if (row == null) continue;
-      final hasQty = row.productQuantities.values.any((q) => q > 0);
-      final hasMoney =
-          row.basicSalary != 0 ||
-          row.allowance != 0 ||
-          row.deduction != 0 ||
-          row.netSalary != 0;
-      if (emp.isTemporary && !hasQty && !hasMoney) {
-        continue;
-      }
-      visibleEmps.add(emp);
-    }
+    final totalWages = double.parse(
+      (row.basicSalary + row.allowance).toStringAsFixed(2),
+    );
+    grandWages += totalWages;
+    grandDeduction += row.deduction;
+    grandNet += row.netSalary;
 
-    if (visibleEmps.isEmpty) continue;
+    // Build per-product breakdown across dates from dailyLogs (or fallback to productQuantities)
+    final itemDayQtys = <String, Map<String, int>>{};
+    final itemWeekQty = <String, int>{};
+    final itemWeekAmount = <String, double>{};
+    final itemRate = <String, double>{};
 
-    // Only include WIP products produced in THIS department (natural numeric order)
-    final deptProductSet = <String>{};
-    for (final emp in visibleEmps) {
-      final row = vm.rowFor(emp.id);
-      if (row == null) continue;
-      for (final entry in row.productQuantities.entries) {
-        if (entry.value > 0) {
-          deptProductSet.add(entry.key);
+    for (final dayLog in row.dailyLogs) {
+      for (final item in dayLog.items) {
+        if (item.quantity <= 0 || item.itemName.trim().isEmpty) continue;
+        final name = item.itemName.trim();
+        final dayMap = itemDayQtys.putIfAbsent(name, () => <String, int>{});
+        dayMap[dayLog.isoDate] = (dayMap[dayLog.isoDate] ?? 0) + item.quantity;
+        itemWeekQty[name] = (itemWeekQty[name] ?? 0) + item.quantity;
+        itemWeekAmount[name] = (itemWeekAmount[name] ?? 0.0) + item.total;
+        if (item.pieceRate > 0) {
+          itemRate[name] = item.pieceRate;
         }
       }
     }
-    final deptProducts = deptProductSet.toList()
+
+    // Fallback if productQuantities has entries without dailyLogs
+    for (final pq in row.productQuantities.entries) {
+      if (pq.value > 0 && !itemWeekQty.containsKey(pq.key)) {
+        itemWeekQty[pq.key] = pq.value;
+        itemDayQtys[pq.key] = <String, int>{};
+      }
+    }
+
+    final sortedItems = itemWeekQty.keys.toList()
       ..sort(DailyProductionViewModel.compareNatural);
 
-    var deptBasic = 0.0;
-    var deptAllowance = 0.0;
-    var deptDeduction = 0.0;
-    var deptNet = 0.0;
-    final deptProdTotals = <String, int>{};
-
-    final tableRows = <pw.TableRow>[
+    final blockRows = <pw.TableRow>[
+      // Bold Employee Summary Row
       pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(bottom: innerLine),
+        ),
         children: [
-          cell('Worker', bold: true),
-          cell('Type', bold: true, align: pw.TextAlign.center),
-          ...deptProducts.map(
-            (p) => cell(
-              shapeTamilForPdf(p),
-              bold: true,
-              align: pw.TextAlign.center,
-              fontSize: 7,
-            ),
+          cell(
+            '$serialNo',
+            bold: true,
+            align: pw.TextAlign.center,
+            fontSize: 8.5,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 4),
           ),
-          cell('Base Wage', bold: true, align: pw.TextAlign.right),
-          cell('Allow.', bold: true, align: pw.TextAlign.right),
-          cell('Deduct.', bold: true, align: pw.TextAlign.right),
-          cell('Net Pay', bold: true, align: pw.TextAlign.right),
-          cell('Signature', bold: true, align: pw.TextAlign.center),
+          cell(
+            _workerHeaderLabel(emp),
+            bold: true,
+            fontSize: 8.5,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          ),
+          for (var i = 0; i < dates.length; i++) cell(''),
+          cell(
+            _amt(totalWages),
+            bold: true,
+            align: pw.TextAlign.right,
+            fontSize: 8.5,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          ),
+          cell(
+            _amt(row.deduction),
+            bold: true,
+            align: pw.TextAlign.right,
+            fontSize: 8.5,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          ),
+          cell(
+            _amt(row.netSalary),
+            bold: true,
+            align: pw.TextAlign.right,
+            fontSize: 8.5,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          ),
+          cell(''),
         ],
       ),
     ];
 
-    for (final emp in visibleEmps) {
-      final r = vm.rowFor(emp.id)!;
-      deptBasic += r.basicSalary;
-      deptAllowance += r.allowance;
-      deptDeduction += r.deduction;
-      deptNet += r.netSalary;
-      grandWorkersCount++;
-
-      tableRows.add(
+    if (sortedItems.isEmpty && !emp.isContractual) {
+      blockRows.add(
         pw.TableRow(
           children: [
-            cell(_workerLabel(emp), bold: true),
+            cell(''),
             cell(
-              emp.isContractual ? 'Piece' : 'Monthly',
-              align: pw.TextAlign.center,
-              fontSize: 7,
+              row.allowance > 0
+                  ? 'Monthly Salary (+ Allow. ${_amt(row.allowance)})'
+                  : 'Monthly Salary',
+              fontSize: 7.5,
+              color: PdfColors.grey700,
+              padding: const pw.EdgeInsets.fromLTRB(10, 2, 4, 3),
             ),
-            ...deptProducts.map((p) {
-              final q = r.productQuantities[p] ?? 0;
-              if (q > 0) {
-                deptProdTotals[p] = (deptProdTotals[p] ?? 0) + q;
-              }
-              return cell(
-                q > 0 ? _num(q) : '-',
-                align: pw.TextAlign.center,
-              );
-            }),
-            cell(_rs(r.basicSalary), align: pw.TextAlign.right),
-            cell(
-              r.allowance > 0 ? _rs(r.allowance) : '-',
-              align: pw.TextAlign.right,
-            ),
-            cell(
-              r.deduction > 0 ? _rs(r.deduction) : '-',
-              align: pw.TextAlign.right,
-            ),
-            cell(_rs(r.netSalary), bold: true, align: pw.TextAlign.right),
-            cell('', align: pw.TextAlign.center),
+            for (var i = 0; i < dates.length; i++) cell(''),
+            cell(''),
+            cell(''),
+            cell(''),
+            cell(''),
           ],
         ),
       );
     }
 
-    grandBasic += deptBasic;
-    grandAllowance += deptAllowance;
-    grandDeduction += deptDeduction;
-    grandNet += deptNet;
+    for (final itemName in sortedItems) {
+      final dayMap = itemDayQtys[itemName] ?? const <String, int>{};
+      final weekQ = itemWeekQty[itemName] ?? 0;
+      final weekAmt = itemWeekAmount[itemName] ?? 0.0;
+      final rateVal = itemRate[itemName] ?? (weekQ > 0 ? weekAmt / weekQ : 0.0);
 
-    tableRows.add(
+      blockRows.add(
+        pw.TableRow(
+          children: [
+            cell(''),
+            cell(
+              shapeTamilForPdf(itemName),
+              fontSize: 8,
+              padding: const pw.EdgeInsets.fromLTRB(10, 2, 4, 2),
+            ),
+            ...isoDates.map((iso) {
+              final q = dayMap[iso] ?? 0;
+              return cell(
+                q > 0 ? _qty(q) : '',
+                align: pw.TextAlign.center,
+                fontSize: 8,
+              );
+            }),
+            cell(
+              weekQ > 0 ? _qty(weekQ) : '',
+              align: pw.TextAlign.right,
+              fontSize: 8,
+            ),
+            cell(
+              showItemRates && rateVal > 0 ? _amt(rateVal) : '',
+              align: pw.TextAlign.right,
+              fontSize: 7.5,
+              color: PdfColors.grey800,
+            ),
+            cell(
+              showItemRates && weekAmt > 0 ? _amt(weekAmt) : '',
+              align: pw.TextAlign.right,
+              fontSize: 7.5,
+              color: PdfColors.grey800,
+            ),
+            cell(''),
+          ],
+        ),
+      );
+    }
+
+    // Also note allowance line if worker has both pieces and extra allowance
+    if (sortedItems.isNotEmpty && row.allowance > 0) {
+      blockRows.add(
+        pw.TableRow(
+          children: [
+            cell(''),
+            cell(
+              'Allowance / Bonus',
+              fontSize: 7.5,
+              color: PdfColors.grey700,
+              padding: const pw.EdgeInsets.fromLTRB(10, 1.5, 4, 2),
+            ),
+            for (var i = 0; i < dates.length; i++) cell(''),
+            cell(''),
+            cell(''),
+            cell(
+              showItemRates ? _amt(row.allowance) : '',
+              align: pw.TextAlign.right,
+              fontSize: 7.5,
+              color: PdfColors.grey700,
+            ),
+            cell(''),
+          ],
+        ),
+      );
+    }
+
+    // Wrap each employee block so a worker never splits awkwardly across two pages
+    workerBlocks.add(
+      pw.Table(
+        columnWidths: colWidths,
+        border: const pw.TableBorder(
+          bottom: gridBorder,
+          left: gridBorder,
+          right: gridBorder,
+          verticalInside: gridBorder,
+        ),
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+        children: blockRows,
+      ),
+    );
+  }
+
+  final grandTotalTable = pw.Table(
+    columnWidths: colWidths,
+    border: const pw.TableBorder(
+      top: gridBorder,
+      bottom: gridBorder,
+      left: gridBorder,
+      right: gridBorder,
+      verticalInside: gridBorder,
+    ),
+    defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+    children: [
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.grey100),
         children: [
+          cell(''),
           cell(
-            '${role.toUpperCase()} SUBTOTAL',
+            'Total (${visibleRows.length} Workers)',
+            bold: true,
+            fontSize: 9,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          ),
+          for (var i = 0; i < dates.length; i++) cell(''),
+          cell(
+            _amt(grandWages),
             bold: true,
             align: pw.TextAlign.right,
+            fontSize: 9,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
           ),
-          cell('${visibleEmps.length}', bold: true, align: pw.TextAlign.center),
-          ...deptProducts.map((p) {
-            final q = deptProdTotals[p] ?? 0;
-            return cell(
-              q > 0 ? _num(q) : '-',
-              bold: true,
-              align: pw.TextAlign.center,
-            );
-          }),
-          cell(_rs(deptBasic), bold: true, align: pw.TextAlign.right),
-          cell(_rs(deptAllowance), bold: true, align: pw.TextAlign.right),
-          cell(_rs(deptDeduction), bold: true, align: pw.TextAlign.right),
-          cell(_rs(deptNet), bold: true, align: pw.TextAlign.right),
+          cell(
+            _amt(grandDeduction),
+            bold: true,
+            align: pw.TextAlign.right,
+            fontSize: 9,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          ),
+          cell(
+            _amt(grandNet),
+            bold: true,
+            align: pw.TextAlign.right,
+            fontSize: 9,
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          ),
           cell(''),
         ],
       ),
-    );
-
-    // Give Worker and Signature columns comfortable horizontal room
-    final colWidths = <int, pw.TableColumnWidth>{
-      0: const pw.FlexColumnWidth(2.6), // Worker name
-      1: const pw.FlexColumnWidth(0.9), // Type
-    };
-    for (var i = 0; i < deptProducts.length; i++) {
-      colWidths[2 + i] = const pw.FlexColumnWidth(1.1);
-    }
-    final moneyStart = 2 + deptProducts.length;
-    colWidths[moneyStart] = const pw.FlexColumnWidth(1.3); // Base Wage
-    colWidths[moneyStart + 1] = const pw.FlexColumnWidth(1.1); // Allow
-    colWidths[moneyStart + 2] = const pw.FlexColumnWidth(1.1); // Deduct
-    colWidths[moneyStart + 3] = const pw.FlexColumnWidth(1.35); // Net Pay
-    colWidths[moneyStart + 4] = const pw.FlexColumnWidth(1.6); // Signature
-
-    departmentWidgets.add(
-      pw.Container(
-        margin: const pw.EdgeInsets.only(top: 6, bottom: 4),
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: pw.BoxDecoration(
-          color: PdfColors.indigo50,
-          borderRadius: pw.BorderRadius.circular(4),
-        ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(
-              'DEPARTMENT: ${_deptTitle(role)} (${visibleEmps.length} Workers)',
-              style: pw.TextStyle(
-                fontSize: 9.5,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.indigo900,
-              ),
-            ),
-            pw.Text(
-              'Dept Net Payout: ${_rs(deptNet)}',
-              style: pw.TextStyle(
-                fontSize: 9.5,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.indigo900,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    departmentWidgets.add(
-      pw.Table(
-        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-        columnWidths: colWidths,
-        children: tableRows,
-      ),
-    );
-    departmentWidgets.add(pw.SizedBox(height: 8));
-  }
+    ],
+  );
 
   doc.addPage(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
-      margin: const pw.EdgeInsets.all(20),
-      header: (ctx) => pw.Container(
-        margin: const pw.EdgeInsets.only(bottom: 10),
-        padding: const pw.EdgeInsets.only(bottom: 6),
-        decoration: const pw.BoxDecoration(
-          border: pw.Border(
-            bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.8),
+      margin: const pw.EdgeInsets.fromLTRB(18, 18, 18, 22),
+      header: (ctx) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(
+            child: pw.Text(
+              companyName.toUpperCase(),
+              style: pw.TextStyle(
+                fontSize: 12.5,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.black,
+              ),
+            ),
           ),
-        ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  'WEEKLY WAGE & PAYROLL DISBURSEMENT REPORT',
-                  style: pw.TextStyle(
-                    fontSize: 14,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey900,
-                  ),
-                ),
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'Wage Period: $periodStr  |  Payout Date: $payoutStr',
-                  style: const pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.grey700,
-                  ),
-                ),
-              ],
+          pw.SizedBox(height: 2),
+          pw.Center(
+            child: pw.Text(
+              reportTitle,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.black,
+              ),
             ),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text(
-                  'GRAND NET PAYOUT: ${_rs(grandNet)}',
-                  style: pw.TextStyle(
-                    fontSize: 12,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.indigo900,
-                  ),
-                ),
-                pw.Text(
-                  'Workers Included: $grandWorkersCount  |  Admin Confidential',
-                  style: const pw.TextStyle(
-                    fontSize: 8.5,
-                    color: PdfColors.grey700,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          pw.SizedBox(height: 6),
+          buildTableHeader(),
+        ],
       ),
-      footer: (ctx) => pw.Container(
-        margin: const pw.EdgeInsets.only(top: 6),
-        padding: const pw.EdgeInsets.only(top: 5),
-        decoration: const pw.BoxDecoration(
-          border: pw.Border(
-            top: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+      footer: (ctx) => pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 6),
+        child: pw.Center(
+          child: pw.Text(
+            'Page ${ctx.pageNumber}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800),
           ),
-        ),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(
-              'Generated by Crackers ERP (Admin Only - Confidential)',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-            ),
-            pw.Text(
-              'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-            ),
-          ],
         ),
       ),
       build: (ctx) => [
-        if (departmentWidgets.isEmpty)
+        if (workerBlocks.isEmpty)
           pw.Padding(
             padding: const pw.EdgeInsets.symmetric(vertical: 28),
             child: pw.Center(
               child: pw.Text(
                 'No payroll entries to print for this period.',
                 style: const pw.TextStyle(
-                  fontSize: 11,
-                  color: PdfColors.grey600,
+                  fontSize: 10,
+                  color: PdfColors.grey700,
                 ),
               ),
             ),
           )
         else ...[
-          ...departmentWidgets,
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.grey800,
-              borderRadius: pw.BorderRadius.circular(5),
-            ),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  'GRAND TOTAL ($grandWorkersCount Workers)',
-                  style: pw.TextStyle(
-                    fontSize: 10,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.white,
-                  ),
-                ),
-                pw.Row(
-                  children: [
-                    pw.Text(
-                      'Base: ${_rs(grandBasic)}   ',
-                      style: const pw.TextStyle(
-                        fontSize: 9,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.Text(
-                      'Allow: ${_rs(grandAllowance)}   ',
-                      style: const pw.TextStyle(
-                        fontSize: 9,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.Text(
-                      'Deduct: ${_rs(grandDeduction)}   ',
-                      style: const pw.TextStyle(
-                        fontSize: 9,
-                        color: PdfColors.white,
-                      ),
-                    ),
-                    pw.Text(
-                      'NET PAYOUT: ${_rs(grandNet)}',
-                      style: pw.TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.amber200,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          ...workerBlocks,
+          grandTotalTable,
         ],
       ],
     ),

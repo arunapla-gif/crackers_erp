@@ -8,6 +8,7 @@ import 'package:crackers_erp/data/repositories/production_repository.dart';
 import 'package:crackers_erp/domain/models/daily_production.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 import 'package:crackers_erp/ui/features/hr/view_models/payroll_view_model.dart';
+import 'package:crackers_erp/ui/features/hr/views/payroll_entry_screen.dart';
 import 'package:crackers_erp/ui/features/hr/views/payroll_pdf.dart';
 import 'package:crackers_erp/ui/features/production/view_models/daily_production_view_model.dart';
 import 'package:crackers_erp/ui/features/production/views/daily_production_pdf.dart';
@@ -246,11 +247,90 @@ void main() {
       addTearDown(payrollVm.dispose);
       await payrollVm.loadAll();
 
-      payrollVm.updateRow(601, basicSalary: 2400, deduction: 200);
+      payrollVm.setStartDate(DateTime(2026, 2, 6));
+      payrollVm.setEndDate(DateTime(2026, 2, 12));
+      payrollVm.setPayoutDate(DateTime(2026, 2, 14));
+      api.aggregateProductionByEmployee[601] = {
+        'totalAmount': 2400,
+        'details': [
+          {
+            'date': '2026-02-06T00:00:00.000Z',
+            'totalAmount': 1400,
+            'items': [
+              {'itemName': '400', 'quantity': 70, 'pieceRate': 20, 'total': 1400},
+            ],
+          },
+          {
+            'date': '2026-02-09T00:00:00.000Z',
+            'totalAmount': 1000,
+            'items': [
+              {'itemName': '2000', 'quantity': 20, 'pieceRate': 50, 'total': 1000},
+            ],
+          },
+        ],
+      };
+      await payrollVm.calculateContractualWages();
+      payrollVm.updateRow(601, deduction: 200);
 
-      final bytes = await buildConsolidatedPayrollPdf(payrollVm);
-      expect(bytes.length, greaterThan(1000));
-      expect(latin1.decode(bytes.take(5).toList()), equals('%PDF-'));
+      // Option A: Standard Payout Sheet (no item rates)
+      final standardBytes = await buildConsolidatedPayrollPdf(
+        payrollVm,
+        showItemRates: false,
+      );
+      expect(standardBytes.length, greaterThan(1000));
+      expect(latin1.decode(standardBytes.take(5).toList()), equals('%PDF-'));
+
+      // Option B: Detailed Audit Sheet (with item rates & line subtotals)
+      final detailedBytes = await buildConsolidatedPayrollPdf(
+        payrollVm,
+        showItemRates: true,
+      );
+      expect(detailedBytes.length, greaterThan(1000));
+      expect(latin1.decode(detailedBytes.take(5).toList()), equals('%PDF-'));
+    },
+  );
+
+  testWidgets(
+    'PayrollEntryScreen Print Report opens popup dialog with Standard and Detailed PDF options',
+    (WidgetTester tester) async {
+      final api = FakeApiClient();
+      final payrollVm = PayrollViewModel(
+        employeeRepository: EmployeeRepository(apiClient: api),
+        payrollRepository: PayrollRepository(apiClient: api),
+      );
+      addTearDown(payrollVm.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ErpTheme.buildLightTheme(),
+          home: PayrollEntryScreen(viewModel: payrollVm),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Print Report'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('payroll-pdf-choice-dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('payroll-pdf-standard-btn')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('payroll-pdf-detailed-btn')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('payroll-pdf-choice-dialog')),
+        findsNothing,
+      );
     },
   );
 }

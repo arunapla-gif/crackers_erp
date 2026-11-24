@@ -3,11 +3,11 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "885ad48d4437841259a2dd19eeda3f02",
-"version.json": "5ac80d10c24be61bd5770fc494d37b92",
+const RESOURCES = {"flutter_bootstrap.js": "d2c3b66b607903a4b4a1d2498bb889c7",
+"version.json": "c83db2457c798aa0d06faa116992e386",
 "index.html": "3cec188acf015e6bb1abcd58717a166c",
 "/": "3cec188acf015e6bb1abcd58717a166c",
-"main.dart.js": "3b63c8012c45b534697fdac84b4d4376",
+"main.dart.js": "c9caf65e741a9664c219c89a9a0ae2bb",
 "flutter.js": "24bc71911b75b5f8135c949e27a2984e",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "icons/Icon-192.png": "ac9a721a12bbc803b44f645561ecb1e1",
@@ -22,7 +22,7 @@ const RESOURCES = {"flutter_bootstrap.js": "885ad48d4437841259a2dd19eeda3f02",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/shaders/stretch_effect.frag": "40d68efbbf360632f614c731219e95f0",
 "assets/AssetManifest.bin": "7c3da5f1a08135c44fa05af91ae0a28d",
-"assets/fonts/MaterialIcons-Regular.otf": "2838cb2a13d1cac42f5d1bc7336997b2",
+"assets/fonts/MaterialIcons-Regular.otf": "a0b32a2985aeb7c56a811986e537d434",
 "assets/assets/fonts/NotoSansTamil-Bold.ttf": "9fed0a8514c632efb62f1c4d0d457286",
 "assets/assets/fonts/NotoSansTamil-Regular.ttf": "13071c57e821b63efdfdb2405c650387",
 "canvaskit/skwasm.js": "8060d46e9a4901ca9991edd3a26be4f0",

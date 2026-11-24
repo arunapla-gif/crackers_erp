@@ -83,11 +83,112 @@ class _PayrollEntryScreenState extends State<PayrollEntryScreen> {
   }
 
   Future<void> _printReport() async {
-    final nameDate =
-        widget.viewModel.isoPayoutDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('payroll-pdf-choice-dialog'),
+        title: const Row(
+          children: [
+            Icon(Icons.picture_as_pdf_rounded, color: ErpTheme.hrPurple),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Download Wages Itemized Report',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Choose which format you want to generate for this wage week:',
+          style: TextStyle(fontSize: 13, color: ErpTheme.slate700),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsOverflowDirection: VerticalDirection.down,
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('payroll-pdf-standard-btn'),
+              style: FilledButton.styleFrom(
+                backgroundColor: ErpTheme.hrPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(false),
+              icon: const Icon(Icons.draw_outlined, size: 18),
+              label: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Standard Payout Sheet (No Item Rates)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    'Daily qty, Total Wages, Deductions, Net Amount & Signature',
+                    style: TextStyle(fontSize: 10.5, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const ValueKey('payroll-pdf-detailed-btn'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: ErpTheme.hrIndigo,
+                side: const BorderSide(color: ErpTheme.hrIndigo),
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              icon: const Icon(Icons.receipt_long_rounded, size: 18),
+              label: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Detailed Audit Sheet (With Item Rates & Subtotals)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  Text(
+                    'Includes Rate/Per and rupee Amount on every product row',
+                    style: TextStyle(fontSize: 10.5, color: ErpTheme.slate500),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null || !mounted) return;
+    final showItemRates = choice;
+    final fromLabel = widget.viewModel.startDate != null
+        ? DateFormat('dd.MM').format(widget.viewModel.startDate!)
+        : DateFormat('dd.MM').format(DateTime.now());
+    final toLabel = widget.viewModel.endDate != null
+        ? DateFormat('dd.MM').format(widget.viewModel.endDate!)
+        : (widget.viewModel.payoutDate != null
+              ? DateFormat('dd.MM').format(widget.viewModel.payoutDate!)
+              : DateFormat('dd.MM').format(DateTime.now()));
+    final suffix = showItemRates ? '_Detailed' : '';
+
     await Printing.layoutPdf(
-      name: 'Consolidated_Payroll_$nameDate.pdf',
-      onLayout: (_) => buildConsolidatedPayrollPdf(widget.viewModel),
+      name: 'Wages_Itemized_$fromLabel-$toLabel$suffix.pdf',
+      onLayout: (_) => buildConsolidatedPayrollPdf(
+        widget.viewModel,
+        showItemRates: showItemRates,
+      ),
     );
   }
 
