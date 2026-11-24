@@ -1235,6 +1235,67 @@ class FakeApiClient implements ApiClient {
     return created;
   }
 
+  Map<int, Map<String, int>> _computeFakeTapeWipStats() {
+    final tapeWips = productsData
+        .where(
+          (p) =>
+              (p['type'] ?? '').toString().toUpperCase() == 'WIP' &&
+              (p['category'] ?? '').toString().toUpperCase() == 'TAPE',
+        )
+        .toList();
+    final stats = <int, Map<String, int>>{};
+    final wipByName = <String, Map<String, dynamic>>{};
+    for (final w in tapeWips) {
+      final wid = w['id'] as int;
+      stats[wid] = {'produced': 0, 'packedGood': 0, 'damaged': 0, 'unpacked': 0};
+      wipByName[(w['name'] ?? '').toString().trim().toLowerCase()] = w;
+    }
+
+    // Sum saved DailyProduction quantities strictly for Tape employees
+    for (final rec in productionsData) {
+      final empId = (rec['employeeId'] as num?)?.toInt();
+      final empObj = rec['employee'] is Map
+          ? Map<String, dynamic>.from(rec['employee'] as Map)
+          : employeesData.where((e) => e['id'] == empId).firstOrNull;
+      final role = (empObj?['role'] ?? '').toString().toLowerCase();
+      if (!role.contains('tape')) continue;
+
+      final items = rec['items'] is List
+          ? rec['items'] as List<dynamic>
+          : const <dynamic>[];
+      for (final rawItem in items) {
+        if (rawItem is! Map) continue;
+        final name = (rawItem['itemName'] ?? '').toString().trim().toLowerCase();
+        final wip = wipByName[name];
+        if (wip == null) continue;
+        final wid = wip['id'] as int;
+        stats[wid]!['produced'] =
+            stats[wid]!['produced']! + ((rawItem['quantity'] as num?)?.toInt() ?? 0);
+      }
+    }
+
+    // Subtract INNER_BOX entries linked via factoryAliasId
+    for (final entry in packingEntriesData) {
+      if ((entry['entryType'] ?? '').toString() != 'INNER_BOX') continue;
+      final pid = (entry['productId'] as num?)?.toInt();
+      final prod = productsData.where((p) => p['id'] == pid).firstOrNull;
+      final aliasId = (prod?['factoryAliasId'] as num?)?.toInt();
+      if (aliasId == null || !stats.containsKey(aliasId)) continue;
+      stats[aliasId]!['packedGood'] =
+          stats[aliasId]!['packedGood']! +
+          ((entry['innerBoxesPacked'] as num?)?.toInt() ?? 0);
+      stats[aliasId]!['damaged'] =
+          stats[aliasId]!['damaged']! +
+          ((entry['damagedBoxes'] as num?)?.toInt() ?? 0);
+    }
+
+    stats.forEach((wid, st) {
+      final rem = st['produced']! - (st['packedGood']! + st['damaged']!);
+      st['unpacked'] = rem > 0 ? rem : 0;
+    });
+    return stats;
+  }
+
   @override
   Future<Map<String, dynamic>> getPackingSummary() async {
     final factoryG = _ensureFakeFactoryGodown();
@@ -1242,11 +1303,22 @@ class FakeApiClient implements ApiClient {
     final invProducts = productsData
         .where((p) => (p['type'] ?? 'INV').toString().toUpperCase() == 'INV')
         .toList();
+    final tapeWips = productsData
+        .where(
+          (p) =>
+              (p['type'] ?? '').toString().toUpperCase() == 'WIP' &&
+              (p['category'] ?? '').toString().toUpperCase() == 'TAPE',
+        )
+        .toList();
+    final wipById = {for (final w in tapeWips) w['id'] as int: w};
+    final tapeStats = _computeFakeTapeWipStats();
 
     final summaryProducts = invProducts.map((p) {
       final pid = p['id'] as int;
       final bpc = ((p['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
       final loose = packingLooseBoxesByProduct[pid] ?? 0;
+      final aliasId = (p['factoryAliasId'] as num?)?.toInt();
+      final wip = aliasId != null ? wipById[aliasId] : null;
       final godownCartons = <String, int>{};
       var totalCartons = 0;
       for (final g in godownsData) {
@@ -1270,6 +1342,9 @@ class FakeApiClient implements ApiClient {
         'boxesPerCase': bpc,
         'unit': p['unit'] ?? 'Case',
         'packUnit': p['pack_unit'] ?? 'Box',
+        'wipProductId': aliasId,
+        'wipCode': wip?['code'],
+        'wipName': wip?['name'],
         'looseInnerBoxes': loose,
         'factoryCartons': factoryCartons,
         'godownCartons': godownCartons,
@@ -1279,11 +1354,43 @@ class FakeApiClient implements ApiClient {
       };
     }).toList();
 
+    final tapeQueue = tapeWips.map((w) {
+      final wid = w['id'] as int;
+      final st = tapeStats[wid] ??
+          const {'produced': 0, 'packedGood': 0, 'damaged': 0, 'unpacked': 0};
+      final styles = summaryProducts
+          .where((sp) => sp['wipProductId'] == wid)
+          .map(
+            (sp) => {
+              'id': sp['id'],
+              'code': sp['code'],
+              'name': sp['name'],
+              'subCategory': sp['subCategory'],
+              'boxesPerCase': sp['boxesPerCase'],
+              'looseInnerBoxes': sp['looseInnerBoxes'],
+              'factoryCartons': sp['factoryCartons'],
+            },
+          )
+          .toList();
+      return {
+        'wipId': wid,
+        'wipCode': w['code'],
+        'wipName': w['name'],
+        'subCategory': w['subCategory'],
+        'totalProducedUnits': st['produced']!,
+        'totalPackedUnits': st['packedGood']!,
+        'totalDamagedUnits': st['damaged']!,
+        'unpackedUnits': st['unpacked']!,
+        'styleOptions': styles,
+      };
+    }).toList();
+
     return {
       'factoryGodownId': factoryId,
       'godowns': godownsData
           .map((g) => {'id': g['id'], 'name': g['name']})
           .toList(),
+      'tapeQueue': tapeQueue,
       'products': summaryProducts,
       'recentEntries': List<Map<String, dynamic>>.from(packingEntriesData),
     };
@@ -1301,6 +1408,21 @@ class FakeApiClient implements ApiClient {
     final bpc = ((prod['boxesPerCase'] as num?)?.toInt() ?? 1).clamp(1, 999999);
     final date = (payload['date'] ?? DateTime.now().toIso8601String()).toString();
 
+    final aliasId = (prod['factoryAliasId'] as num?)?.toInt();
+    String? wipName;
+    if (aliasId != null) {
+      final stats = _computeFakeTapeWipStats();
+      final st = stats[aliasId];
+      final wip = productsData.where((p) => p['id'] == aliasId).firstOrNull;
+      wipName = wip?['name']?.toString();
+      if (st != null && packed + damaged > st['unpacked']!) {
+        throw ApiException(
+          'Cannot pack ${packed + damaged} units of Tape item "$wipName". Only ${st['unpacked']} unpacked units available.',
+          statusCode: 400,
+        );
+      }
+    }
+
     final prevLoose = packingLooseBoxesByProduct[pid] ?? 0;
     final looseAfterInner = prevLoose + packed;
     packingLooseBoxesByProduct[pid] = looseAfterInner;
@@ -1312,6 +1434,7 @@ class FakeApiClient implements ApiClient {
       'productId': pid,
       'productCode': prod['code'] ?? '',
       'productName': prod['name'] ?? '',
+      'wipName': wipName,
       'subCategory': prod['subCategory'],
       'innerBoxesPacked': packed,
       'damagedBoxes': damaged,

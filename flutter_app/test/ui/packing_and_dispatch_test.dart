@@ -15,14 +15,57 @@ import 'package:crackers_erp/ui/features/production/views/packing_screen.dart';
 
 import '../support/fakes.dart';
 
-FakeApiClient _buildGarlandFakeApi() {
+FakeApiClient _buildGarlandFakeApi({
+  List<Map<String, dynamic>>? initialProductions,
+}) {
   return FakeApiClient(
     godowns: [
       {'id': 1, 'name': 'Factory Ready Stock'},
       {'id': 2, 'name': 'Sivakasi Godown'},
       {'id': 3, 'name': 'Injar Godown'},
     ],
+    employees: [
+      {'id': 1, 'name': 'Jothi (ஜோதி)', 'role': 'Tape', 'status': 'Active'},
+      {
+        'id': 2,
+        'name': 'Ramesh (ரமேஷ்)',
+        'role': 'Chemical',
+        'status': 'Active',
+      },
+    ],
     products: [
+      // Tape WIP items
+      {
+        'id': 36,
+        'code': 'WIP004',
+        'name': '400',
+        'type': 'WIP',
+        'category': 'TAPE',
+        'subCategory': '400 COUNT',
+        'boxesPerCase': 1,
+        'rate': 10.0,
+      },
+      {
+        'id': 37,
+        'code': 'WIP005',
+        'name': '800',
+        'type': 'WIP',
+        'category': 'TAPE',
+        'subCategory': '400 COUNT',
+        'boxesPerCase': 1,
+        'rate': 20.0,
+      },
+      {
+        'id': 44,
+        'code': 'WIP012',
+        'name': '700',
+        'type': 'WIP',
+        'category': 'TAPE',
+        'subCategory': '700 COUNT',
+        'boxesPerCase': 1,
+        'rate': 15.0,
+      },
+      // Finished Garland Styles linked via factoryAliasId
       {
         'id': 10,
         'code': 'GAR005',
@@ -31,6 +74,7 @@ FakeApiClient _buildGarlandFakeApi() {
         'category': 'Garlands',
         'subCategory': '400 COUNT',
         'boxesPerCase': 36,
+        'factoryAliasId': 36,
         'unit': 'Case',
         'pack_unit': 'Box',
         'rate': 1450.0,
@@ -43,11 +87,52 @@ FakeApiClient _buildGarlandFakeApi() {
         'category': 'Garlands',
         'subCategory': '400 COUNT (Core & Cellophane)',
         'boxesPerCase': 36,
+        'factoryAliasId': 36,
         'unit': 'Case',
         'pack_unit': 'Box',
         'rate': 1650.0,
       },
+      {
+        'id': 12,
+        'code': 'GAR006',
+        'name': '2000 (800)',
+        'type': 'INV',
+        'category': 'Garlands',
+        'subCategory': '400 COUNT',
+        'boxesPerCase': 20,
+        'factoryAliasId': 37,
+        'unit': 'Case',
+        'pack_unit': 'Box',
+        'rate': 1850.0,
+      },
+      {
+        'id': 13,
+        'code': 'GAR022',
+        'name': '1000 (800)',
+        'type': 'INV',
+        'category': 'Garlands',
+        'subCategory': '800 COUNT',
+        'boxesPerCase': 36,
+        'factoryAliasId': 37,
+        'unit': 'Case',
+        'pack_unit': 'Box',
+        'rate': 1550.0,
+      },
+      {
+        'id': 14,
+        'code': 'GAR017',
+        'name': '1000 (700)',
+        'type': 'INV',
+        'category': 'Garlands',
+        'subCategory': '700 COUNT',
+        'boxesPerCase': 36,
+        'factoryAliasId': 44,
+        'unit': 'Case',
+        'pack_unit': 'Box',
+        'rate': 1500.0,
+      },
     ],
+    productions: initialProductions ?? <Map<String, dynamic>>[],
     transporters: [
       {'id': 1, 'name': 'KPN Parcel', 'city': 'Sivakasi'},
     ],
@@ -71,9 +156,9 @@ Future<AuthViewModel> _supervisorAuth(FakeApiClient api) async {
 }
 
 void main() {
-  group('Stage 2 Packing & Carry-Forward + Stage 3 Dispatch', () {
+  group('Production-Driven Stage 2 Packing & Stage 3 Dispatch', () {
     testWidgets(
-      'Exact carry-forward math (1000 ÷ 36 = 27 cartons + 28 loose, then +500 → 14 cartons + 24 loose) & zero-rupee secrecy at 390x844',
+      'Lists ONLY saved Tape items, allows splitting 800 into 2000(800) & 1000(800), and enforces exact carry-forward math with zero rupees at 390x844',
       (tester) async {
         tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1.0;
@@ -82,7 +167,30 @@ void main() {
           tester.view.resetDevicePixelRatio();
         });
 
-        final api = _buildGarlandFakeApi();
+        // Tape worker saved 1000 of '400' and 100 of '800'.
+        // Chemical worker saved 500 of '700' (must NOT appear in Packing!).
+        final api = _buildGarlandFakeApi(
+          initialProductions: [
+            {
+              'id': 1,
+              'date': '2026-11-24',
+              'employeeId': 1, // Tape
+              'items': [
+                {'itemName': '400', 'quantity': 1000},
+                {'itemName': '800', 'quantity': 100},
+              ],
+            },
+            {
+              'id': 2,
+              'date': '2026-11-24',
+              'employeeId': 2, // Chemical (ignored!)
+              'items': [
+                {'itemName': '700', 'quantity': 500},
+              ],
+            },
+          ],
+        );
+
         final authVm = await _supervisorAuth(api);
         final repo = PackingDispatchRepository(apiClient: api);
         final packingVm = PackingViewModel(repository: repo);
@@ -95,21 +203,68 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('1000 (400)'), findsOneWidget);
-        expect(find.text('36 / Case'), findsNWidgets(2));
-        // Zero-rupee secrecy: product prices (1450 / 1650 / ₹) must never appear
+        // Rule 1: ONLY Tape items '400' and '800' are listed; Chemical '700' / '1000 (700)' is NOT shown!
+        expect(packingVm.pendingTapeItems.map((t) => t.wipName).toList(), [
+          '400',
+          '800',
+        ]);
+        expect(find.text('1000 (700)'), findsNothing);
+        // Zero-rupee secrecy
         expect(find.textContaining('₹'), findsNothing);
         expect(find.textContaining('1450'), findsNothing);
-        expect(find.textContaining('1650'), findsNothing);
+        expect(find.textContaining('1850'), findsNothing);
 
-        // Day 1: Pack 1000 inner boxes with Auto-Seal ON
-        await tester.tap(find.byKey(const ValueKey('inner-pack-btn-GAR005')));
+        // Rule 2: Split '800' (100 Tape units) -> 60 into '2000 (800)' and 40 into '1000 (800)'
+        final pack800Btn = find.byKey(const ValueKey('inner-pack-wip-800'));
+        await tester.ensureVisible(pack800Btn);
+        await tester.pumpAndSettle();
+        await tester.tap(pack800Btn);
         await tester.pumpAndSettle();
 
+        // Pick '2000 (800)' (GAR006) and pack 60 boxes
+        await tester.tap(find.byKey(const ValueKey('style-option-GAR006')));
         await tester.enterText(
           find.byKey(const ValueKey('inner-boxes-qty-field')),
-          '1000',
+          '60',
         );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('save-inner-pack-btn')));
+        await tester.pumpAndSettle();
+
+        // '800' still has 40 unpacked Tape units left
+        expect(
+          packingVm.pendingTapeItems
+              .firstWhere((t) => t.wipName == '800')
+              .unpackedUnits,
+          40,
+        );
+
+        // Pack remaining 40 units of '800' into '1000 (800)' (GAR022)
+        await tester.ensureVisible(pack800Btn);
+        await tester.pumpAndSettle();
+        await tester.tap(pack800Btn);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('style-option-GAR022')));
+        await tester.tap(find.byKey(const ValueKey('pack-all-available-chip')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('save-inner-pack-btn')));
+        await tester.pumpAndSettle();
+
+        // '800' now has 0 unpacked units -> automatically removed from Tab 1!
+        expect(
+          packingVm.pendingTapeItems.any((t) => t.wipName == '800'),
+          isFalse,
+        );
+
+        // Day 1 Carry-Forward Math on '400': Pack all 1000 into '1000 (400)' with Auto-Seal ON
+        final pack400Btn = find.byKey(const ValueKey('inner-pack-wip-400'));
+        await tester.ensureVisible(pack400Btn);
+        await tester.pumpAndSettle();
+        await tester.tap(pack400Btn);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('pack-all-available-chip')));
         await tester.tap(find.byKey(const ValueKey('auto-seal-cartons-switch')));
         await tester.pumpAndSettle();
 
@@ -117,33 +272,41 @@ void main() {
           find.textContaining('27 Master Cartons + 28 Loose Boxes'),
           findsOneWidget,
         );
-
         await tester.tap(find.byKey(const ValueKey('save-inner-pack-btn')));
         await tester.pumpAndSettle();
 
-        final prodAfterDay1 = packingVm.allProducts.firstWhere(
-          (p) => p.code == 'GAR005',
-        );
-        expect(prodAfterDay1.factoryCartons, 27);
-        expect(prodAfterDay1.looseInnerBoxes, 28);
-        expect(prodAfterDay1.neededForNextCarton, 8);
+        // Tab 1 is now completely empty because all Tape production is packed!
+        expect(packingVm.pendingTapeItems, isEmpty);
+        expect(find.text('No Unpacked Tape Production'), findsOneWidget);
 
-        // Day 2: Pack +500 inner boxes without auto-seal → 528 loose → Seal 14 cartons
-        await tester.tap(find.byKey(const ValueKey('inner-pack-btn-GAR005')));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey('inner-boxes-qty-field')),
-          '500',
+        // Tab 2 (Master Cartons) lists ONLY the 3 styles that actually have loose boxes > 0
+        expect(
+          packingVm.looseMasterCartonQueue.map((p) => p.code).toSet(),
+          {'GAR006', 'GAR022', 'GAR005'},
         );
+
+        // Day 2: Tape worker saves +500 more of '400' -> pack without auto-seal -> 528 loose -> seal 14 cartons
+        api.productionsData.add({
+          'id': 3,
+          'date': '2026-11-25',
+          'employeeId': 1,
+          'items': [
+            {'itemName': '400', 'quantity': 500},
+          ],
+        });
+        await packingVm.loadSummary();
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('inner-pack-wip-400')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('pack-all-available-chip')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('save-inner-pack-btn')));
         await tester.pumpAndSettle();
 
-        final prodBeforeSeal = packingVm.allProducts.firstWhere(
-          (p) => p.code == 'GAR005',
-        );
-        expect(prodBeforeSeal.looseInnerBoxes, 528);
-        expect(prodBeforeSeal.readyToSealCartons, 14);
+        // Switch to Tab 2 (Master Cartons) and seal 14 cartons of GAR005 ('1000 (400)')
+        await tester.tap(find.text('Cartons (3)'));
+        await tester.pumpAndSettle();
 
         final sealBtn = find.byKey(const ValueKey('seal-carton-btn-GAR005'));
         await tester.ensureVisible(sealBtn);
@@ -155,11 +318,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final prodAfterDay2 = packingVm.allProducts.firstWhere(
+        final gar005 = packingVm.allProducts.firstWhere(
           (p) => p.code == 'GAR005',
         );
-        expect(prodAfterDay2.factoryCartons, 41); // 27 + 14
-        expect(prodAfterDay2.looseInnerBoxes, 24); // 528 - 14*36
+        expect(gar005.factoryCartons, 41); // 27 + 14
+        expect(gar005.looseInnerBoxes, 24); // 528 - 14*36
         expect(tester.takeException(), isNull);
       },
     );
@@ -175,7 +338,6 @@ void main() {
         });
 
         final api = _buildGarlandFakeApi();
-        // Seed 20 Master Cartons in Factory Ready Stock (godownId 1) for product 10
         api.godownCartonsByGodownAndProduct[1] = {10: 20};
 
         final authVm = await _supervisorAuth(api);
@@ -197,7 +359,6 @@ void main() {
         expect(find.textContaining('Available: 20 Cartons'), findsOneWidget);
         expect(find.textContaining('₹'), findsNothing);
 
-        // Dispatch 8 cartons from Factory Ready Stock -> Sivakasi Godown
         dispatchVm.setCartonsForProduct(10, 8, 20);
         await tester.pumpAndSettle();
 
@@ -216,11 +377,9 @@ void main() {
         expect(dc1.toGodownName, 'Sivakasi Godown');
         expect(dc1.totalCartons, 8);
         expect(dc1.totalBoxes, 8 * 36);
-        // Stock moved: Factory Ready Stock 20 -> 12, Sivakasi Godown 0 -> 8
         expect(api.godownCartonsByGodownAndProduct[1]?[10], 12);
         expect(api.godownCartonsByGodownAndProduct[2]?[10], 8);
 
-        // Now dispatch 5 cartons to Transporter (KPN Parcel) via ViewModel
         dispatchVm.setDestinationType('TRANSPORTER');
         dispatchVm.setSelectedTransporterId(1);
         dispatchVm.setCartonsForProduct(10, 5, 12);
@@ -237,7 +396,6 @@ void main() {
         expect(dc2.transporterName, 'KPN Parcel');
         expect(api.godownCartonsByGodownAndProduct[1]?[10], 7);
 
-        // Verify Gate Pass PDF builds cleanly with Tamil + English text & zero rupees
         final pdfBytes = await buildFactoryGatePassPdf(dc2);
         expect(pdfBytes.length, greaterThan(1000));
         expect(utf8.decode(pdfBytes.sublist(0, 5)), '%PDF-');

@@ -69,6 +69,83 @@ class DispatchVehicleRef {
   }
 }
 
+class PackingStyleOption {
+  const PackingStyleOption({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.boxesPerCase,
+    required this.looseInnerBoxes,
+    required this.factoryCartons,
+    this.subCategory,
+  });
+
+  final int id;
+  final String code;
+  final String name;
+  final String? subCategory;
+  final int boxesPerCase;
+  final int looseInnerBoxes;
+  final int factoryCartons;
+
+  factory PackingStyleOption.fromJson(Map<String, dynamic> json) {
+    final bpc = parseInt(json['boxesPerCase'], fallback: 1);
+    return PackingStyleOption(
+      id: parseInt(json['id']),
+      code: (json['code'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      subCategory: parseOptionalString(json['subCategory']),
+      boxesPerCase: bpc > 0 ? bpc : 1,
+      looseInnerBoxes: parseInt(json['looseInnerBoxes']),
+      factoryCartons: parseInt(json['factoryCartons']),
+    );
+  }
+}
+
+class TapeWipPackingItem {
+  const TapeWipPackingItem({
+    required this.wipId,
+    required this.wipCode,
+    required this.wipName,
+    required this.totalProducedUnits,
+    required this.totalPackedUnits,
+    required this.totalDamagedUnits,
+    required this.unpackedUnits,
+    required this.styleOptions,
+    this.subCategory,
+  });
+
+  final int wipId;
+  final String wipCode;
+  final String wipName;
+  final String? subCategory;
+  final int totalProducedUnits;
+  final int totalPackedUnits;
+  final int totalDamagedUnits;
+  final int unpackedUnits;
+  final List<PackingStyleOption> styleOptions;
+
+  factory TapeWipPackingItem.fromJson(Map<String, dynamic> json) {
+    final rawStyles = json['styleOptions'] is List
+        ? json['styleOptions'] as List<dynamic>
+        : const <dynamic>[];
+    return TapeWipPackingItem(
+      wipId: parseInt(json['wipId']),
+      wipCode: (json['wipCode'] ?? '').toString(),
+      wipName: (json['wipName'] ?? '').toString(),
+      subCategory: parseOptionalString(json['subCategory']),
+      totalProducedUnits: parseInt(json['totalProducedUnits']),
+      totalPackedUnits: parseInt(json['totalPackedUnits']),
+      totalDamagedUnits: parseInt(json['totalDamagedUnits']),
+      unpackedUnits: parseInt(json['unpackedUnits']),
+      styleOptions: rawStyles
+          .whereType<Map<dynamic, dynamic>>()
+          .map((e) => PackingStyleOption.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
+}
+
 class PackingProductStatus {
   const PackingProductStatus({
     required this.id,
@@ -171,6 +248,7 @@ class PackingEntryRecord {
     required this.looseRemainingAfter,
     required this.createdBy,
     required this.createdAt,
+    this.wipName,
     this.subCategory,
     this.targetGodownName,
     this.remarks,
@@ -182,6 +260,7 @@ class PackingEntryRecord {
   final int productId;
   final String productCode;
   final String productName;
+  final String? wipName;
   final String? subCategory;
   final int innerBoxesPacked;
   final int damagedBoxes;
@@ -204,6 +283,7 @@ class PackingEntryRecord {
       productId: parseInt(json['productId']),
       productCode: (json['productCode'] ?? '').toString(),
       productName: (json['productName'] ?? '').toString(),
+      wipName: parseOptionalString(json['wipName']),
       subCategory: parseOptionalString(json['subCategory']),
       innerBoxesPacked: parseInt(json['innerBoxesPacked']),
       damagedBoxes: parseInt(json['damagedBoxes']),
@@ -223,15 +303,19 @@ class PackingSummary {
   const PackingSummary({
     required this.factoryGodownId,
     required this.godowns,
+    required this.tapeQueue,
     required this.products,
     required this.recentEntries,
   });
 
   final int? factoryGodownId;
   final List<PackingGodownRef> godowns;
+  final List<TapeWipPackingItem> tapeQueue;
   final List<PackingProductStatus> products;
   final List<PackingEntryRecord> recentEntries;
 
+  int get totalUnpackedTapeUnits =>
+      tapeQueue.fold(0, (sum, t) => sum + t.unpackedUnits);
   int get totalFactoryCartons =>
       products.fold(0, (sum, p) => sum + p.factoryCartons);
   int get totalLooseInnerBoxes =>
@@ -242,6 +326,9 @@ class PackingSummary {
   factory PackingSummary.fromJson(Map<String, dynamic> json) {
     final rawGodowns =
         json['godowns'] is List ? json['godowns'] as List<dynamic> : const <dynamic>[];
+    final rawTapeQueue = json['tapeQueue'] is List
+        ? json['tapeQueue'] as List<dynamic>
+        : const <dynamic>[];
     final rawProducts =
         json['products'] is List ? json['products'] as List<dynamic> : const <dynamic>[];
     final rawEntries = json['recentEntries'] is List
@@ -255,6 +342,10 @@ class PackingSummary {
       godowns: rawGodowns
           .whereType<Map<dynamic, dynamic>>()
           .map((e) => PackingGodownRef.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      tapeQueue: rawTapeQueue
+          .whereType<Map<dynamic, dynamic>>()
+          .map((e) => TapeWipPackingItem.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
       products: rawProducts
           .whereType<Map<dynamic, dynamic>>()

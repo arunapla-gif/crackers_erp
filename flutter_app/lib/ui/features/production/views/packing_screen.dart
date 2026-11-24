@@ -32,7 +32,7 @@ class _PackingScreenState extends State<PackingScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.viewModel.loadSummary();
@@ -59,7 +59,7 @@ class _PackingScreenState extends State<PackingScreen>
     }
   }
 
-  Future<void> _openInnerBoxSheet(PackingProductStatus product) async {
+  Future<void> _openInnerBoxSheet(TapeWipPackingItem tapeItem) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -68,7 +68,7 @@ class _PackingScreenState extends State<PackingScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) => _InnerBoxPackingSheet(
-        product: product,
+        tapeItem: tapeItem,
         viewModel: widget.viewModel,
       ),
     );
@@ -98,6 +98,8 @@ class _PackingScreenState extends State<PackingScreen>
       listenable: widget.viewModel,
       builder: (context, _) {
         final vm = widget.viewModel;
+        final pendingTapeCount = vm.pendingTapeItems.length;
+        final looseStylesCount = vm.looseMasterCartonQueue.length;
 
         return Scaffold(
           backgroundColor: ErpTheme.slate50,
@@ -122,7 +124,7 @@ class _PackingScreenState extends State<PackingScreen>
                   child: ErpSectionHeaderBar(
                     title: 'Packing & Master Cartons',
                     subtitle:
-                        'Step 2A: Pack Inner Boxes (with carry-forward) → Step 2B: Seal Master Cartons into Factory Ready Stock.',
+                        '1. Tape Production Output → 2. Pack Into Inner Box Style → 3. Seal Master Cartons.',
                     accentColor: ErpTheme.productionAmber,
                     actions: [
                       OutlinedButton.icon(
@@ -139,7 +141,7 @@ class _PackingScreenState extends State<PackingScreen>
                   ),
                 ),
 
-              // Date bar on mobile + Tabs
+              // Date bar on mobile + 3-Step Tabs
               Container(
                 color: Colors.white,
                 child: Column(
@@ -165,17 +167,20 @@ class _PackingScreenState extends State<PackingScreen>
                         ),
                       ),
                     TabBar(
+                      key: const ValueKey('packing-tabs'),
                       controller: _tabController,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
                       labelColor: ErpTheme.productionAmberDark,
                       unselectedLabelColor: ErpTheme.slate500,
                       indicatorColor: ErpTheme.productionAmber,
                       labelStyle: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
-                      tabs: const [
-                        Tab(text: 'Products & Carry-Forward'),
-                        Tab(text: 'Recent Packing Log'),
+                      tabs: [
+                        Tab(text: 'Inner Pack ($pendingTapeCount)'),
+                        Tab(text: 'Cartons ($looseStylesCount)'),
+                        const Tab(text: 'Stock & Log'),
                       ],
                     ),
                   ],
@@ -242,8 +247,9 @@ class _PackingScreenState extends State<PackingScreen>
                     : TabBarView(
                         controller: _tabController,
                         children: [
-                          _buildProductsTab(vm),
-                          _buildRecentLogTab(vm),
+                          _buildInnerPackingQueueTab(vm),
+                          _buildMasterCartonQueueTab(vm),
+                          _buildReadyStockAndLogTab(vm),
                         ],
                       ),
               ),
@@ -254,90 +260,96 @@ class _PackingScreenState extends State<PackingScreen>
     );
   }
 
-  Widget _buildProductsTab(PackingViewModel vm) {
-    final products = vm.filteredProducts;
-    return RefreshIndicator(
-      onRefresh: vm.loadSummary,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-        children: [
-          // KPI Summary Strip
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final tileWidth = constraints.maxWidth >= 600
-                  ? (constraints.maxWidth - 16) / 3
-                  : (constraints.maxWidth - 8) / 2;
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    width: tileWidth,
-                    child: ErpStatTile(
-                      label: 'Factory Cartons',
-                      value: '${vm.totalFactoryCartons}',
-                      accentColor: ErpTheme.godownTealDark,
-                      icon: Icons.warehouse_rounded,
-                    ),
-                  ),
-                  SizedBox(
-                    width: tileWidth,
-                    child: ErpStatTile(
-                      label: 'Loose Inner Boxes',
-                      value: '${vm.totalLooseInnerBoxes}',
-                      accentColor: ErpTheme.productionAmber,
-                      icon: Icons.inventory_2_rounded,
-                    ),
-                  ),
-                  SizedBox(
-                    width: constraints.maxWidth >= 600
-                        ? tileWidth
-                        : constraints.maxWidth,
-                    child: ErpStatTile(
-                      label: 'Ready to Seal',
-                      value: '${vm.totalReadyToSealCartons} Cartons',
-                      accentColor: ErpTheme.salesBlueDark,
-                      icon: Icons.all_inbox_rounded,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
+  Widget _buildKpiStrip(PackingViewModel vm) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cols = constraints.maxWidth >= 720 ? 4 : 2;
+        final tileWidth = (constraints.maxWidth - (cols - 1) * 8) / cols;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            SizedBox(
+              width: tileWidth,
+              child: ErpStatTile(
+                label: 'Unpacked Tape',
+                value: '${vm.totalUnpackedTapeUnits}',
+                accentColor: ErpTheme.productionAmberDark,
+                icon: Icons.precision_manufacturing_rounded,
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: ErpStatTile(
+                label: 'Loose Inner Boxes',
+                value: '${vm.totalLooseInnerBoxes}',
+                accentColor: ErpTheme.hrIndigo,
+                icon: Icons.inventory_2_rounded,
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: ErpStatTile(
+                label: 'Ready to Seal',
+                value: '${vm.totalReadyToSealCartons} Ctn',
+                accentColor: ErpTheme.salesBlueDark,
+                icon: Icons.all_inbox_rounded,
+              ),
+            ),
+            SizedBox(
+              width: tileWidth,
+              child: ErpStatTile(
+                label: 'Factory Cartons',
+                value: '${vm.totalFactoryCartons}',
+                accentColor: ErpTheme.godownTealDark,
+                icon: Icons.warehouse_rounded,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-          // Search + Ready-to-Seal filter
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: vm.setSearchQuery,
-                  decoration: InputDecoration(
-                    hintText: 'Search finished garland (e.g. 1000, Core)...',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    suffixIcon: vm.searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              vm.setSearchQuery('');
-                            },
-                          )
-                        : null,
-                  ),
+  Widget _buildFilterControls(
+    PackingViewModel vm, {
+    bool includeReadyToggle = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: vm.setSearchQuery,
+                decoration: InputDecoration(
+                  hintText: 'Search item or style (e.g. 400, 800, Core)...',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  suffixIcon: vm.searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            vm.setSearchQuery('');
+                          },
+                        )
+                      : null,
                 ),
               ),
+            ),
+            if (includeReadyToggle) ...[
               const SizedBox(width: 8),
               FilterChip(
-                label: const Text('Ready Only'),
+                label: const Text('Full Cartons Only'),
                 selected: vm.showOnlyReadyToSeal,
                 onSelected: vm.toggleReadyToSealOnly,
                 selectedColor: ErpTheme.godownTealSoft,
                 visualDensity: VisualDensity.compact,
                 labelStyle: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w700,
                   color: vm.showOnlyReadyToSeal
                       ? ErpTheme.godownTealDark
@@ -345,10 +357,10 @@ class _PackingScreenState extends State<PackingScreen>
                 ),
               ),
             ],
-          ),
+          ],
+        ),
+        if (vm.subCategories.length > 1) ...[
           const SizedBox(height: 8),
-
-          // Sub-category filter chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -374,20 +386,35 @@ class _PackingScreenState extends State<PackingScreen>
               ],
             ),
           ),
-          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
 
-          if (products.isEmpty)
+  Widget _buildInnerPackingQueueTab(PackingViewModel vm) {
+    final pendingItems = vm.pendingTapeItems;
+    return RefreshIndicator(
+      onRefresh: vm.loadSummary,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        children: [
+          _buildKpiStrip(vm),
+          const SizedBox(height: 12),
+          _buildFilterControls(vm),
+          const SizedBox(height: 10),
+          if (pendingItems.isEmpty)
             const Padding(
-              padding: EdgeInsets.only(top: 40),
+              padding: EdgeInsets.only(top: 36),
               child: ErpEmptyState(
-                icon: Icons.inventory_2_outlined,
-                title: 'No Matching Finished Products',
-                subtitle: 'Clear filters or search to view all 23 Garland SKUs.',
+                icon: Icons.precision_manufacturing_outlined,
+                title: 'No Unpacked Tape Production',
+                subtitle:
+                    'Items appear here automatically as soon as Tape department entries are saved in Daily Production.',
               ),
             )
           else
-            for (final product in products) ...[
-              _buildProductCard(product),
+            for (final tapeItem in pendingItems) ...[
+              _buildTapeQueueCard(tapeItem),
               const SizedBox(height: 10),
             ],
         ],
@@ -395,22 +422,213 @@ class _PackingScreenState extends State<PackingScreen>
     );
   }
 
-  Widget _buildProductCard(PackingProductStatus p) {
+  Widget _buildTapeQueueCard(TapeWipPackingItem item) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            item.wipName,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: ErpTheme.slate900,
+                            ),
+                          ),
+                          if (item.subCategory != null)
+                            ErpBadge(
+                              label: item.subCategory!,
+                              backgroundColor: ErpTheme.productionAmberSoft,
+                              foregroundColor: ErpTheme.productionAmberDark,
+                            ),
+                          ErpBadge(
+                            label: 'TAPE OUTPUT',
+                            backgroundColor: ErpTheme.slate100,
+                            foregroundColor: ErpTheme.slate700,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tape Produced: ${item.totalProducedUnits}  •  Already Packed: ${item.totalPackedUnits}'
+                        '${item.totalDamagedUnits > 0 ? '  •  Damaged: ${item.totalDamagedUnits}' : ''}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: ErpTheme.slate500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ErpTheme.ordersEmeraldSoft,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: ErpTheme.ordersEmerald.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${item.unpackedUnits}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: ErpTheme.godownTealDark,
+                        ),
+                      ),
+                      const Text(
+                        'Ready to Box',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: ErpTheme.godownTealDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (item.styleOptions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: ErpTheme.slate50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: ErpTheme.slate200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.styleOptions.length > 1
+                          ? 'Can be packed into ${item.styleOptions.length} Box Styles:'
+                          : 'Packing Box Style:',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: ErpTheme.slate500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final s in item.styleOptions)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: ErpTheme.slate200),
+                            ),
+                            child: Text(
+                              '${s.name} (${s.boxesPerCase}/case)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: ErpTheme.slate800,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              key: ValueKey('inner-pack-wip-${item.wipName}'),
+              onPressed: item.styleOptions.isEmpty
+                  ? null
+                  : () => _openInnerBoxSheet(item),
+              style: FilledButton.styleFrom(
+                backgroundColor: ErpTheme.productionAmber,
+                minimumSize: const Size(0, 44),
+              ),
+              icon: const Icon(Icons.inventory_rounded, size: 18),
+              label: Text(
+                item.styleOptions.length > 1
+                    ? 'Choose Style & Pack Inner Boxes'
+                    : 'Pack Into ${item.styleOptions.first.name}',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMasterCartonQueueTab(PackingViewModel vm) {
+    final queue = vm.looseMasterCartonQueue;
+    return RefreshIndicator(
+      onRefresh: vm.loadSummary,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        children: [
+          _buildKpiStrip(vm),
+          const SizedBox(height: 12),
+          _buildFilterControls(vm, includeReadyToggle: true),
+          const SizedBox(height: 10),
+          if (queue.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 36),
+              child: ErpEmptyState(
+                icon: Icons.all_inbox_outlined,
+                title: 'No Loose Inner Boxes in Queue',
+                subtitle:
+                    'Pack produced Tape items in Tab 1 (Inner Packing) first — packed inner boxes will appear here for Master Carton sealing.',
+              ),
+            )
+          else
+            for (final product in queue) ...[
+              _buildMasterCartonCard(product),
+              const SizedBox(height: 10),
+            ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMasterCartonCard(PackingProductStatus p) {
     final canSeal = p.readyToSealCartons > 0;
-    final otherGodowns = p.godownCartons.entries
-        .where(
-          (e) =>
-              e.value > 0 &&
-              e.key.trim().toLowerCase() != 'factory ready stock',
-        )
-        .toList();
 
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,7 +645,7 @@ class _PackingScreenState extends State<PackingScreen>
                           Text(
                             p.name,
                             style: const TextStyle(
-                              fontSize: 15,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w900,
                               color: ErpTheme.slate900,
                             ),
@@ -441,7 +659,7 @@ class _PackingScreenState extends State<PackingScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${p.code}${p.subCategory != null ? '  •  ${p.subCategory}' : ''}',
+                        '${p.wipName != null ? 'From Tape ${p.wipName}  •  ' : ''}${p.subCategory ?? p.code}',
                         style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -452,39 +670,18 @@ class _PackingScreenState extends State<PackingScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    ErpBadge(
-                      label: 'Factory: ${p.factoryCartons} Ctn',
-                      backgroundColor: p.factoryCartons > 0
-                          ? ErpTheme.godownTealSoft
-                          : ErpTheme.slate100,
-                      foregroundColor: p.factoryCartons > 0
-                          ? ErpTheme.godownTealDark
-                          : ErpTheme.slate500,
-                    ),
-                    if (otherGodowns.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          otherGodowns
-                              .map((e) => '${e.key.split(' ').first}: ${e.value}')
-                              .join(' • '),
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: ErpTheme.slate500,
-                          ),
-                        ),
-                      ),
-                  ],
+                ErpBadge(
+                  label: 'Factory: ${p.factoryCartons} Ctn',
+                  backgroundColor: p.factoryCartons > 0
+                      ? ErpTheme.godownTealSoft
+                      : ErpTheme.slate100,
+                  foregroundColor: p.factoryCartons > 0
+                      ? ErpTheme.godownTealDark
+                      : ErpTheme.slate500,
                 ),
               ],
             ),
             const SizedBox(height: 10),
-
-            // Carry-forward loose inner box meter
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -495,17 +692,18 @@ class _PackingScreenState extends State<PackingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Flexible(
-                        child: Text(
-                          'Loose Inner Boxes: ${p.looseInnerBoxes}',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: ErpTheme.slate800,
-                          ),
+                      Text(
+                        'Loose Inner Boxes: ${p.looseInnerBoxes}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: ErpTheme.slate800,
                         ),
                       ),
                       if (canSeal)
@@ -516,7 +714,7 @@ class _PackingScreenState extends State<PackingScreen>
                         )
                       else
                         Text(
-                          '${p.neededForNextCarton} more for 1 carton',
+                          'Carry-forward (${p.neededForNextCarton} more for 1 carton)',
                           style: const TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w700,
@@ -543,7 +741,7 @@ class _PackingScreenState extends State<PackingScreen>
                     Padding(
                       padding: const EdgeInsets.only(top: 5),
                       child: Text(
-                        'Sealing all ${p.readyToSealCartons} cartons leaves ${p.remainderLooseBoxes} boxes carried forward.',
+                        'Sealing ${p.readyToSealCartons} cartons leaves ${p.remainderLooseBoxes} loose boxes carried forward.',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -555,43 +753,19 @@ class _PackingScreenState extends State<PackingScreen>
               ),
             ),
             const SizedBox(height: 10),
-
-            // Action Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: ValueKey('inner-pack-btn-${p.code}'),
-                    onPressed: () => _openInnerBoxSheet(p),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: ErpTheme.productionAmberDark,
-                      side: BorderSide(
-                        color: ErpTheme.productionAmber.withValues(alpha: 0.45),
-                      ),
-                      minimumSize: const Size(0, 42),
-                    ),
-                    icon: const Icon(Icons.add_box_outlined, size: 17),
-                    label: const Text('+ Inner Pack'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.icon(
-                    key: ValueKey('seal-carton-btn-${p.code}'),
-                    onPressed: canSeal ? () => _openSealCartonsSheet(p) : null,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: ErpTheme.godownTealDark,
-                      minimumSize: const Size(0, 42),
-                    ),
-                    icon: const Icon(Icons.all_inbox_rounded, size: 17),
-                    label: Text(
-                      canSeal
-                          ? 'Seal (${p.readyToSealCartons})'
-                          : 'Seal Cartons',
-                    ),
-                  ),
-                ),
-              ],
+            FilledButton.icon(
+              key: ValueKey('seal-carton-btn-${p.code}'),
+              onPressed: canSeal ? () => _openSealCartonsSheet(p) : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: ErpTheme.godownTealDark,
+                minimumSize: const Size(0, 42),
+              ),
+              icon: const Icon(Icons.all_inbox_rounded, size: 17),
+              label: Text(
+                canSeal
+                    ? 'Seal ${p.readyToSealCartons} Master Cartons'
+                    : 'Waiting for ${p.neededForNextCarton} More Boxes',
+              ),
             ),
           ],
         ),
@@ -599,112 +773,191 @@ class _PackingScreenState extends State<PackingScreen>
     );
   }
 
-  Widget _buildRecentLogTab(PackingViewModel vm) {
+  Widget _buildReadyStockAndLogTab(PackingViewModel vm) {
+    final readyStock = vm.readyStockProducts;
     final entries = vm.recentEntries;
     final dateFmt = DateFormat('dd MMM yyyy');
 
-    if (entries.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: vm.loadSummary,
-        child: ListView(
-          children: const [
-            SizedBox(height: 80),
-            ErpEmptyState(
-              icon: Icons.history_rounded,
-              title: 'No Packing Activity Yet',
-              subtitle:
-                  'Record Inner Box Packing or Seal Master Cartons to see the live trail here.',
-            ),
-          ],
-        ),
-      );
-    }
-
     return RefreshIndicator(
       onRefresh: vm.loadSummary,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-        itemCount: entries.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (ctx, idx) {
-          final e = entries[idx];
-          return Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ErpBadge(
-                        label: e.isMasterCarton
-                            ? 'SEALED CARTONS'
-                            : 'INNER PACKED',
-                        backgroundColor: e.isMasterCarton
-                            ? ErpTheme.godownTealSoft
-                            : ErpTheme.productionAmberSoft,
-                        foregroundColor: e.isMasterCarton
-                            ? ErpTheme.godownTealDark
-                            : ErpTheme.productionAmberDark,
-                      ),
-                      Text(
-                        dateFmt.format(e.date),
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: ErpTheme.slate500,
-                        ),
-                      ),
-                      Text(
-                        '• By ${e.createdBy}',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: ErpTheme.slate500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${e.productName} (${e.productCode})',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: ErpTheme.slate900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    e.isMasterCarton
-                        ? 'Sealed ${e.masterCartonsSealed} Master Cartons (${e.innerBoxesConsumed} boxes @ ${e.boxesPerCase}/case) → ${e.targetGodownName ?? 'Factory Ready Stock'}  •  Loose left: ${e.looseRemainingAfter}'
-                        : 'Packed +${e.innerBoxesPacked} inner boxes${e.damagedBoxes > 0 ? ' (${e.damagedBoxes} damaged)' : ''}  •  Loose balance: ${e.looseRemainingAfter}',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: ErpTheme.slate700,
-                    ),
-                  ),
-                  if ((e.remarks ?? '').isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Note: ${e.remarks}',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          color: ErpTheme.slate500,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        children: [
+          const Text(
+            'Sealed Master Cartons in Stock',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: ErpTheme.slate900,
             ),
-          );
-        },
+          ),
+          const SizedBox(height: 8),
+          if (readyStock.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: ErpTheme.slate200),
+              ),
+              child: const Text(
+                'No sealed Master Cartons in stock yet.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: ErpTheme.slate500,
+                ),
+              ),
+            )
+          else
+            for (final p in readyStock)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.name,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: ErpTheme.slate900,
+                              ),
+                            ),
+                            Text(
+                              '${p.boxesPerCase} boxes/case  •  ${p.godownCartons.entries.where((e) => e.value > 0).map((e) => '${e.key}: ${e.value}').join(' • ')}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        ErpBadge(
+                          label: 'Factory Ready: ${p.factoryCartons} Ctn',
+                          backgroundColor: ErpTheme.godownTealSoft,
+                          foregroundColor: ErpTheme.godownTealDark,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          const SizedBox(height: 16),
+          const Text(
+            'Recent Packing Activity Log',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: ErpTheme.slate900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (entries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: ErpEmptyState(
+                icon: Icons.history_rounded,
+                title: 'No Packing Activity Yet',
+                subtitle:
+                    'Inner box packing and Master Carton sealing entries will appear here.',
+              ),
+            )
+          else
+            for (final e in entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ErpBadge(
+                              label: e.isMasterCarton
+                                  ? 'SEALED CARTONS'
+                                  : 'INNER PACKED',
+                              backgroundColor: e.isMasterCarton
+                                  ? ErpTheme.godownTealSoft
+                                  : ErpTheme.productionAmberSoft,
+                              foregroundColor: e.isMasterCarton
+                                  ? ErpTheme.godownTealDark
+                                  : ErpTheme.productionAmberDark,
+                            ),
+                            Text(
+                              dateFmt.format(e.date),
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                            Text(
+                              '• By ${e.createdBy}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${e.wipName != null && !e.isMasterCarton ? 'Tape ${e.wipName} → ' : ''}${e.productName} (${e.productCode})',
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: ErpTheme.slate900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          e.isMasterCarton
+                              ? 'Sealed ${e.masterCartonsSealed} Master Cartons (${e.innerBoxesConsumed} boxes @ ${e.boxesPerCase}/case) → ${e.targetGodownName ?? 'Factory Ready Stock'}  •  Loose left: ${e.looseRemainingAfter}'
+                              : 'Packed +${e.innerBoxesPacked} inner boxes${e.damagedBoxes > 0 ? ' (${e.damagedBoxes} damaged)' : ''}  •  Loose balance: ${e.looseRemainingAfter}',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: ErpTheme.slate700,
+                          ),
+                        ),
+                        if ((e.remarks ?? '').isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'Note: ${e.remarks}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: ErpTheme.slate500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+        ],
       ),
     );
   }
@@ -712,11 +965,11 @@ class _PackingScreenState extends State<PackingScreen>
 
 class _InnerBoxPackingSheet extends StatefulWidget {
   const _InnerBoxPackingSheet({
-    required this.product,
+    required this.tapeItem,
     required this.viewModel,
   });
 
-  final PackingProductStatus product;
+  final TapeWipPackingItem tapeItem;
   final PackingViewModel viewModel;
 
   @override
@@ -724,11 +977,18 @@ class _InnerBoxPackingSheet extends StatefulWidget {
 }
 
 class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
+  late int _selectedStyleId;
   final TextEditingController _qtyCtrl = TextEditingController();
   final TextEditingController _damagedCtrl = TextEditingController(text: '0');
   final TextEditingController _remarksCtrl = TextEditingController();
   bool _autoSeal = false;
   String? _formError;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStyleId = widget.tapeItem.styleOptions.first.id;
+  }
 
   @override
   void dispose() {
@@ -738,18 +998,26 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
     super.dispose();
   }
 
+  PackingStyleOption get _selectedStyle => widget.tapeItem.styleOptions
+      .firstWhere((s) => s.id == _selectedStyleId);
+
   @override
   Widget build(BuildContext context) {
-    final product = widget.product;
+    final tape = widget.tapeItem;
     final vm = widget.viewModel;
+    final style = _selectedStyle;
+
     final packed = int.tryParse(_qtyCtrl.text.trim()) ?? 0;
     final damaged = int.tryParse(_damagedCtrl.text.trim()) ?? 0;
-    final totalLoose = product.looseInnerBoxes + packed;
-    final autoCartons = _autoSeal && product.boxesPerCase > 0
-        ? totalLoose ~/ product.boxesPerCase
+    final totalFromTape = packed + damaged;
+    final exceedsTape = totalFromTape > tape.unpackedUnits;
+
+    final totalLoose = style.looseInnerBoxes + packed;
+    final autoCartons = _autoSeal && style.boxesPerCase > 0
+        ? totalLoose ~/ style.boxesPerCase
         : 0;
     final leftover = _autoSeal
-        ? totalLoose - (autoCartons * product.boxesPerCase)
+        ? totalLoose - (autoCartons * style.boxesPerCase)
         : totalLoose;
 
     return Padding(
@@ -794,20 +1062,20 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Step 2A: Inner Box Packing',
-                        style: TextStyle(
-                          fontSize: 15,
+                      Text(
+                        'Pack Tape Item: ${tape.wipName}',
+                        style: const TextStyle(
+                          fontSize: 15.5,
                           fontWeight: FontWeight.w900,
                           color: ErpTheme.slate900,
                         ),
                       ),
                       Text(
-                        '${product.name}  •  ${product.boxesPerCase} Boxes / Master Carton',
+                        'Available from Tape Production: ${tape.unpackedUnits} units (1 unit = 1 box)',
                         style: const TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: ErpTheme.slate500,
+                          fontWeight: FontWeight.w700,
+                          color: ErpTheme.godownTealDark,
                         ),
                       ),
                     ],
@@ -816,38 +1084,114 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: ErpTheme.slate50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: ErpTheme.slate200),
-              ),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                alignment: WrapAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Current Loose Boxes: ${product.looseInnerBoxes}',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: ErpTheme.slate800,
-                    ),
-                  ),
-                  Text(
-                    'Factory Stock: ${product.factoryCartons} Cartons',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: ErpTheme.godownTealDark,
-                    ),
-                  ),
-                ],
+
+            // 1. Style / Box Type Selector
+            Text(
+              tape.styleOptions.length > 1
+                  ? '1. Choose Packing Style / Box Type *'
+                  : 'Packing Style / Box Type',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: ErpTheme.slate800,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
+            for (final opt in tape.styleOptions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: InkWell(
+                  key: ValueKey('style-option-${opt.code}'),
+                  onTap: () => setState(() => _selectedStyleId = opt.id),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: opt.id == _selectedStyleId
+                          ? ErpTheme.productionAmberSoft
+                          : ErpTheme.slate50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: opt.id == _selectedStyleId
+                            ? ErpTheme.productionAmber
+                            : ErpTheme.slate200,
+                        width: opt.id == _selectedStyleId ? 1.6 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          opt.id == _selectedStyleId
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_off_rounded,
+                          size: 18,
+                          color: opt.id == _selectedStyleId
+                              ? ErpTheme.productionAmberDark
+                              : ErpTheme.slate500,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                opt.name,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: ErpTheme.slate900,
+                                ),
+                              ),
+                              Text(
+                                '${opt.boxesPerCase} Boxes / Master Carton  •  Loose Balance: ${opt.looseInnerBoxes}',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: ErpTheme.slate500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  '2. Enter Inner Boxes Packed',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: ErpTheme.slate800,
+                  ),
+                ),
+                ActionChip(
+                  key: const ValueKey('pack-all-available-chip'),
+                  label: Text('Pack All (${tape.unpackedUnits})'),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    setState(() {
+                      _qtyCtrl.text = '${tape.unpackedUnits}';
+                      _damagedCtrl.text = '0';
+                      _formError = null;
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
@@ -859,9 +1203,9 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     onChanged: (_) => setState(() => _formError = null),
-                    decoration: const InputDecoration(
-                      labelText: 'Good Inner Boxes Packed *',
-                      hintText: 'e.g. 1000',
+                    decoration: InputDecoration(
+                      labelText: 'Good Inner Boxes *',
+                      hintText: 'Max ${tape.unpackedUnits}',
                     ),
                   ),
                 ),
@@ -895,56 +1239,47 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
                 ),
               ),
               subtitle: Text(
-                'Automatically converts multiples of ${product.boxesPerCase} boxes into Factory Ready Stock and carries forward leftovers.',
+                'Converts multiples of ${style.boxesPerCase} boxes into Factory Ready Stock and keeps leftovers in Master Cartons queue.',
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: ErpTheme.slate500,
                 ),
               ),
             ),
-            if (packed > 0) ...[
+            if (packed > 0 || exceedsTape) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _autoSeal && autoCartons > 0
+                  color: exceedsTape
+                      ? ErpTheme.dangerRoseSoft
+                      : _autoSeal && autoCartons > 0
                       ? ErpTheme.godownTealSoft
                       : ErpTheme.productionAmberSoft,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _autoSeal && autoCartons > 0
+                    color: exceedsTape
+                        ? ErpTheme.dangerRose.withValues(alpha: 0.4)
+                        : _autoSeal && autoCartons > 0
                         ? ErpTheme.godownTeal.withValues(alpha: 0.35)
                         : ErpTheme.productionAmber.withValues(alpha: 0.35),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _autoSeal && autoCartons > 0
-                          ? 'Preview: $totalLoose ÷ ${product.boxesPerCase} = $autoCartons Master Cartons + $leftover Loose Boxes'
-                          : 'Preview: New Loose Balance = $totalLoose boxes (${totalLoose ~/ product.boxesPerCase} full cartons ready to seal)',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: _autoSeal && autoCartons > 0
-                            ? ErpTheme.godownTealDark
-                            : ErpTheme.productionAmberDark,
-                      ),
-                    ),
-                    if (damaged > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: Text(
-                          'Damaged / Rejected recorded: $damaged boxes',
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: ErpTheme.dangerRose,
-                          ),
-                        ),
-                      ),
-                  ],
+                child: Text(
+                  exceedsTape
+                      ? 'Exceeds available Tape production! Entered $totalFromTape units, only ${tape.unpackedUnits} available.'
+                      : _autoSeal && autoCartons > 0
+                      ? 'Preview (${style.name}): $totalLoose ÷ ${style.boxesPerCase} = $autoCartons Master Cartons + $leftover Loose Boxes'
+                      : 'Preview (${style.name}): $totalLoose Loose Boxes (${totalLoose ~/ style.boxesPerCase} full cartons ready) • ${tape.unpackedUnits - totalFromTape} Tape units left unpacked',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: exceedsTape
+                        ? ErpTheme.dangerRose
+                        : _autoSeal && autoCartons > 0
+                        ? ErpTheme.godownTealDark
+                        : ErpTheme.productionAmberDark,
+                  ),
                 ),
               ),
             ],
@@ -970,7 +1305,7 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
             const SizedBox(height: 14),
             FilledButton.icon(
               key: const ValueKey('save-inner-pack-btn'),
-              onPressed: vm.isSubmitting
+              onPressed: vm.isSubmitting || exceedsTape
                   ? null
                   : () async {
                       if (packed <= 0) {
@@ -980,7 +1315,9 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
                         return;
                       }
                       final ok = await vm.recordInnerBoxPacking(
-                        product: product,
+                        styleProductId: style.id,
+                        styleName: style.name,
+                        wipName: tape.wipName,
                         innerBoxesPacked: packed,
                         damagedBoxes: damaged,
                         autoSealCartons: _autoSeal,
@@ -1001,8 +1338,8 @@ class _InnerBoxPackingSheetState extends State<_InnerBoxPackingSheet> {
               icon: const Icon(Icons.check_circle_outline_rounded),
               label: Text(
                 _autoSeal && autoCartons > 0
-                    ? 'Save & Seal $autoCartons Cartons'
-                    : 'Save Inner Box Packing',
+                    ? 'Pack into ${style.name} & Seal $autoCartons Ctn'
+                    : 'Pack into ${style.name}',
               ),
             ),
           ],
@@ -1105,7 +1442,7 @@ class _SealMasterCartonsSheetState extends State<_SealMasterCartonsSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Step 2B: Seal Master Cartons',
+                        'Seal Master Cartons',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,

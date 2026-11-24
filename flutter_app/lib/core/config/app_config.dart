@@ -10,12 +10,12 @@ class AppConfig {
   /// Keep in sync with pubspec.yaml (or override via --dart-define).
   static const String appVersionName = String.fromEnvironment(
     'APP_VERSION_NAME',
-    defaultValue: '1.0.28',
+    defaultValue: '1.0.29',
   );
 
   static const int appVersionCode = int.fromEnvironment(
     'APP_VERSION_CODE',
-    defaultValue: 29,
+    defaultValue: 30,
   );
 
   static const Duration requestTimeout = Duration(seconds: 35);

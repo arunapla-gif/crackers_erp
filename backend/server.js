@@ -3011,12 +3011,78 @@ async function adjustStockLedgerCartons(tx, { godownId, productId, productName, 
   }
 }
 
+async function computeTapeWipBalances(db) {
+  const tapeWips = await db.product.findMany({
+    where: {
+      type: 'WIP',
+      status: 'Active',
+      category: { equals: 'TAPE', mode: 'insensitive' }
+    },
+    orderBy: [{ subCategory: 'asc' }, { id: 'asc' }]
+  });
+
+  if (tapeWips.length === 0) {
+    return { tapeWips: [], statsByWipId: new Map() };
+  }
+
+  const wipByLowerName = new Map(
+    tapeWips.map((w) => [String(w.name).trim().toLowerCase(), w])
+  );
+  const statsByWipId = new Map(
+    tapeWips.map((w) => [w.id, { produced: 0, packedGood: 0, damaged: 0, unpacked: 0 }])
+  );
+
+  // 1. Sum saved DailyProductionItem quantities strictly for Tape department workers
+  const tapeProdItems = await db.dailyProductionItem.findMany({
+    where: {
+      dailyProduction: {
+        employee: {
+          role: { contains: 'tape', mode: 'insensitive' }
+        }
+      }
+    },
+    select: { itemName: true, quantity: true }
+  });
+
+  for (const row of tapeProdItems) {
+    const key = String(row.itemName || '').trim().toLowerCase();
+    const wip = wipByLowerName.get(key);
+    if (!wip) continue;
+    const stat = statsByWipId.get(wip.id);
+    stat.produced += Number(row.quantity || 0);
+  }
+
+  // 2. Subtract all INNER_BOX packing entries linked via finished product.factoryAliasId
+  const innerEntries = await db.packingEntry.findMany({
+    where: { entryType: 'INNER_BOX' },
+    select: {
+      innerBoxesPacked: true,
+      damagedBoxes: true,
+      product: { select: { factoryAliasId: true } }
+    }
+  });
+
+  for (const entry of innerEntries) {
+    const wipId = entry.product?.factoryAliasId;
+    if (!wipId || !statsByWipId.has(wipId)) continue;
+    const stat = statsByWipId.get(wipId);
+    stat.packedGood += Number(entry.innerBoxesPacked || 0);
+    stat.damaged += Number(entry.damagedBoxes || 0);
+  }
+
+  for (const stat of statsByWipId.values()) {
+    stat.unpacked = Math.max(0, stat.produced - (stat.packedGood + stat.damaged));
+  }
+
+  return { tapeWips, statsByWipId };
+}
+
 app.get('/api/packing/summary', async (req, res) => {
   try {
     const allowed = await canAccessModule(req, 'packing', 'view');
     if (!allowed) return res.status(403).json({ error: 'Access denied.' });
 
-    const [products, godowns, ledger, recentEntries] = await Promise.all([
+    const [products, godowns, ledger, recentEntries, tapePool] = await Promise.all([
       prisma.product.findMany({
         where: { type: 'INV', status: 'Active' },
         include: {
@@ -3028,10 +3094,21 @@ app.get('/api/packing/summary', async (req, res) => {
       prisma.godown.findMany({ orderBy: { id: 'asc' } }),
       prisma.stockLedger.findMany({ include: { godown: true } }),
       prisma.packingEntry.findMany({
-        include: { product: { select: { id: true, code: true, name: true, subCategory: true } } },
+        include: {
+          product: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              subCategory: true,
+              factoryAlias: { select: { id: true, code: true, name: true } }
+            }
+          }
+        },
         orderBy: [{ date: 'desc' }, { id: 'desc' }],
-        take: 40
-      })
+        take: 50
+      }),
+      computeTapeWipBalances(prisma)
     ]);
 
     const factoryGodown = godowns.find(
@@ -3076,9 +3153,47 @@ app.get('/api/packing/summary', async (req, res) => {
       };
     });
 
+    const stylesByWipId = new Map();
+    for (const sp of summaryProducts) {
+      if (!sp.wipProductId) continue;
+      if (!stylesByWipId.has(sp.wipProductId)) {
+        stylesByWipId.set(sp.wipProductId, []);
+      }
+      stylesByWipId.get(sp.wipProductId).push({
+        id: sp.id,
+        code: sp.code,
+        name: sp.name,
+        subCategory: sp.subCategory,
+        boxesPerCase: sp.boxesPerCase,
+        looseInnerBoxes: sp.looseInnerBoxes,
+        factoryCartons: sp.factoryCartons
+      });
+    }
+
+    const tapeQueue = tapePool.tapeWips.map((wip) => {
+      const stat = tapePool.statsByWipId.get(wip.id) || {
+        produced: 0,
+        packedGood: 0,
+        damaged: 0,
+        unpacked: 0
+      };
+      return {
+        wipId: wip.id,
+        wipCode: wip.code,
+        wipName: wip.name,
+        subCategory: wip.subCategory,
+        totalProducedUnits: stat.produced,
+        totalPackedUnits: stat.packedGood,
+        totalDamagedUnits: stat.damaged,
+        unpackedUnits: stat.unpacked,
+        styleOptions: stylesByWipId.get(wip.id) || []
+      };
+    });
+
     res.json({
       factoryGodownId: factoryGodown?.id || null,
       godowns: godowns.map((g) => ({ id: g.id, name: g.name })),
+      tapeQueue,
       products: summaryProducts,
       recentEntries: recentEntries.map((e) => ({
         id: e.id,
@@ -3087,6 +3202,7 @@ app.get('/api/packing/summary', async (req, res) => {
         productId: e.productId,
         productCode: e.product?.code || '',
         productName: e.product?.name || '',
+        wipName: e.product?.factoryAlias?.name || null,
         subCategory: e.product?.subCategory || null,
         innerBoxesPacked: e.innerBoxesPacked,
         damagedBoxes: e.damagedBoxes,
@@ -3116,16 +3232,36 @@ app.post('/api/packing/inner-boxes', async (req, res) => {
     const damagedQty = Math.max(0, parseInt(damagedBoxes || 0, 10));
 
     if (!Number.isFinite(prodId) || !Number.isFinite(packedQty) || packedQty <= 0) {
-      return res.status(400).json({ error: 'Valid product and inner box quantity (> 0) are required.' });
+      return res.status(400).json({ error: 'Valid packing style and inner box quantity (> 0) are required.' });
     }
 
     const entryDate = date ? normalizeUtcDate(date) : normalizeUtcDate(new Date());
     const isoDate = toIsoDateOnly(entryDate);
 
     const result = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { id: prodId } });
-      if (!product) throw new Error('Finished product not found.');
+      const product = await tx.product.findUnique({
+        where: { id: prodId },
+        include: { factoryAlias: true }
+      });
+      if (!product) throw new Error('Packing style product not found.');
       const boxesPerCase = Math.max(1, parseInt(product.boxesPerCase || 1, 10));
+
+      // Enforce Tape production pool availability (1 Tape unit = 1 Inner Box)
+      let unpackedRemainingAfter = null;
+      if (product.factoryAliasId) {
+        const { statsByWipId } = await computeTapeWipBalances(tx);
+        const stat = statsByWipId.get(product.factoryAliasId);
+        if (stat) {
+          const requestedFromTape = packedQty + damagedQty;
+          if (requestedFromTape > stat.unpacked) {
+            const wipLabel = product.factoryAlias?.name || 'Tape item';
+            throw new Error(
+              `Cannot pack ${requestedFromTape} units of Tape item "${wipLabel}". Only ${stat.unpacked} unpacked units are available from saved Tape production.`
+            );
+          }
+          unpackedRemainingAfter = stat.unpacked - requestedFromTape;
+        }
+      }
 
       const prevBalance = await tx.packingBalance.upsert({
         where: { productId: prodId },
@@ -3163,9 +3299,20 @@ app.post('/api/packing/inner-boxes', async (req, res) => {
         action: 'CREATE',
         recordId: innerEntry.id,
         targetDate: isoDate,
-        summary: `Inner packed ${packedQty} boxes of ${product.name}${damagedQty > 0 ? ` (${damagedQty} damaged)` : ''} — Loose balance: ${looseAfterInner}`,
-        beforeData: { productName: product.name, looseInnerBoxes: prevBalance.looseInnerBoxes },
-        afterData: { productName: product.name, innerBoxesPacked: packedQty, damagedBoxes: damagedQty, looseInnerBoxes: looseAfterInner }
+        summary: `Inner packed ${packedQty} boxes${product.factoryAlias?.name ? ` from Tape "${product.factoryAlias.name}"` : ''} into ${product.name}${damagedQty > 0 ? ` (${damagedQty} damaged)` : ''} — Loose balance: ${looseAfterInner}`,
+        beforeData: {
+          wipItem: product.factoryAlias?.name || null,
+          productName: product.name,
+          looseInnerBoxes: prevBalance.looseInnerBoxes
+        },
+        afterData: {
+          wipItem: product.factoryAlias?.name || null,
+          productName: product.name,
+          innerBoxesPacked: packedQty,
+          damagedBoxes: damagedQty,
+          looseInnerBoxes: looseAfterInner,
+          unpackedTapeRemaining: unpackedRemainingAfter
+        }
       });
 
       let cartonEntry = null;
@@ -3219,6 +3366,8 @@ app.post('/api/packing/inner-boxes', async (req, res) => {
       return {
         innerEntry,
         cartonEntry,
+        wipName: product.factoryAlias?.name || null,
+        unpackedTapeRemaining: unpackedRemainingAfter,
         productName: product.name,
         boxesPerCase,
         sealedCartons,
