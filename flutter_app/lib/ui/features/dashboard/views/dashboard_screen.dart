@@ -6,7 +6,7 @@ import 'package:crackers_erp/domain/models/user_session.dart';
 import 'package:crackers_erp/ui/core/app_update_dialog.dart';
 import 'package:crackers_erp/ui/features/auth/view_models/auth_view_model.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     required this.authViewModel,
     this.onSelectDocType,
@@ -18,12 +18,26 @@ class DashboardScreen extends StatelessWidget {
   final void Function(String docType)? onSelectDocType;
   final void Function(String path)? onNavigateOverride;
 
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppUpdateScope.maybeOf(context)?.maybeCheckOnStartup(context);
+    });
+  }
+
   void _go(BuildContext context, String path, {String? docType}) {
     if (docType != null) {
-      onSelectDocType?.call(docType);
+      widget.onSelectDocType?.call(docType);
     }
-    if (onNavigateOverride != null) {
-      onNavigateOverride!(path);
+    if (widget.onNavigateOverride != null) {
+      widget.onNavigateOverride!(path);
     } else {
       context.go(path);
     }
@@ -71,9 +85,9 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: authViewModel,
+      listenable: widget.authViewModel,
       builder: (context, _) {
-        final user = authViewModel.currentUser;
+        final user = widget.authViewModel.currentUser;
         if (user == null) return const SizedBox.shrink();
 
         final cards = <_DashboardModuleCardData>[
@@ -182,35 +196,14 @@ class DashboardScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              if (AppUpdateScope.maybeOf(
-                                    context,
-                                  )?.isSupportedPlatform ==
-                                  true) ...[
-                                OutlinedButton.icon(
-                                  onPressed: () => AppUpdateScope.maybeOf(
-                                    context,
-                                  )?.checkManually(context),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: ErpTheme.salesBlueDark,
-                                    backgroundColor: Colors.white,
-                                    side: const BorderSide(
-                                      color: ErpTheme.slate200,
-                                    ),
-                                    shape: const StadiumBorder(),
-                                  ),
-                                  icon: const Icon(
-                                    Icons.system_update_rounded,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Updates'),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
+                              const AppVersionUpdatePill(),
                               OutlinedButton.icon(
-                                onPressed: () => authViewModel.logout(),
+                                onPressed: () => widget.authViewModel.logout(),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: ErpTheme.dangerRose,
                                   backgroundColor: Colors.white,

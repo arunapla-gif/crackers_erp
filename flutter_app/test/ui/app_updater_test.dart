@@ -10,18 +10,24 @@ class _FakeAppUpdaterService implements AppUpdaterService {
     this.installed = const AppVersionInfo(versionCode: 2, versionName: '1.0.1'),
     this.remoteUpdate,
     this.installResult = ApkInstallResult.started,
+    this.webMode = false,
   });
 
   final AppVersionInfo installed;
   AppUpdateInfo? remoteUpdate;
   ApkInstallResult installResult;
+  final bool webMode;
 
   int checkCount = 0;
   int downloadCount = 0;
   int installCount = 0;
+  int webReloadCount = 0;
 
   @override
   bool get isSupportedPlatform => true;
+
+  @override
+  bool get isWebReloadUpdater => webMode;
 
   @override
   Future<AppVersionInfo?> getInstalledVersion() async => installed;
@@ -30,6 +36,11 @@ class _FakeAppUpdaterService implements AppUpdaterService {
   Future<AppUpdateInfo?> checkForUpdate(String apiBaseUrl) async {
     checkCount += 1;
     return remoteUpdate;
+  }
+
+  @override
+  Future<void> applyWebUpdate() async {
+    webReloadCount += 1;
   }
 
   @override
@@ -281,4 +292,67 @@ void main() {
 
     expect(find.text('App is up to date (v1.0.1 (2)).'), findsOneWidget);
   });
+
+  testWidgets(
+    'Web updater shows installed version pill, highlights available update after Later, and reloads on Reload & Update',
+    (WidgetTester tester) async {
+      final fakeUpdater = _FakeAppUpdaterService(
+        webMode: true,
+        installed: const AppVersionInfo(versionCode: 29, versionName: '1.0.28'),
+        remoteUpdate: const AppUpdateInfo(
+          versionCode: 30,
+          versionName: '1.0.29',
+          mandatory: false,
+          releaseNotes: 'Web update pill & packing enhancements',
+          downloadAvailable: true,
+          downloadUrl: '/?v=30',
+        ),
+      );
+      final controller = AppUpdateController(
+        updaterService: fakeUpdater,
+        apiBaseUrlProvider: () => '/api',
+      );
+      addTearDown(controller.dispose);
+      await controller.loadInstalledVersion();
+
+      await tester.pumpWidget(
+        AppUpdateScope(
+          controller: controller,
+          child: MaterialApp(
+            theme: ErpTheme.buildLightTheme(),
+            home: const Scaffold(
+              body: Center(child: AppVersionUpdatePill()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially shows installed version pill
+      expect(find.text('v1.0.28 (29)'), findsOneWidget);
+
+      // Tap pill -> finds newer version and opens Web reload dialog
+      await tester.tap(find.byKey(const ValueKey('app-version-update-pill')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Update Available'), findsOneWidget);
+      expect(find.text('v1.0.28 (29)'), findsOneWidget);
+      expect(find.text('v1.0.29 (30)'), findsOneWidget);
+      expect(find.text('Reload & Update'), findsOneWidget);
+
+      // Dismiss with Later -> pill remains highlighted as Update Available
+      await tester.tap(find.text('Later'));
+      await tester.pumpAndSettle();
+      expect(find.text('Update Available • v1.0.29'), findsOneWidget);
+
+      // Re-open from highlighted pill and tap Reload & Update
+      await tester.tap(find.byKey(const ValueKey('app-version-update-pill')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reload & Update'));
+      await tester.pump();
+
+      expect(fakeUpdater.webReloadCount, 1);
+      expect(fakeUpdater.downloadCount, 0);
+    },
+  );
 }

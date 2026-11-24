@@ -320,11 +320,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                     context,
                                   )!;
                                   final ver = updater.installedVersion;
+                                  final hasUpdate = updater.hasAvailableUpdate;
+                                  final available = updater.availableUpdate;
                                   return TextButton.icon(
                                     onPressed:
                                         vm.isSubmitting || updater.isChecking
                                         ? null
-                                        : () => updater.checkManually(context),
+                                        : () => hasUpdate
+                                            ? updater.openAvailableUpdateDialog(
+                                                context,
+                                              )
+                                            : updater.checkManually(context),
+                                    style: hasUpdate
+                                        ? TextButton.styleFrom(
+                                            backgroundColor:
+                                                ErpTheme.ordersEmeraldSoft,
+                                            foregroundColor:
+                                                ErpTheme.godownTealDark,
+                                          )
+                                        : null,
                                     icon: updater.isChecking
                                         ? const SizedBox(
                                             width: 14,
@@ -333,17 +347,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                               strokeWidth: 2,
                                             ),
                                           )
-                                        : const Icon(
-                                            Icons.system_update_rounded,
+                                        : Icon(
+                                            hasUpdate
+                                                ? Icons.system_update_alt_rounded
+                                                : Icons.system_update_rounded,
                                             size: 15,
                                           ),
                                     label: Text(
-                                      ver != null
-                                          ? 'App v${ver.versionName} • Check Updates'
+                                      hasUpdate && available != null
+                                          ? 'Update Available: ${available.label} • Tap to Update'
+                                          : ver != null
+                                          ? 'App ${ver.label} • Check Updates'
                                           : 'Check for App Updates',
                                       style: const TextStyle(
                                         fontSize: 11,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                   );

@@ -1212,7 +1212,9 @@ class _ErpAdminStaffShell extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
+                        const AppVersionUpdatePill(compact: true),
+                        const SizedBox(width: 8),
                         Container(
                           width: 1,
                           height: 28,
@@ -1404,12 +1406,18 @@ class AccountAppBarAction extends StatelessWidget {
     final updateController = AppUpdateScope.maybeOf(context);
     final canUpdate = updateController?.isSupportedPlatform == true;
     final installedVersion = updateController?.installedVersion;
+    final hasAvailableUpdate = updateController?.hasAvailableUpdate == true;
+    final availableUpdate = updateController?.availableUpdate;
 
     return PopupMenuButton<String>(
       tooltip: 'Account & Server',
       onSelected: (value) async {
         if (value == 'check_update') {
-          await updateController?.checkManually(context);
+          if (hasAvailableUpdate) {
+            await updateController?.openAvailableUpdateDialog(context);
+          } else {
+            await updateController?.checkManually(context);
+          }
           return;
         }
         if (value == 'logout') {
@@ -1473,21 +1481,29 @@ class AccountAppBarAction extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         if (canUpdate) ...[
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'check_update',
             child: Row(
               children: [
                 Icon(
-                  Icons.system_update_rounded,
+                  hasAvailableUpdate
+                      ? Icons.system_update_alt_rounded
+                      : Icons.system_update_rounded,
                   size: 18,
-                  color: ErpTheme.salesBlueDark,
+                  color: hasAvailableUpdate
+                      ? ErpTheme.ordersEmerald
+                      : ErpTheme.salesBlueDark,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'Check for Updates',
+                  hasAvailableUpdate && availableUpdate != null
+                      ? 'Update Available (${availableUpdate.label})'
+                      : 'Check for Updates',
                   style: TextStyle(
-                    color: ErpTheme.slate900,
-                    fontWeight: FontWeight.w700,
+                    color: hasAvailableUpdate
+                        ? ErpTheme.godownTealDark
+                        : ErpTheme.slate900,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -1533,10 +1549,14 @@ class AccountAppBarAction extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.account_circle_outlined,
-                    size: 18,
-                    color: ErpTheme.slate700,
+                  Badge(
+                    isLabelVisible: hasAvailableUpdate,
+                    backgroundColor: ErpTheme.ordersEmerald,
+                    child: const Icon(
+                      Icons.account_circle_outlined,
+                      size: 18,
+                      color: ErpTheme.slate700,
+                    ),
                   ),
                   if (!isNarrow) ...[
                     const SizedBox(width: 6),

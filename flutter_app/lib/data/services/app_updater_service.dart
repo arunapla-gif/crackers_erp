@@ -5,14 +5,19 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/models/app_update_info.dart';
 import 'app_updater_platform_stub.dart'
+    if (dart.library.js_interop) 'app_updater_platform_web.dart'
     if (dart.library.io) 'app_updater_platform_io.dart';
 
 abstract class AppUpdaterService {
   bool get isSupportedPlatform;
 
+  bool get isWebReloadUpdater => false;
+
   Future<AppVersionInfo?> getInstalledVersion();
 
   Future<AppUpdateInfo?> checkForUpdate(String apiBaseUrl);
+
+  Future<void> applyWebUpdate() async {}
 
   Future<String> downloadApk(
     String downloadUrl,
@@ -30,10 +35,16 @@ class NoopAppUpdaterService implements AppUpdaterService {
   bool get isSupportedPlatform => false;
 
   @override
+  bool get isWebReloadUpdater => false;
+
+  @override
   Future<AppVersionInfo?> getInstalledVersion() async => null;
 
   @override
   Future<AppUpdateInfo?> checkForUpdate(String apiBaseUrl) async => null;
+
+  @override
+  Future<void> applyWebUpdate() async {}
 
   @override
   Future<String> downloadApk(

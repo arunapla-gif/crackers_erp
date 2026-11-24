@@ -24,6 +24,12 @@ class AndroidMethodChannelAppUpdaterService implements AppUpdaterService {
   bool get isSupportedPlatform => true;
 
   @override
+  bool get isWebReloadUpdater => false;
+
+  @override
+  Future<void> applyWebUpdate() async {}
+
+  @override
   Future<AppVersionInfo?> getInstalledVersion() async {
     final raw = await _channel.invokeMapMethod<String, dynamic>('getAppInfo');
     if (raw == null) return null;

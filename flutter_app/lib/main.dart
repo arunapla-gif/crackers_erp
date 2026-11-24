@@ -248,6 +248,7 @@ Future<void> main() async {
     updaterService: createPlatformAppUpdaterService(),
     apiBaseUrlProvider: storage.getApiBaseUrl,
   );
+  await appUpdateController.loadInstalledVersion();
 
   runApp(
     CrackersErpApp(

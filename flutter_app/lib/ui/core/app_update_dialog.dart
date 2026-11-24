@@ -15,13 +15,22 @@ class AppUpdateController extends ChangeNotifier {
   final String Function() _apiBaseUrlProvider;
 
   AppVersionInfo? _installedVersion;
+  AppUpdateInfo? _availableUpdate;
   bool _hasLoadedVersion = false;
   bool _hasCheckedOnStartup = false;
   bool _isChecking = false;
   bool _isDialogOpen = false;
 
   bool get isSupportedPlatform => _updaterService.isSupportedPlatform;
+  bool get isWebReloadUpdater => _updaterService.isWebReloadUpdater;
   AppVersionInfo? get installedVersion => _installedVersion;
+  AppUpdateInfo? get availableUpdate => _availableUpdate;
+  bool get hasAvailableUpdate {
+    final installed = _installedVersion;
+    final update = _availableUpdate;
+    return installed != null && update != null && update.isNewerThan(installed);
+  }
+
   bool get isChecking => _isChecking;
 
   Future<AppVersionInfo?> loadInstalledVersion() async {
@@ -48,7 +57,15 @@ class AppUpdateController extends ChangeNotifier {
       final update = await _updaterService.checkForUpdate(
         _apiBaseUrlProvider(),
       );
-      if (update == null || !update.isNewerThan(installed)) return;
+      if (update == null || !update.isNewerThan(installed)) {
+        if (_availableUpdate != null) {
+          _availableUpdate = null;
+          notifyListeners();
+        }
+        return;
+      }
+      _availableUpdate = update;
+      notifyListeners();
       if (!context.mounted || _isDialogOpen) return;
       await _presentUpdateDialog(
         context,
@@ -58,6 +75,16 @@ class AppUpdateController extends ChangeNotifier {
     } catch (_) {
       // Stay silent on background startup check failures (e.g. offline mode)
     }
+  }
+
+  Future<void> openAvailableUpdateDialog(BuildContext context) async {
+    final installed = _installedVersion;
+    final update = _availableUpdate;
+    if (installed == null || update == null || !update.isNewerThan(installed)) {
+      await checkManually(context);
+      return;
+    }
+    await _presentUpdateDialog(context, installed: installed, update: update);
   }
 
   Future<void> checkManually(BuildContext context) async {
@@ -70,15 +97,23 @@ class AppUpdateController extends ChangeNotifier {
       final update = await _updaterService.checkForUpdate(
         _apiBaseUrlProvider(),
       );
-      if (!context.mounted) return;
+      _isChecking = false;
+      if (!context.mounted) {
+        notifyListeners();
+        return;
+      }
 
       if (update != null && update.isNewerThan(installed)) {
+        _availableUpdate = update;
+        notifyListeners();
         await _presentUpdateDialog(
           context,
           installed: installed,
           update: update,
         );
       } else {
+        _availableUpdate = null;
+        notifyListeners();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -172,6 +207,23 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
   String? _errorMessage;
 
   Future<void> _startDownloadAndInstall() async {
+    if (widget.updaterService.isWebReloadUpdater) {
+      setState(() {
+        _stage = _UpdateDialogStage.downloading;
+        _errorMessage = null;
+      });
+      try {
+        await widget.updaterService.applyWebUpdate();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _stage = _UpdateDialogStage.error;
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+      return;
+    }
+
     final downloadUrl = widget.updateInfo.downloadUrl;
     if (downloadUrl == null || downloadUrl.isEmpty) {
       setState(() {
@@ -366,13 +418,17 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
               if (_stage == _UpdateDialogStage.downloading) ...[
                 const SizedBox(height: 16),
                 LinearProgressIndicator(
-                  value: _progress.fraction,
+                  value: widget.updaterService.isWebReloadUpdater
+                      ? null
+                      : _progress.fraction,
                   minHeight: 8,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _progress.totalBytes != null && _progress.totalBytes! > 0
+                  widget.updaterService.isWebReloadUpdater
+                      ? 'Clearing cached web files and reloading to ${update.label}...'
+                      : _progress.totalBytes != null && _progress.totalBytes! > 0
                       ? 'Downloading APK: ${_formatBytes(_progress.receivedBytes)} / ${_formatBytes(_progress.totalBytes!)} (${((_progress.fraction ?? 0) * 100).round()}%)'
                       : 'Downloading APK: ${_formatBytes(_progress.receivedBytes)}...',
                   style: const TextStyle(
@@ -454,13 +510,26 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
           if (_stage == _UpdateDialogStage.prompt)
             FilledButton.icon(
               onPressed: _startDownloadAndInstall,
-              icon: const Icon(Icons.download_rounded, size: 18),
-              label: const Text('Update Now'),
+              icon: Icon(
+                widget.updaterService.isWebReloadUpdater
+                    ? Icons.refresh_rounded
+                    : Icons.download_rounded,
+                size: 18,
+              ),
+              label: Text(
+                widget.updaterService.isWebReloadUpdater
+                    ? 'Reload & Update'
+                    : 'Update Now',
+              ),
             ),
           if (_stage == _UpdateDialogStage.downloading)
-            const FilledButton(
+            FilledButton(
               onPressed: null,
-              child: Text('Downloading...'),
+              child: Text(
+                widget.updaterService.isWebReloadUpdater
+                    ? 'Reloading...'
+                    : 'Downloading...',
+              ),
             ),
           if (_stage == _UpdateDialogStage.permissionRequired ||
               _stage == _UpdateDialogStage.installerStarted)
@@ -478,6 +547,122 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
               label: const Text('Retry'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Displays the currently running app version and highlights when a newer
+/// version is available. Tapping checks for updates or opens the update dialog.
+class AppVersionUpdatePill extends StatelessWidget {
+  const AppVersionUpdatePill({this.compact = false, super.key});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = AppUpdateScope.maybeOf(context);
+    if (controller == null || !controller.isSupportedPlatform) {
+      return const SizedBox.shrink();
+    }
+
+    final hasUpdate = controller.hasAvailableUpdate;
+    final available = controller.availableUpdate;
+    final installed = controller.installedVersion;
+    final isChecking = controller.isChecking;
+
+    final String label;
+    if (hasUpdate && available != null) {
+      label = compact
+          ? 'Update v${available.versionName}'
+          : 'Update Available • v${available.versionName}';
+    } else if (installed != null) {
+      label = compact ? 'v${installed.versionName}' : installed.label;
+    } else {
+      label = 'Updates';
+    }
+
+    final bgColor = hasUpdate
+        ? ErpTheme.ordersEmeraldSoft
+        : Colors.white;
+    final fgColor = hasUpdate
+        ? ErpTheme.godownTealDark
+        : ErpTheme.slate700;
+    final borderColor = hasUpdate
+        ? ErpTheme.ordersEmerald.withValues(alpha: 0.45)
+        : ErpTheme.slate200;
+
+    return Tooltip(
+      message: hasUpdate && available != null
+          ? 'New version ${available.label} available — click to update'
+          : 'Current version ${installed?.label ?? ''} — click to check for updates',
+      child: InkWell(
+        key: const ValueKey('app-version-update-pill'),
+        onTap: isChecking
+            ? null
+            : () {
+                if (hasUpdate) {
+                  controller.openAvailableUpdateDialog(context);
+                } else {
+                  controller.checkManually(context);
+                }
+              },
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 6 : 8,
+          ),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isChecking)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: fgColor,
+                  ),
+                )
+              else
+                Icon(
+                  hasUpdate
+                      ? Icons.system_update_alt_rounded
+                      : Icons.system_update_rounded,
+                  size: compact ? 14 : 16,
+                  color: hasUpdate
+                      ? ErpTheme.ordersEmerald
+                      : ErpTheme.salesBlueDark,
+                ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: compact ? 11.5 : 12,
+                  fontWeight: FontWeight.w800,
+                  color: fgColor,
+                ),
+              ),
+              if (hasUpdate) ...[
+                const SizedBox(width: 5),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: ErpTheme.ordersEmerald,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
